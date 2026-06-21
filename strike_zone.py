@@ -122,6 +122,77 @@ def filter_by_pitcher_throws(df, pitcher_throws):
     return df[df[throws_col].astype(str).str.upper() == target].copy()
 
 
+def _is_swing_description(description_value):
+    value = str(description_value or "").strip().lower()
+    return value in {
+        "swinging_strike",
+        "swinging_strike_blocked",
+        "foul",
+        "foul_tip",
+        "hit_into_play",
+        "hit_into_play_no_out",
+        "hit_into_play_score",
+        "foul_bunt",
+        "missed_bunt",
+        "swinging_pitchout",
+    }
+
+
+def _is_take_description(description_value):
+    return not _is_swing_description(description_value) and not str(description_value or "").strip().lower().startswith("hit_into_play")
+
+
+def _batter_metric_mask(df, metric):
+    if df.empty:
+        return pd.Series(dtype=bool)
+
+    metric_name = (metric or "Pitch %").strip().lower()
+    events = df["events"].astype(str).str.lower() if "events" in df.columns else pd.Series("", index=df.index)
+    descriptions = df["description"].astype(str).str.lower() if "description" in df.columns else pd.Series("", index=df.index)
+
+    if metric_name == "pitch %":
+        return pd.Series(True, index=df.index)
+
+    if metric_name == "takes":
+        return descriptions.apply(_is_take_description)
+
+    if metric_name == "batted balls":
+        return descriptions.str.startswith("hit_into_play") | events.isin(
+            {
+                "single",
+                "double",
+                "triple",
+                "home_run",
+                "field_out",
+                "force_out",
+                "fielders_choice",
+                "fielders_choice_out",
+                "grounded_into_double_play",
+                "double_play",
+                "triple_play",
+                "field_error",
+                "other_out",
+                "sac_fly",
+                "sac_fly_double_play",
+                "sac_bunt",
+                "sac_bunt_double_play",
+            }
+        )
+
+    if metric_name == "k%":
+        return events.str.startswith("strikeout") | descriptions.str.contains("strikeout", na=False)
+
+    if metric_name == "home runs":
+        return events == "home_run"
+
+    return pd.Series(True, index=df.index)
+
+
+def _metric_label(metric):
+    metric_name = (metric or "Pitch %").strip()
+    return metric_name if metric_name in {"Pitch %", "Takes", "Batted Balls", "K%", "Home Runs"} else "Pitch %"
+
+
 def get_batter_pitch_type_options(batter_id):
     season_year = date.today().year
     start_date = f"{season_year}-03-01"
@@ -143,9 +214,98 @@ def get_batter_pitch_type_options(batter_id):
     return ["All Pitches", *options_sorted]
 
 
-def aggregate_to_zones(statcast_df):
+def _build_metric_zone_dataframe(filtered_df, metric):
+    working_df = filtered_df.copy()
+    if working_df.empty:
+        return pd.DataFrame()
+
+    pitch_col = "pitch_name" if "pitch_name" in working_df.columns else "pitch_type"
+    if pitch_col not in working_df.columns:
+        return pd.DataFrame()
+
+    working_df[pitch_col] = working_df[pitch_col].astype(str).str.strip()
+    working_df = working_df[(working_df[pitch_col] != "") & (working_df[pitch_col].str.lower() != "nan")].copy()
+    if working_df.empty:
+        return pd.DataFrame()
+
+    if metric in {"Pitch %", "Takes", "Batted Balls", "Home Runs"}:
+        metric_masks = {
+            "Pitch %": pd.Series(True, index=working_df.index),
+            "Takes": working_df["description"].astype(str).str.lower().isin({"called_strike", "ball", "ballinplay", "blocked_ball", "pitchout"}) if "description" in working_df.columns else pd.Series(False, index=working_df.index),
+            "Batted Balls": working_df["events"].astype(str).str.lower().isin({"single", "double", "triple", "home_run", "field_out", "grounded_into_double_play", "force_out", "fielders_choice_out", "field_error", "double_play", "triple_play", "other_out", "sac_fly", "sac_fly_double_play", "fielders_choice"}) if "events" in working_df.columns else pd.Series(False, index=working_df.index),
+            "Home Runs": working_df["events"].astype(str).str.lower().eq("home_run") if "events" in working_df.columns else pd.Series(False, index=working_df.index),
+        }
+        metric_mask = metric_masks.get(metric, pd.Series(False, index=working_df.index))
+        if metric == "Pitch %":
+            metric_df = working_df.copy()
+        else:
+            metric_df = working_df[metric_mask].copy()
+    elif metric == "K%":
+        if "events" not in working_df.columns:
+            return pd.DataFrame()
+        metric_df = working_df[working_df["events"].astype(str).str.lower().eq("strikeout")].copy()
+    else:
+        return pd.DataFrame()
+
+    if metric_df.empty:
+        return pd.DataFrame()
+
+    zone_counts = {zone["zone_id"]: 0 for zone in ZONE_LAYOUT}
+    zone_ids = metric_df["zone"].apply(_normalize_zone_value)
+    for zone_id in zone_ids.dropna().astype(int):
+        if zone_id in zone_counts:
+            zone_counts[zone_id] += 1
+
+    total = float(len(metric_df))
+    rows = []
+    for zone in ZONE_LAYOUT:
+        count = zone_counts[zone["zone_id"]]
+        rows.append(
+            {
+                **zone,
+                "pitch_count": int(count),
+                "pitch_pct": (count / total * 100.0) if total else 0.0,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def _build_batter_metric_strike_zone_html(zone_df, outer_stats):
+    return _build_strike_zone_html(zone_df, outer_stats)
+
+
+def display_batter_metric_strike_zone(batter_id, pitch_type, pitcher_throws="All", metric="Pitch %"):
+    season_year = date.today().year
+    start_date = f"{season_year}-03-01"
+    end_date = date.today().isoformat()
+
+    try:
+        raw_df = load_batter_pitch_location_data(batter_id, start_date, end_date)
+        filtered_df = filter_by_pitch_type(raw_df, pitch_type)
+        filtered_df = filter_by_pitcher_throws(filtered_df, pitcher_throws)
+    except Exception as exc:
+        logger.error("Strike zone processing failed for batter_id=%s: %s", batter_id, exc)
+        st.info("Strike zone data is unavailable for this batter right now.")
+        return
+
+    if filtered_df.empty:
+        st.info("Strike zone data is unavailable for this batter right now.")
+        return
+
+    zone_df = _build_metric_zone_dataframe(filtered_df, metric)
+    if zone_df.empty:
+        st.info("Strike zone data is unavailable for this batter right now.")
+        return
+
+    outer_stats = _aggregate_outer_quadrants(filtered_df if metric == "Pitch %" else filtered_df[filtered_df["zone"].apply(_normalize_zone_value).isin({11, 12, 13, 14})])
+    html = _build_batter_metric_strike_zone_html(zone_df, outer_stats)
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def aggregate_to_zones(statcast_df, total_pitches=None):
     zone_rows = []
-    total_pitches = len(statcast_df)
+    total_pitches = len(statcast_df) if total_pitches is None else total_pitches
 
     zone_counts = {zone["zone_id"]: 0 for zone in ZONE_LAYOUT}
     if total_pitches > 0:
@@ -172,8 +332,8 @@ def _format_cell_text(count, pct):
     return f"{int(count)}<br>{pct:.1f}%"
 
 
-def _aggregate_outer_quadrants(statcast_df):
-    total_pitches = len(statcast_df)
+def _aggregate_outer_quadrants(statcast_df, total_pitches=None):
+    total_pitches = len(statcast_df) if total_pitches is None else total_pitches
     counts = {"tl": 0, "tr": 0, "bl": 0, "br": 0}
 
     if total_pitches > 0:
@@ -313,8 +473,8 @@ def _build_strike_zone_html(zone_df, outer_stats):
     """
 
 
-def render_strike_zone_grid(zone_df, filtered_df):
-    outer_stats = _aggregate_outer_quadrants(filtered_df)
+def render_strike_zone_grid(zone_df, filtered_df, total_pitches=None):
+    outer_stats = _aggregate_outer_quadrants(filtered_df, total_pitches=total_pitches)
     return _build_strike_zone_html(zone_df, outer_stats)
 
 
@@ -341,7 +501,7 @@ def display_strike_zone(player_id, pitch_type, batter_stands="All Batters"):
     st.markdown(html, unsafe_allow_html=True)
 
 
-def display_batter_strike_zone(batter_id, pitch_type, pitcher_throws="All"):
+def display_batter_strike_zone(batter_id, pitch_type, pitcher_throws="All", metric="Pitch %"):
     season_year = date.today().year
     start_date = f"{season_year}-03-01"
     end_date = date.today().isoformat()
@@ -359,6 +519,10 @@ def display_batter_strike_zone(batter_id, pitch_type, pitcher_throws="All"):
         st.info("Strike zone data is unavailable for this batter right now.")
         return
 
-    zone_df = aggregate_to_zones(filtered_df)
-    html = render_strike_zone_grid(zone_df, filtered_df)
+    metric_mask = _batter_metric_mask(filtered_df, metric)
+    metric_df = filtered_df[metric_mask].copy() if not metric_mask.empty else filtered_df.iloc[0:0].copy()
+
+    total_pitches = len(filtered_df)
+    zone_df = aggregate_to_zones(metric_df, total_pitches=total_pitches)
+    html = render_strike_zone_grid(zone_df, metric_df, total_pitches=total_pitches)
     st.markdown(html, unsafe_allow_html=True)
