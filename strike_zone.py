@@ -193,6 +193,16 @@ def _metric_label(metric):
     return metric_name if metric_name in {"Pitch %", "Takes", "Batted Balls", "K%", "Home Runs"} else "Pitch %"
 
 
+def _plate_appearance_key(df):
+    if {"game_pk", "at_bat_number"}.issubset(df.columns):
+        return (
+            df["game_pk"].astype(str)
+            + "_"
+            + pd.to_numeric(df["at_bat_number"], errors="coerce").fillna(-1).astype(int).astype(str)
+        )
+    return df.index.astype(str)
+
+
 def get_batter_pitch_type_options(batter_id):
     season_year = date.today().year
     start_date = f"{season_year}-03-01"
@@ -243,28 +253,50 @@ def _build_metric_zone_dataframe(filtered_df, metric):
     elif metric == "K%":
         if "events" not in working_df.columns:
             return pd.DataFrame()
-        metric_df = working_df[working_df["events"].astype(str).str.lower().eq("strikeout")].copy()
+        # Use plate appearances, not pitch rows, so zone K% behaves like Savant's pitch highlighter.
+        working_df["_pa_key"] = _plate_appearance_key(working_df)
+        k_pa_keys = set(working_df.loc[working_df["events"].astype(str).str.lower().eq("strikeout"), "_pa_key"].astype(str))
     else:
         return pd.DataFrame()
 
-    if metric_df.empty:
-        return pd.DataFrame()
-
     zone_counts = {zone["zone_id"]: 0 for zone in ZONE_LAYOUT}
-    zone_ids = metric_df["zone"].apply(_normalize_zone_value)
-    for zone_id in zone_ids.dropna().astype(int):
-        if zone_id in zone_counts:
-            zone_counts[zone_id] += 1
+    zone_denominators = {zone["zone_id"]: 0 for zone in ZONE_LAYOUT}
 
-    total = float(len(metric_df))
+    if metric == "K%":
+        zone_pa_sets = {zone["zone_id"]: set() for zone in ZONE_LAYOUT}
+        zone_k_pa_sets = {zone["zone_id"]: set() for zone in ZONE_LAYOUT}
+
+        for zone_id, pa_key in zip(working_df["zone"].apply(_normalize_zone_value), working_df["_pa_key"].astype(str)):
+            if zone_id in zone_pa_sets:
+                zone_pa_sets[zone_id].add(pa_key)
+                if pa_key in k_pa_keys:
+                    zone_k_pa_sets[zone_id].add(pa_key)
+
+        for zone in ZONE_LAYOUT:
+            zone_id = zone["zone_id"]
+            zone_denominators[zone_id] = len(zone_pa_sets[zone_id])
+            zone_counts[zone_id] = len(zone_k_pa_sets[zone_id])
+    else:
+        if working_df.empty:
+            return pd.DataFrame()
+
+        zone_ids = metric_df["zone"].apply(_normalize_zone_value)
+        for zone_id in zone_ids.dropna().astype(int):
+            if zone_id in zone_counts:
+                zone_counts[zone_id] += 1
+
+        total = float(len(metric_df))
+
     rows = []
     for zone in ZONE_LAYOUT:
-        count = zone_counts[zone["zone_id"]]
+        zone_id = zone["zone_id"]
+        count = zone_counts[zone_id]
+        total_for_zone = zone_denominators[zone_id] if metric == "K%" else total
         rows.append(
             {
                 **zone,
                 "pitch_count": int(count),
-                "pitch_pct": (count / total * 100.0) if total else 0.0,
+                "pitch_pct": (count / total_for_zone * 100.0) if total_for_zone else 0.0,
             }
         )
 
