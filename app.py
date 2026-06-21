@@ -494,7 +494,7 @@ if st.session_state.get("selected_batter"):
                 key=f"batter_strike_zone_metric_{batter_id}",
             )
         with batter_strike_zone_cols[1]:
-            strike_zone.display_batter_strike_zone(batter_id, selected_pitch_type, selected_pitcher_throws, selected_metric)
+            strike_zone.display_batter_metric_strike_zone(batter_id, selected_pitch_type, selected_pitcher_throws, selected_metric)
 
     st.stop()
 
