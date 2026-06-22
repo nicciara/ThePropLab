@@ -596,6 +596,120 @@ def load_schedule(game_date):
     # Keep the original column order but return sorted DataFrame
     return df.reset_index(drop=True)
 
+@st.cache_data(ttl=1800)
+def load_active_roster(team_id):
+    if not team_id:
+        return []
+    url = f"https://statsapi.mlb.com/api/v1/teams/{team_id}/roster"
+    data = requests.get(url, params={"rosterType": "active"}, timeout=15).json()
+    return data.get("roster", [])
+
+
+def normalize_name(name):
+    return " ".join(str(name).lower().replace(".", "").split())
+
+
+def build_roster_name_id_map(team_id):
+    roster = load_active_roster(team_id)
+    out = {}
+    for row in roster:
+        person = row.get("person", {})
+        name = normalize_name(person.get("fullName", ""))
+        pid = person.get("id")
+        if name and pid:
+            out[name] = pid
+    return out
+
+
+@st.cache_data(ttl=1800)
+def load_fangraphs_projected_lineups():
+    url = "https://www.fangraphs.com/roster-resource/lineup-tracker/r"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        response = requests.get(url, headers=headers, timeout=20)
+    except Exception as exc:
+        logger.warning("FanGraphs lineup fallback request failed: %s", exc)
+        return {}
+
+    if response.status_code != 200 or "Just a moment" in response.text:
+        logger.warning("FanGraphs lineup fallback unavailable, status=%s", response.status_code)
+        return {}
+
+    try:
+        tables = pd.read_html(io.StringIO(response.text))
+    except Exception as exc:
+        logger.warning("FanGraphs lineup fallback parse failed: %s", exc)
+        return {}
+
+    lineups = {}
+    for table in tables:
+        df = table.copy()
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = [" ".join(str(part) for part in col if str(part) != "nan").strip() for col in df.columns]
+        else:
+            df.columns = [str(col).strip() for col in df.columns]
+
+        lower_cols = {col.lower(): col for col in df.columns}
+        team_col = next((lower_cols[col] for col in lower_cols if col in {"team", "tm"}), None)
+        name_col = next(
+            (lower_cols[col] for col in lower_cols if col in {"player", "name", "batter", "hitter"}),
+            None,
+        )
+        pos_col = next((lower_cols[col] for col in lower_cols if col in {"pos", "position"}), None)
+
+        if not team_col or not name_col:
+            continue
+
+        for _, row in df.iterrows():
+            team_name = normalize_name(row.get(team_col, ""))
+            player_name = str(row.get(name_col, "")).strip()
+            if not team_name or not player_name or player_name.lower() == "nan":
+                continue
+            lineups.setdefault(team_name, []).append(
+                {
+                    "name": player_name,
+                    "position": "" if not pos_col or pd.isna(row.get(pos_col)) else str(row.get(pos_col, "")).strip(),
+                }
+            )
+
+    return lineups
+
+
+def build_fangraphs_lineup_fallback(team_id, team_name):
+    if not team_id or not team_name:
+        return []
+
+    fangraphs_lineups = load_fangraphs_projected_lineups()
+    projected_players = fangraphs_lineups.get(normalize_name(team_name), [])
+    if not projected_players:
+        return []
+
+    roster_map = build_roster_name_id_map(team_id)
+    matched_ids = [
+        roster_map.get(normalize_name(player.get("name", "")))
+        for player in projected_players
+        if roster_map.get(normalize_name(player.get("name", "")))
+    ]
+    player_info = get_players_info(tuple(matched_ids)) if matched_ids else {}
+
+    lineup = []
+    for i, player in enumerate(projected_players, start=1):
+        player_name = player.get("name", "")
+        player_id = roster_map.get(normalize_name(player_name))
+        info = player_info.get(player_id, {}) if player_id else {}
+        lineup.append(
+            {
+                "number": i,
+                "player_id": player_id,
+                "name": player_name,
+                "handedness": normalize_hand_code(info.get("batSide", "")) if player_id else "",
+                "position": player.get("position", ""),
+            }
+        )
+
+    return lineup
+
+
 
 @st.cache_data(ttl=120)
 def load_lineups(game_pk):
@@ -617,6 +731,13 @@ def load_lineups(game_pk):
         team = boxscore.get(side, {})
         players = team.get("players", {})
         batting_order = team.get("battingOrder", [])
+        team_id = team.get("team", {}).get("id")
+        team_name = team.get("team", {}).get("name", "")
+
+        if not batting_order:
+            fallback_lineup = build_fangraphs_lineup_fallback(team_id, team_name)
+            if fallback_lineup:
+                return fallback_lineup
 
         lineup = []
         missing_ids = []
