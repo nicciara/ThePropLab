@@ -623,54 +623,27 @@ def build_roster_name_id_map(team_id):
 
 @st.cache_data(ttl=1800)
 def load_fangraphs_projected_lineups():
-    url = "https://www.fangraphs.com/roster-resource/lineup-tracker/r"
-    headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        response = requests.get(url, headers=headers, timeout=20)
+        with open("projected_lineups.json", "r", encoding="utf-8") as f:
+            raw_lineups = json.load(f)
     except Exception as exc:
-        logger.warning("FanGraphs lineup fallback request failed: %s", exc)
+        logger.warning("Projected lineup fallback file unavailable: %s", exc)
         return {}
 
-    if response.status_code != 200 or "Just a moment" in response.text:
-        logger.warning("FanGraphs lineup fallback unavailable, status=%s", response.status_code)
-        return {}
-
-    try:
-        tables = pd.read_html(io.StringIO(response.text))
-    except Exception as exc:
-        logger.warning("FanGraphs lineup fallback parse failed: %s", exc)
+    if not isinstance(raw_lineups, dict) or not raw_lineups:
         return {}
 
     lineups = {}
-    for table in tables:
-        df = table.copy()
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = [" ".join(str(part) for part in col if str(part) != "nan").strip() for col in df.columns]
-        else:
-            df.columns = [str(col).strip() for col in df.columns]
-
-        lower_cols = {col.lower(): col for col in df.columns}
-        team_col = next((lower_cols[col] for col in lower_cols if col in {"team", "tm"}), None)
-        name_col = next(
-            (lower_cols[col] for col in lower_cols if col in {"player", "name", "batter", "hitter"}),
-            None,
-        )
-        pos_col = next((lower_cols[col] for col in lower_cols if col in {"pos", "position"}), None)
-
-        if not team_col or not name_col:
+    for team_name, player_names in raw_lineups.items():
+        normalized_team = normalize_name(team_name)
+        if not normalized_team or not isinstance(player_names, list):
             continue
 
-        for _, row in df.iterrows():
-            team_name = normalize_name(row.get(team_col, ""))
-            player_name = str(row.get(name_col, "")).strip()
-            if not team_name or not player_name or player_name.lower() == "nan":
+        for player_name in player_names:
+            player_name = str(player_name).strip()
+            if not player_name:
                 continue
-            lineups.setdefault(team_name, []).append(
-                {
-                    "name": player_name,
-                    "position": "" if not pos_col or pd.isna(row.get(pos_col)) else str(row.get(pos_col, "")).strip(),
-                }
-            )
+            lineups.setdefault(normalized_team, []).append({"name": player_name, "position": ""})
 
     return lineups
 
