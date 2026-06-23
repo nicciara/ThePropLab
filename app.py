@@ -1376,12 +1376,34 @@ if st.session_state.get("selected_pitcher"):
 
 if "selected_date" not in st.session_state:
     st.session_state["selected_date"] = date.today()
+if "calendar_date" not in st.session_state:
+    st.session_state["calendar_date"] = st.session_state["selected_date"]
+
+
+def set_homepage_date(new_date):
+    st.session_state["selected_date"] = new_date
+    st.session_state["calendar_date"] = new_date
+    st.session_state["games"] = load_schedule(new_date)
+
+
+def shift_homepage_date(days):
+    set_homepage_date(st.session_state["selected_date"] + timedelta(days=days))
+
+
+def set_homepage_today():
+    set_homepage_date(date.today())
+
+
+def set_homepage_calendar_date():
+    set_homepage_date(st.session_state["calendar_date"])
+
+
+if st.session_state["calendar_date"] != st.session_state["selected_date"]:
+    st.session_state["calendar_date"] = st.session_state["selected_date"]
 
 col1, col2, col3, col4 = st.columns([1, 4, 1, 1])
 with col1:
-    if st.button("←"):
-        st.session_state["selected_date"] = st.session_state["selected_date"] - timedelta(days=1)
-        st.session_state["games"] = load_schedule(st.session_state["selected_date"])
+    st.button("←", on_click=shift_homepage_date, args=(-1,))
 with col2:
     formatted_date = st.session_state["selected_date"].strftime("%A, %B %d, %Y")
     st.markdown(
@@ -1389,19 +1411,16 @@ with col2:
         unsafe_allow_html=True,
     )
 with col3:
-    if st.button("→"):
-        st.session_state["selected_date"] = st.session_state["selected_date"] + timedelta(days=1)
-        st.session_state["games"] = load_schedule(st.session_state["selected_date"])
+    st.button("→", on_click=shift_homepage_date, args=(1,))
 with col4:
-    if st.button("Today"):
-        st.session_state["selected_date"] = date.today()
-        st.session_state["games"] = load_schedule(st.session_state["selected_date"])
+    st.button("Today", on_click=set_homepage_today)
 
 with st.expander("Calendar", expanded=False):
-    picked_date = st.date_input("Select date", value=st.session_state["selected_date"])
-    if picked_date != st.session_state["selected_date"]:
-        st.session_state["selected_date"] = picked_date
-        st.session_state["games"] = load_schedule(st.session_state["selected_date"])
+    st.date_input(
+        "Select date",
+        key="calendar_date",
+        on_change=set_homepage_calendar_date,
+    )
 
 if "games" not in st.session_state:
     st.session_state["games"] = load_schedule(st.session_state["selected_date"])
@@ -1480,7 +1499,7 @@ if "games" in st.session_state:
                                 away_lines.append(f"<div style='line-height:1.4; margin:4px 0;'>{player.get('number','')}. {player.get('name','')}{ph} {player.get('position','')}</div>")
                             away_lines_html = "".join(away_lines)
                             away_warning_html = (
-                                "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #f97316; border-radius:6px; background:#fff7ed; color:#c2410c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
+                                "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #dc2626; border-radius:6px; background:#fef2f2; color:#b91c1c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
                                 if any(player.get("is_projected") for player in away_lineup)
                                 else ""
                             )
@@ -1520,7 +1539,7 @@ if "games" in st.session_state:
                                 home_lines.append(f"<div style='line-height:1.4; margin:4px 0;'>{player.get('number','')}. {player.get('name','')}{ph} {player.get('position','')}</div>")
                             home_lines_html = "".join(home_lines)
                             home_warning_html = (
-                                "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #f97316; border-radius:6px; background:#fff7ed; color:#c2410c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
+                                "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #dc2626; border-radius:6px; background:#fef2f2; color:#b91c1c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
                                 if any(player.get("is_projected") for player in home_lineup)
                                 else ""
                             )
