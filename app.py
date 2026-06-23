@@ -623,24 +623,80 @@ def build_roster_name_id_map(team_id):
 
 @st.cache_data(ttl=1800)
 def load_fangraphs_projected_lineups():
+    url = "https://www.fangraphs.com/api/roster-resource/lineup-tracker/data?season=2026"
+    fangraphs_team_names = {
+        1: "Los Angeles Angels",
+        2: "Baltimore Orioles",
+        3: "Boston Red Sox",
+        4: "Chicago White Sox",
+        5: "Cleveland Guardians",
+        6: "Detroit Tigers",
+        7: "Kansas City Royals",
+        8: "Minnesota Twins",
+        9: "New York Yankees",
+        10: "Athletics",
+        11: "Seattle Mariners",
+        12: "Tampa Bay Rays",
+        13: "Texas Rangers",
+        14: "Toronto Blue Jays",
+        15: "Arizona Diamondbacks",
+        16: "Atlanta Braves",
+        17: "Chicago Cubs",
+        18: "Cincinnati Reds",
+        19: "Colorado Rockies",
+        20: "Miami Marlins",
+        21: "Houston Astros",
+        22: "Los Angeles Dodgers",
+        23: "Milwaukee Brewers",
+        24: "Washington Nationals",
+        25: "New York Mets",
+        26: "Philadelphia Phillies",
+        27: "Pittsburgh Pirates",
+        28: "St. Louis Cardinals",
+        29: "San Diego Padres",
+        30: "San Francisco Giants",
+    }
+
     try:
-        with open("projected_lineups.json", "r", encoding="utf-8") as f:
-            raw_lineups = json.load(f)
+        raw_lineups = requests.get(url, timeout=20).json()
     except Exception as exc:
-        logger.warning("Projected lineup fallback file unavailable: %s", exc)
+        logger.warning("FanGraphs lineup fallback request failed: %s", exc)
         return {}
 
-    if not isinstance(raw_lineups, dict) or not raw_lineups:
+    if not isinstance(raw_lineups, list) or not raw_lineups:
         return {}
 
     lineups = {}
-    for team_name, player_names in raw_lineups.items():
-        normalized_team = normalize_name(team_name)
-        if not normalized_team or not isinstance(player_names, list):
+    for team_record in raw_lineups:
+        if not isinstance(team_record, dict):
             continue
 
-        for player_name in player_names:
-            player_name = str(player_name).strip()
+        team_name = fangraphs_team_names.get(team_record.get("teamId"))
+        if not team_name:
+            continue
+
+        lineup_data = team_record.get("lineupData", {})
+        lineup_tracker = lineup_data.get("lineupTracker", []) if isinstance(lineup_data, dict) else []
+        if not isinstance(lineup_tracker, list):
+            continue
+
+        projected_players = []
+        for lineup in lineup_tracker:
+            data_players = lineup.get("dataPlayers", []) if isinstance(lineup, dict) else []
+            projected_players = [
+                player
+                for player in data_players
+                if isinstance(player, dict) and player.get("BO") and player.get("playerName")
+            ]
+            if projected_players:
+                break
+
+        if not projected_players:
+            continue
+
+        normalized_team = normalize_name(team_name)
+        for player in sorted(projected_players, key=lambda row: row.get("BO") or 999):
+            player_name = str(player.get("playerName", "")).strip()
             if not player_name:
                 continue
             lineups.setdefault(normalized_team, []).append({"name": player_name, "position": ""})
