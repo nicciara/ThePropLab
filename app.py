@@ -733,6 +733,7 @@ def build_fangraphs_lineup_fallback(team_id, team_name):
                 "name": player_name,
                 "handedness": normalize_hand_code(info.get("batSide", "")) if player_id else "",
                 "position": player.get("position", ""),
+                "is_projected": True,
             }
         )
 
@@ -1478,8 +1479,13 @@ if "games" in st.session_state:
                                 ph = f" ({player.get('handedness')})" if player.get('handedness') else ''
                                 away_lines.append(f"<div style='line-height:1.4; margin:4px 0;'>{player.get('number','')}. {player.get('name','')}{ph} {player.get('position','')}</div>")
                             away_lines_html = "".join(away_lines)
+                            away_warning_html = (
+                                "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #f97316; border-radius:6px; background:#fff7ed; color:#c2410c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
+                                if any(player.get("is_projected") for player in away_lineup)
+                                else ""
+                            )
                             st.markdown(
-                                f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start;'>{away_lines_html}</div>",
+                                f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start;'>{away_warning_html}{away_lines_html}</div>",
                                 unsafe_allow_html=True,
                             )
 
@@ -1513,8 +1519,13 @@ if "games" in st.session_state:
                                 ph = f" ({player.get('handedness')})" if player.get('handedness') else ''
                                 home_lines.append(f"<div style='line-height:1.4; margin:4px 0;'>{player.get('number','')}. {player.get('name','')}{ph} {player.get('position','')}</div>")
                             home_lines_html = "".join(home_lines)
+                            home_warning_html = (
+                                "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #f97316; border-radius:6px; background:#fff7ed; color:#c2410c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
+                                if any(player.get("is_projected") for player in home_lineup)
+                                else ""
+                            )
                             st.markdown(
-                                f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start;'>{home_lines_html}</div>",
+                                f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start;'>{home_warning_html}{home_lines_html}</div>",
                                 unsafe_allow_html=True,
                             )
                     st.markdown("</div>", unsafe_allow_html=True)
