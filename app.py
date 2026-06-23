@@ -735,6 +735,7 @@ def load_lineups(game_pk):
         team_name = team.get("team", {}).get("name", "")
 
         if not batting_order:
+            logger.warning("FanGraphs fallback triggered: team_id=%s team_name=%s", team_id, team_name)
             fallback_lineup = build_fangraphs_lineup_fallback(team_id, team_name)
             if fallback_lineup:
                 return fallback_lineup
