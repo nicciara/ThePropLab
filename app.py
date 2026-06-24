@@ -3,6 +3,7 @@ import time
 import json
 import io
 import html
+import altair as alt
 import streamlit as st
 import pandas as pd
 import requests
@@ -164,6 +165,63 @@ def pitch_type_text_html(pitch_name):
 def pitch_type_cell_style(value):
     color = pitch_type_color(value)
     return f"color:{color}; font-weight:700;" if color else ""
+
+
+@st.cache_data(ttl=1800)
+def load_batter_hits_game_log(batter_id):
+    if not batter_id:
+        return pd.DataFrame()
+
+    season_year = 2026
+    start_date = f"{season_year}-03-01"
+    end_date = date.today().isoformat()
+    raw_df = strike_zone.load_batter_pitch_location_data(batter_id, start_date, end_date)
+    if raw_df.empty or "game_date" not in raw_df.columns:
+        return pd.DataFrame()
+
+    working_df = raw_df.copy()
+    working_df["game_date"] = pd.to_datetime(working_df["game_date"], errors="coerce")
+    working_df = working_df[working_df["game_date"].notna()].copy()
+    if working_df.empty:
+        return pd.DataFrame()
+
+    hit_events = {"single", "double", "triple", "home_run"}
+    event_series = working_df["events"].astype(str).str.lower() if "events" in working_df.columns else pd.Series("", index=working_df.index)
+    working_df["_is_hit"] = event_series.isin(hit_events)
+
+    def _opponent_label(group):
+        if {"home_team", "away_team", "inning_topbot"}.issubset(group.columns):
+            row = group.iloc[0]
+            if str(row.get("inning_topbot", "")).lower() == "top":
+                return str(row.get("home_team", ""))
+            return str(row.get("away_team", ""))
+        return ""
+
+    group_cols = ["game_pk", "game_date"] if "game_pk" in working_df.columns else ["game_date"]
+    rows = []
+    for keys, group in working_df.groupby(group_cols, dropna=False):
+        if not isinstance(keys, tuple):
+            keys = (keys,)
+        game_date = keys[-1]
+        hits = int(group["_is_hit"].sum())
+        opponent = _opponent_label(group)
+        rows.append(
+            {
+                "game_date": game_date,
+                "opponent": opponent,
+                "hits": hits,
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame()
+
+    game_log = pd.DataFrame(rows).sort_values("game_date").reset_index(drop=True)
+    game_log["label"] = game_log.apply(
+        lambda row: f"{row['game_date'].strftime('%m/%d')} {('@ ' + row['opponent']) if row['opponent'] else ''}".strip(),
+        axis=1,
+    )
+    return game_log
 
 
 def display_batter_metric_strike_zone_fixed(batter_id, pitch_type, pitcher_throws="All", metric="Pitch %"):
@@ -1013,6 +1071,57 @@ if st.session_state.get("selected_batter"):
                 hide_index=True,
                 use_container_width=True,
             )
+
+    with st.container(border=True):
+        st.markdown(
+            "<div class='section-title-strong'>Recent Game Log</div>",
+            unsafe_allow_html=True,
+        )
+        game_log_range = st.segmented_control(
+            "Recent Range",
+            ["L5", "L10", "L15", "2026"],
+            default="L10",
+            key=f"batter_game_log_range_{batter_id}",
+        )
+        selected_hits_line = 0.5
+        game_log_df = load_batter_hits_game_log(batter_id)
+        if game_log_df.empty:
+            st.info("Game log data is unavailable for this batter right now.")
+        else:
+            if game_log_range in {"L5", "L10", "L15"}:
+                display_log_df = game_log_df.tail(int(game_log_range[1:])).copy()
+            else:
+                display_log_df = game_log_df.copy()
+            display_log_df["result_color"] = display_log_df["hits"].apply(
+                lambda hits: "#16a34a" if hits >= selected_hits_line else "#dc2626"
+            )
+
+            bars = (
+                alt.Chart(display_log_df)
+                .mark_bar()
+                .encode(
+                    x=alt.X("label:N", sort=None, title="Game"),
+                    y=alt.Y("hits:Q", title="Hits"),
+                    color=alt.Color("result_color:N", scale=None, legend=None),
+                    tooltip=[
+                        alt.Tooltip("game_date:T", title="Date"),
+                        alt.Tooltip("opponent:N", title="Opponent"),
+                        alt.Tooltip("hits:Q", title="Hits"),
+                    ],
+                )
+            )
+            labels = (
+                alt.Chart(display_log_df)
+                .mark_text(dy=-6, fontWeight="bold")
+                .encode(
+                    x=alt.X("label:N", sort=None),
+                    y=alt.Y("hits:Q"),
+                    text=alt.Text("hits:Q", format=".0f"),
+                )
+            )
+            line_df = pd.DataFrame({"line": [selected_hits_line]})
+            line = alt.Chart(line_df).mark_rule(strokeDash=[6, 4], color="#334155").encode(y="line:Q")
+            st.altair_chart((bars + labels + line).properties(height=280), use_container_width=True)
 
     with st.container(border=True):
         st.markdown(
