@@ -1749,7 +1749,24 @@ if "games" in st.session_state:
                             away_lines = []
                             for player in away_lineup:
                                 ph = f" ({player.get('handedness')})" if player.get('handedness') else ''
-                                away_lines.append(f"<div style='line-height:1.4; margin:4px 0;'>{player.get('number','')}. {player.get('name','')}{ph} {player.get('position','')}</div>")
+                                batter_name = player.get("name", "")
+                                if player.get("player_id"):
+                                    batter_href = _build_batter_detail_href(
+                                        player.get("player_id"),
+                                        batter_name=batter_name,
+                                        batter_hand=player.get("handedness", ""),
+                                        team=game.get("away_team", ""),
+                                        opponent=game.get("home_team", ""),
+                                        return_game_pk=game["game_pk"],
+                                    )
+                                    batter_name_html = (
+                                        f"<a href='{html.escape(batter_href, quote=True)}' target='_self' "
+                                        "style='color:#0b5fff; text-decoration:underline; font-weight:600; cursor:pointer;'>"
+                                        f"{html.escape(str(batter_name))}</a>"
+                                    )
+                                else:
+                                    batter_name_html = html.escape(str(batter_name))
+                                away_lines.append(f"<div style='line-height:1.4; margin:4px 0;'>{player.get('number','')}. {batter_name_html}{ph} {player.get('position','')}</div>")
                             away_lines_html = "".join(away_lines)
                             away_warning_html = (
                                 "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #dc2626; border-radius:6px; background:#fef2f2; color:#b91c1c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
@@ -1796,7 +1813,24 @@ if "games" in st.session_state:
                             home_lines = []
                             for player in home_lineup:
                                 ph = f" ({player.get('handedness')})" if player.get('handedness') else ''
-                                home_lines.append(f"<div style='line-height:1.4; margin:4px 0;'>{player.get('number','')}. {player.get('name','')}{ph} {player.get('position','')}</div>")
+                                batter_name = player.get("name", "")
+                                if player.get("player_id"):
+                                    batter_href = _build_batter_detail_href(
+                                        player.get("player_id"),
+                                        batter_name=batter_name,
+                                        batter_hand=player.get("handedness", ""),
+                                        team=game.get("home_team", ""),
+                                        opponent=game.get("away_team", ""),
+                                        return_game_pk=game["game_pk"],
+                                    )
+                                    batter_name_html = (
+                                        f"<a href='{html.escape(batter_href, quote=True)}' target='_self' "
+                                        "style='color:#0b5fff; text-decoration:underline; font-weight:600; cursor:pointer;'>"
+                                        f"{html.escape(str(batter_name))}</a>"
+                                    )
+                                else:
+                                    batter_name_html = html.escape(str(batter_name))
+                                home_lines.append(f"<div style='line-height:1.4; margin:4px 0;'>{player.get('number','')}. {batter_name_html}{ph} {player.get('position','')}</div>")
                             home_lines_html = "".join(home_lines)
                             home_warning_html = (
                                 "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #dc2626; border-radius:6px; background:#fef2f2; color:#b91c1c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
