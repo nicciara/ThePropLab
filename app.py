@@ -17,6 +17,17 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 PLAYER_API_CALLS = 0
 LINEUP_MIN_HEIGHT = 220
+GAME_LOG_PROPS = ["Hits", "Runs", "RBI", "H+R+RBI", "Total Bases", "Home Runs", "Walks", "Strikeouts"]
+GAME_LOG_PROP_COLUMNS = {
+    "Hits": "hits",
+    "Runs": "runs",
+    "RBI": "rbi",
+    "H+R+RBI": "hrrrbi",
+    "Total Bases": "total_bases",
+    "Home Runs": "home_runs",
+    "Walks": "walks",
+    "Strikeouts": "strikeouts",
+}
 
 st.set_page_config(page_title="🧪 The Prop Lab", layout="wide")
 
@@ -71,6 +82,10 @@ st.markdown(
     .game-card .stButton>button:hover{color:var(--dash-accent);text-decoration:underline}
     .nav-name-link{color:var(--dash-value)!important;text-decoration:none!important;font-weight:650;cursor:pointer}
     .nav-name-link:hover{color:var(--dash-accent)!important;text-decoration:underline!important}
+    .prop-tab-bar{display:flex;gap:8px;overflow-x:auto;white-space:nowrap;padding:0 0 10px 0;margin:0 0 8px 0;scrollbar-width:thin}
+    .prop-tab{display:inline-flex;align-items:center;justify-content:center;border:1px solid #dbe3ef;border-radius:999px;padding:7px 13px;color:var(--dash-value)!important;text-decoration:none!important;font-weight:750;font-size:13px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,0.04)}
+    .prop-tab:hover{border-color:var(--dash-accent);color:var(--dash-accent)!important;text-decoration:none!important}
+    .prop-tab.active{background:var(--dash-accent);border-color:var(--dash-accent);color:#fff!important}
     .dash-card{
         border:2px solid var(--dash-border);
         border-radius:16px;
@@ -249,48 +264,53 @@ def style_run_value_table(df):
 
 
 @st.cache_data(ttl=1800)
-def load_batter_hits_game_log(batter_id):
+def load_batter_prop_game_log(batter_id):
     if not batter_id:
         return pd.DataFrame()
 
     season_year = 2026
-    start_date = f"{season_year}-03-01"
-    end_date = date.today().isoformat()
-    raw_df = strike_zone.load_batter_pitch_location_data(batter_id, start_date, end_date)
-    if raw_df.empty or "game_date" not in raw_df.columns:
+    url = f"https://statsapi.mlb.com/api/v1/people/{batter_id}/stats"
+    params = {"stats": "gameLog", "group": "hitting", "season": season_year, "sportIds": 1}
+
+    def _int_stat(stat, key):
+        try:
+            return int(stat.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    try:
+        data = requests.get(url, params=params, timeout=20).json()
+    except Exception as exc:
+        logger.warning("MLB batter game log request failed for %s: %s", batter_id, exc)
         return pd.DataFrame()
 
-    working_df = raw_df.copy()
-    working_df["game_date"] = pd.to_datetime(working_df["game_date"], errors="coerce")
-    working_df = working_df[working_df["game_date"].notna()].copy()
-    if working_df.empty:
-        return pd.DataFrame()
-
-    hit_events = {"single", "double", "triple", "home_run"}
-    event_series = working_df["events"].astype(str).str.lower() if "events" in working_df.columns else pd.Series("", index=working_df.index)
-    working_df["_is_hit"] = event_series.isin(hit_events)
-
-    def _opponent_label(group):
-        if {"home_team", "away_team", "inning_topbot"}.issubset(group.columns):
-            row = group.iloc[0]
-            if str(row.get("inning_topbot", "")).lower() == "top":
-                return str(row.get("home_team", ""))
-            return str(row.get("away_team", ""))
-        return ""
-
-    group_cols = ["game_pk", "game_date"] if "game_pk" in working_df.columns else ["game_date"]
     rows = []
-    for keys, group in working_df.groupby(group_cols, dropna=False):
-        if not isinstance(keys, tuple):
-            keys = (keys,)
-        game_date = keys[-1]
-        hits = int(group["_is_hit"].sum())
-        opponent = _opponent_label(group)
+    splits = data.get("stats", [{}])[0].get("splits", []) if data.get("stats") else []
+    for split in splits:
+        stat = split.get("stat", {})
+        game_date = pd.to_datetime(split.get("date"), errors="coerce")
+        if pd.isna(game_date):
+            continue
+        opponent = split.get("opponent", {}) or {}
+        opponent_label = opponent.get("abbreviation") or opponent.get("teamName") or opponent.get("name", "")
+        raw_is_home = split.get("isHome", False)
+        is_home = raw_is_home if isinstance(raw_is_home, bool) else str(raw_is_home).lower() == "true"
+        prefix = "" if is_home else "@"
+        hits = _int_stat(stat, "hits")
+        runs = _int_stat(stat, "runs")
+        rbi = _int_stat(stat, "rbi")
         rows.append(
             {
                 "game_date": game_date,
-                "opponent": opponent,
+                "opponent": f"{prefix}{opponent_label}" if opponent_label else "",
                 "hits": hits,
+                "runs": runs,
+                "rbi": rbi,
+                "hrrrbi": hits + runs + rbi,
+                "total_bases": _int_stat(stat, "totalBases"),
+                "home_runs": _int_stat(stat, "homeRuns"),
+                "walks": _int_stat(stat, "baseOnBalls"),
+                "strikeouts": _int_stat(stat, "strikeOuts"),
             }
         )
 
@@ -299,7 +319,7 @@ def load_batter_hits_game_log(batter_id):
 
     game_log = pd.DataFrame(rows).sort_values("game_date").reset_index(drop=True)
     game_log["label"] = game_log.apply(
-        lambda row: f"{row['game_date'].strftime('%m/%d')} {('@ ' + row['opponent']) if row['opponent'] else ''}".strip(),
+        lambda row: f"{row['game_date'].strftime('%m/%d')} {row['opponent']}".strip(),
         axis=1,
     )
     return game_log
@@ -433,6 +453,7 @@ def _build_batter_detail_href(
     return_pitcher_side="",
     return_pitcher_name="",
     return_pitcher_hand="",
+    prop="",
 ):
     params = [("view", "batter_detail"), ("batter_id", str(batter_id))]
     if batter_name:
@@ -453,6 +474,8 @@ def _build_batter_detail_href(
         params.append(("return_pitcher_name", str(return_pitcher_name)))
     if return_pitcher_hand:
         params.append(("return_pitcher_hand", str(return_pitcher_hand)))
+    if prop:
+        params.append(("prop", str(prop)))
     return "?" + "&".join(f"{key}={quote_plus(value)}" for key, value in params)
 
 
@@ -1129,27 +1152,48 @@ if st.session_state.get("selected_batter"):
     team_lineup = lineup_context.get(lineup_side, []) if lineup_side else []
 
     with st.container(border=True):
-        st.markdown(
-            "<div class='section-title-strong'>Recent Game Log</div>",
-            unsafe_allow_html=True,
-        )
-        line_key = f"batter_hits_line_{batter_id}"
+        selected_prop = _query_param_value("prop", st.session_state.get(f"batter_game_log_prop_{batter_id}", "Hits"))
+        if selected_prop not in GAME_LOG_PROPS:
+            selected_prop = "Hits"
+        st.session_state[f"batter_game_log_prop_{batter_id}"] = selected_prop
+        prop_tabs = []
+        for prop_name in GAME_LOG_PROPS:
+            prop_href = _build_batter_detail_href(
+                batter_id,
+                batter_name=batter_name,
+                batter_hand=batter_hand,
+                team=sb.get("team", ""),
+                opponent=sb.get("opponent", ""),
+                return_pitcher_id=sb.get("return_pitcher_id", ""),
+                return_game_pk=game_pk,
+                return_pitcher_side=sb.get("return_pitcher_side", ""),
+                return_pitcher_name=sb.get("return_pitcher_name", ""),
+                return_pitcher_hand=sb.get("return_pitcher_hand", ""),
+                prop=prop_name,
+            )
+            active_class = " active" if prop_name == selected_prop else ""
+            prop_tabs.append(
+                f"<a class='prop-tab{active_class}' href='{html.escape(prop_href, quote=True)}' target='_self'>{html.escape(prop_name)}</a>"
+            )
+        st.markdown(f"<div class='prop-tab-bar'>{''.join(prop_tabs)}</div>", unsafe_allow_html=True)
+
+        prop_column = GAME_LOG_PROP_COLUMNS[selected_prop]
+        prop_slug = prop_column.replace("_", "-")
+        line_key = f"batter_{prop_column}_line_{batter_id}"
         if line_key not in st.session_state:
             st.session_state[line_key] = 0.5
-        line_cols = st.columns([0.8, 0.35, 0.5, 0.35, 4])
-        with line_cols[0]:
-            st.markdown("<div style='font-weight:800; padding-top:0.45rem;'>Hits</div>", unsafe_allow_html=True)
+        line_cols = st.columns([0.35, 0.5, 0.35, 5])
         with line_cols[1]:
-            if st.button("-", key=f"batter_hits_line_minus_{batter_id}"):
-                st.session_state[line_key] = max(0.5, float(st.session_state[line_key]) - 1.0)
-                st.rerun()
-        with line_cols[2]:
             st.markdown(
                 f"<div style='font-weight:800; text-align:center; padding-top:0.45rem;'>{float(st.session_state[line_key]):.1f}</div>",
                 unsafe_allow_html=True,
             )
-        with line_cols[3]:
-            if st.button("+", key=f"batter_hits_line_plus_{batter_id}"):
+        with line_cols[0]:
+            if st.button("-", key=f"batter_{prop_slug}_line_minus_{batter_id}"):
+                st.session_state[line_key] = max(0.5, float(st.session_state[line_key]) - 1.0)
+                st.rerun()
+        with line_cols[2]:
+            if st.button("+", key=f"batter_{prop_slug}_line_plus_{batter_id}"):
                 st.session_state[line_key] = float(st.session_state[line_key]) + 1.0
                 st.rerun()
         game_log_range = st.segmented_control(
@@ -1158,8 +1202,8 @@ if st.session_state.get("selected_batter"):
             default="L10",
             key=f"batter_game_log_range_{batter_id}",
         )
-        selected_hits_line = float(st.session_state[line_key])
-        game_log_df = load_batter_hits_game_log(batter_id)
+        selected_prop_line = float(st.session_state[line_key])
+        game_log_df = load_batter_prop_game_log(batter_id)
         if game_log_df.empty:
             st.info("Game log data is unavailable for this batter right now.")
         else:
@@ -1167,16 +1211,17 @@ if st.session_state.get("selected_batter"):
                 display_log_df = game_log_df.tail(int(game_log_range[1:])).copy()
             else:
                 display_log_df = game_log_df.copy()
-            display_log_df["result_color"] = display_log_df["hits"].apply(
-                lambda hits: "#16a34a" if hits >= selected_hits_line else "#dc2626"
+            display_log_df["prop_value"] = pd.to_numeric(display_log_df[prop_column], errors="coerce").fillna(0)
+            display_log_df["result_color"] = display_log_df["prop_value"].apply(
+                lambda value: "#16a34a" if value >= selected_prop_line else "#dc2626"
             )
-            display_log_df["bar_hits"] = display_log_df["hits"].apply(lambda hits: 0.12 if hits == 0 else hits)
-            display_log_df["label_y"] = display_log_df["bar_hits"].apply(lambda value: value + 0.22)
+            display_log_df["bar_value"] = display_log_df["prop_value"].apply(lambda value: 0.12 if value == 0 else value)
+            display_log_df["label_y"] = display_log_df["bar_value"].apply(lambda value: value + 0.22)
             display_log_df["chart_label"] = display_log_df.apply(
-                lambda row: f"{row['game_date'].month}/{row['game_date'].day}\n{('@' + row['opponent']) if row['opponent'] else ''}",
+                lambda row: f"{row['game_date'].month}/{row['game_date'].day}\n{row['opponent'] if row['opponent'] else ''}",
                 axis=1,
             )
-            max_hits = max(float(display_log_df["hits"].max()), selected_hits_line, 1.0)
+            max_value = max(float(display_log_df["prop_value"].max()), selected_prop_line, 1.0)
             if game_log_range == "L5":
                 bar_size = 128
                 x_step = 130
@@ -1202,16 +1247,16 @@ if st.session_state.get("selected_batter"):
                         scale=alt.Scale(paddingInner=0.04, paddingOuter=0.03),
                     ),
                     y=alt.Y(
-                        "bar_hits:Q",
+                        "bar_value:Q",
                         title=None,
-                        scale=alt.Scale(domain=[0, max_hits + 0.8], nice=False),
+                        scale=alt.Scale(domain=[0, max_value + 0.8], nice=False),
                         axis=alt.Axis(grid=True, gridColor="#e2e8f0", gridOpacity=0.7, tickColor="#e2e8f0", domain=False, titleColor="#475569", labelColor="#64748b"),
                     ),
                     color=alt.Color("result_color:N", scale=None, legend=None),
                     tooltip=[
                         alt.Tooltip("game_date:T", title="Date"),
                         alt.Tooltip("opponent:N", title="Opponent"),
-                        alt.Tooltip("hits:Q", title="Hits"),
+                        alt.Tooltip("prop_value:Q", title=selected_prop, format=".0f"),
                     ],
                 )
             )
@@ -1221,10 +1266,10 @@ if st.session_state.get("selected_batter"):
                 .encode(
                     x=alt.X("chart_label:N", sort=None),
                     y=alt.Y("label_y:Q"),
-                    text=alt.Text("hits:Q", format=".0f"),
+                    text=alt.Text("prop_value:Q", format=".0f"),
                 )
             )
-            line_df = pd.DataFrame({"line": [selected_hits_line]})
+            line_df = pd.DataFrame({"line": [selected_prop_line]})
             line = alt.Chart(line_df).mark_rule(strokeDash=[6, 4], color="#334155", opacity=0.8).encode(y="line:Q")
             chart = (bars + labels + line).properties(height=230, width=alt.Step(x_step)).configure_view(stroke=None)
             st.altair_chart(chart, use_container_width=True)
