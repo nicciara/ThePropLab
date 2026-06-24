@@ -143,13 +143,36 @@ def display_batter_metric_strike_zone_fixed(batter_id, pitch_type, pitcher_throw
 
     if metric == "Pitch %":
         outer_df = filtered_df
+        outer_total = None
+    elif metric == "K%":
+        working_df = filtered_df.copy()
+        working_df["_pa_key"] = strike_zone._plate_appearance_key(working_df)
+        k_pa_keys = set(working_df.loc[working_df["events"].astype(str).str.lower().eq("strikeout"), "_pa_key"].astype(str))
+        zone_to_quad = {11: "tl", 12: "tr", 13: "bl", 14: "br"}
+        zone_pa_sets = {key: set() for key in zone_to_quad.values()}
+        zone_k_pa_sets = {key: set() for key in zone_to_quad.values()}
+        for zone_id, pa_key in zip(working_df["zone"].apply(strike_zone._normalize_zone_value), working_df["_pa_key"].astype(str)):
+            key = zone_to_quad.get(zone_id)
+            if key is not None:
+                zone_pa_sets[key].add(pa_key)
+                if pa_key in k_pa_keys:
+                    zone_k_pa_sets[key].add(pa_key)
+        outer_stats = {
+            key: {
+                "pitch_count": len(zone_k_pa_sets[key]),
+                "pitch_pct": (len(zone_k_pa_sets[key]) / len(zone_pa_sets[key]) * 100.0) if zone_pa_sets[key] else 0.0,
+            }
+            for key in ("tl", "tr", "bl", "br")
+        }
     else:
         metric_mask = strike_zone._batter_metric_mask(filtered_df, metric)
         outer_df = filtered_df[metric_mask].copy() if not metric_mask.empty else filtered_df.iloc[0:0].copy()
+        outer_total = None
 
-    # Savant's 13-zone layout maps outer quadrants directly: 11=upper-left, 12=upper-right, 13=lower-left, 14=lower-right.
-    outer_df = outer_df[outer_df["zone"].apply(strike_zone._normalize_zone_value).isin({11, 12, 13, 14})]
-    outer_stats = strike_zone._aggregate_outer_quadrants(outer_df)
+    if metric != "K%":
+        # Savant's 13-zone layout maps outer quadrants directly: 11=upper-left, 12=upper-right, 13=lower-left, 14=lower-right.
+        outer_df = outer_df[outer_df["zone"].apply(strike_zone._normalize_zone_value).isin({11, 12, 13, 14})]
+        outer_stats = strike_zone._aggregate_outer_quadrants(outer_df, total_pitches=outer_total)
     html = strike_zone._build_batter_metric_strike_zone_html(zone_df, outer_stats)
     st.markdown(html, unsafe_allow_html=True)
 
