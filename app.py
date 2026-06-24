@@ -84,6 +84,8 @@ st.markdown(
     .nav-name-link:hover{color:var(--dash-accent)!important;text-decoration:underline!important}
     div[data-testid="stSegmentedControl"] div[role="radiogroup"]{overflow-x:auto;flex-wrap:nowrap}
     div[data-testid="stSegmentedControl"] label{white-space:nowrap}
+    .prop-line-value{display:flex;align-items:center;justify-content:center;min-height:38px;border:1px solid #dbe3ef;border-radius:999px;background:#f8fafc;color:var(--dash-title);font-weight:900;font-size:17px;box-shadow:0 1px 2px rgba(15,23,42,0.04)}
+    .prop-control-spacer{height:4px}
     .dash-card{
         border:2px solid var(--dash-border);
         border-radius:16px;
@@ -1163,25 +1165,28 @@ if st.session_state.get("selected_batter"):
         line_key = f"batter_{prop_column}_line_{batter_id}"
         if line_key not in st.session_state:
             st.session_state[line_key] = 0.5
-        line_cols = st.columns([0.35, 0.5, 0.35, 5])
-        with line_cols[1]:
-            st.markdown(
-                f"<div style='font-weight:800; text-align:center; padding-top:0.45rem;'>{float(st.session_state[line_key]):.1f}</div>",
-                unsafe_allow_html=True,
-            )
+        st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
+        line_cols = st.columns([0.34, 0.62, 0.34, 5.2])
         with line_cols[0]:
             if st.button("-", key=f"batter_{prop_slug}_line_minus_{batter_id}"):
                 st.session_state[line_key] = max(0.5, float(st.session_state[line_key]) - 1.0)
                 st.rerun()
+        with line_cols[1]:
+            st.markdown(
+                f"<div class='prop-line-value'>{float(st.session_state[line_key]):.1f}</div>",
+                unsafe_allow_html=True,
+            )
         with line_cols[2]:
             if st.button("+", key=f"batter_{prop_slug}_line_plus_{batter_id}"):
                 st.session_state[line_key] = float(st.session_state[line_key]) + 1.0
                 st.rerun()
+        st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
         game_log_range = st.segmented_control(
             "Recent Range",
             ["L5", "L10", "L15", "2026"],
             default="L10",
             key=f"batter_game_log_range_{batter_id}",
+            label_visibility="collapsed",
         )
         selected_prop_line = float(st.session_state[line_key])
         game_log_df = load_batter_prop_game_log(batter_id)
