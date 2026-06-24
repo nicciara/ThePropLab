@@ -1115,22 +1115,23 @@ if st.session_state.get("selected_batter"):
                 lambda hits: "#16a34a" if hits >= selected_hits_line else "#dc2626"
             )
             display_log_df["bar_hits"] = display_log_df["hits"].apply(lambda hits: 0.12 if hits == 0 else hits)
+            display_log_df["label_y"] = display_log_df["bar_hits"].apply(lambda value: value + 0.22)
             display_log_df["chart_label"] = display_log_df.apply(
                 lambda row: f"{row['game_date'].month}/{row['game_date'].day}\n{('@' + row['opponent']) if row['opponent'] else ''}",
                 axis=1,
             )
             max_hits = max(float(display_log_df["hits"].max()), selected_hits_line, 1.0)
             if game_log_range == "L5":
-                bar_size = 126
+                bar_size = 128
                 x_step = 130
             elif game_log_range == "L10":
-                bar_size = 72
+                bar_size = 74
                 x_step = 76
             elif game_log_range == "L15":
-                bar_size = 50
+                bar_size = 52
                 x_step = 54
             else:
-                bar_size = 10
+                bar_size = 11
                 x_step = 12
 
             bars = (
@@ -1163,7 +1164,7 @@ if st.session_state.get("selected_batter"):
                 .mark_text(dy=-8, fontWeight=700, fontSize=12, color="#0f172a")
                 .encode(
                     x=alt.X("chart_label:N", sort=None),
-                    y=alt.Y("hits:Q"),
+                    y=alt.Y("label_y:Q"),
                     text=alt.Text("hits:Q", format=".0f"),
                 )
             )
