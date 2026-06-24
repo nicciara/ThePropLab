@@ -1077,13 +1077,32 @@ if st.session_state.get("selected_batter"):
             "<div class='section-title-strong'>Recent Game Log</div>",
             unsafe_allow_html=True,
         )
+        line_key = f"batter_hits_line_{batter_id}"
+        if line_key not in st.session_state:
+            st.session_state[line_key] = 0.5
+        line_cols = st.columns([0.8, 0.35, 0.5, 0.35, 4])
+        with line_cols[0]:
+            st.markdown("<div style='font-weight:800; padding-top:0.45rem;'>Hits</div>", unsafe_allow_html=True)
+        with line_cols[1]:
+            if st.button("-", key=f"batter_hits_line_minus_{batter_id}"):
+                st.session_state[line_key] = max(0.5, float(st.session_state[line_key]) - 1.0)
+                st.rerun()
+        with line_cols[2]:
+            st.markdown(
+                f"<div style='font-weight:800; text-align:center; padding-top:0.45rem;'>{float(st.session_state[line_key]):.1f}</div>",
+                unsafe_allow_html=True,
+            )
+        with line_cols[3]:
+            if st.button("+", key=f"batter_hits_line_plus_{batter_id}"):
+                st.session_state[line_key] = float(st.session_state[line_key]) + 1.0
+                st.rerun()
         game_log_range = st.segmented_control(
             "Recent Range",
             ["L5", "L10", "L15", "2026"],
             default="L10",
             key=f"batter_game_log_range_{batter_id}",
         )
-        selected_hits_line = 0.5
+        selected_hits_line = float(st.session_state[line_key])
         game_log_df = load_batter_hits_game_log(batter_id)
         if game_log_df.empty:
             st.info("Game log data is unavailable for this batter right now.")
@@ -1113,7 +1132,7 @@ if st.session_state.get("selected_batter"):
                     ),
                     y=alt.Y(
                         "hits:Q",
-                        title="Hits",
+                        title=None,
                         scale=alt.Scale(domain=[0, max_hits + 0.8], nice=False),
                         axis=alt.Axis(grid=True, gridColor="#e2e8f0", gridOpacity=0.7, tickColor="#e2e8f0", domain=False, titleColor="#475569", labelColor="#64748b"),
                     ),
