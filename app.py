@@ -1095,13 +1095,28 @@ if st.session_state.get("selected_batter"):
             display_log_df["result_color"] = display_log_df["hits"].apply(
                 lambda hits: "#16a34a" if hits >= selected_hits_line else "#dc2626"
             )
+            display_log_df["chart_label"] = display_log_df.apply(
+                lambda row: f"{row['game_date'].month}/{row['game_date'].day}\n{('@' + row['opponent']) if row['opponent'] else ''}",
+                axis=1,
+            )
+            max_hits = max(float(display_log_df["hits"].max()), selected_hits_line, 1.0)
 
             bars = (
                 alt.Chart(display_log_df)
-                .mark_bar()
+                .mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5, size=28)
                 .encode(
-                    x=alt.X("label:N", sort=None, title="Game"),
-                    y=alt.Y("hits:Q", title="Hits"),
+                    x=alt.X(
+                        "chart_label:N",
+                        sort=None,
+                        title=None,
+                        axis=alt.Axis(labelAngle=0, labelFontSize=11, labelColor="#475569", labelPadding=8, ticks=False, domain=False),
+                    ),
+                    y=alt.Y(
+                        "hits:Q",
+                        title="Hits",
+                        scale=alt.Scale(domain=[0, max_hits + 0.8], nice=False),
+                        axis=alt.Axis(grid=True, gridColor="#e2e8f0", gridOpacity=0.7, tickColor="#e2e8f0", domain=False, titleColor="#475569", labelColor="#64748b"),
+                    ),
                     color=alt.Color("result_color:N", scale=None, legend=None),
                     tooltip=[
                         alt.Tooltip("game_date:T", title="Date"),
@@ -1112,16 +1127,17 @@ if st.session_state.get("selected_batter"):
             )
             labels = (
                 alt.Chart(display_log_df)
-                .mark_text(dy=-6, fontWeight="bold")
+                .mark_text(dy=-8, fontWeight=700, fontSize=12, color="#0f172a")
                 .encode(
-                    x=alt.X("label:N", sort=None),
+                    x=alt.X("chart_label:N", sort=None),
                     y=alt.Y("hits:Q"),
                     text=alt.Text("hits:Q", format=".0f"),
                 )
             )
             line_df = pd.DataFrame({"line": [selected_hits_line]})
-            line = alt.Chart(line_df).mark_rule(strokeDash=[6, 4], color="#334155").encode(y="line:Q")
-            st.altair_chart((bars + labels + line).properties(height=280), use_container_width=True)
+            line = alt.Chart(line_df).mark_rule(strokeDash=[6, 4], color="#334155", opacity=0.8).encode(y="line:Q")
+            chart = (bars + labels + line).properties(height=230).configure_view(stroke=None)
+            st.altair_chart(chart, use_container_width=True)
 
     with st.container(border=True):
         st.markdown(
