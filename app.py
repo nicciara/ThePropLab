@@ -1023,16 +1023,6 @@ if st.session_state.get("selected_batter"):
     batter_name = sb.get("name") or "Batter Detail"
     batter_hand = sb.get("hand", "")
     st.markdown(f"## {batter_name}{f' ({batter_hand})' if batter_hand else ''}")
-    st.markdown(
-        "<div class='dash-card' style='max-width:520px; margin-top:12px; margin-bottom:18px;'>"
-        "<div class='dash-card-title'>Batter Detail</div>"
-        "<div class='dash-grid'>"
-        f"<span class='dash-label'>Hand</span><span class='dash-value'>{html.escape(batter_hand or 'N/A')}</span>"
-        f"<span class='dash-label'>Team</span><span class='dash-value'>{html.escape(str(sb.get('team') or 'N/A'))}</span>"
-        f"<span class='dash-label'>Opponent</span><span class='dash-value'>{html.escape(str(sb.get('opponent') or 'N/A'))}</span>"
-        "</div></div>",
-        unsafe_allow_html=True,
-    )
 
     batter_id = sb.get("id", "")
     game_pk = sb.get("return_game_pk") or st.session_state.get("selected_game", "")
@@ -1056,21 +1046,6 @@ if st.session_state.get("selected_batter"):
             if lineup_side:
                 break
     team_lineup = lineup_context.get(lineup_side, []) if lineup_side else []
-
-    with st.container(border=True):
-        st.markdown(
-            "<div class='section-title-strong'>Run Value by Pitch Type</div>",
-            unsafe_allow_html=True,
-        )
-        run_value_df = load_batter_run_value_pitch_type_table(batter_id)
-        if run_value_df.empty:
-            st.info("Run value by pitch type is unavailable for this batter right now.")
-        else:
-            st.dataframe(
-                run_value_df.style.map(pitch_type_cell_style, subset=["Pitch Type"]),
-                hide_index=True,
-                use_container_width=True,
-            )
 
     with st.container(border=True):
         st.markdown(
@@ -1172,6 +1147,21 @@ if st.session_state.get("selected_batter"):
             line = alt.Chart(line_df).mark_rule(strokeDash=[6, 4], color="#334155", opacity=0.8).encode(y="line:Q")
             chart = (bars + labels + line).properties(height=230, width=alt.Step(x_step)).configure_view(stroke=None)
             st.altair_chart(chart, use_container_width=True)
+
+    with st.container(border=True):
+        st.markdown(
+            "<div class='section-title-strong'>Run Value by Pitch Type</div>",
+            unsafe_allow_html=True,
+        )
+        run_value_df = load_batter_run_value_pitch_type_table(batter_id)
+        if run_value_df.empty:
+            st.info("Run value by pitch type is unavailable for this batter right now.")
+        else:
+            st.dataframe(
+                run_value_df.style.map(pitch_type_cell_style, subset=["Pitch Type"]),
+                hide_index=True,
+                use_container_width=True,
+            )
 
     with st.container(border=True):
         st.markdown(
