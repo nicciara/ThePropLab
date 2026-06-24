@@ -474,6 +474,53 @@ if st.session_state.get("selected_batter"):
     )
 
     batter_id = sb.get("id", "")
+    lineup_context = st.session_state.get("lineups_by_game", {}).get(str(sb.get("return_game_pk", "")), {})
+    lineup_side = ""
+    if sb.get("return_pitcher_side") == "away":
+        lineup_side = "home"
+    elif sb.get("return_pitcher_side") == "home":
+        lineup_side = "away"
+    team_lineup = lineup_context.get(lineup_side, []) if lineup_side else []
+
+    if team_lineup:
+        is_projected_lineup = any(player.get("is_projected") for player in team_lineup)
+        status_html = (
+            "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #dc2626; border-radius:6px; background:#fef2f2; color:#b91c1c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
+            if is_projected_lineup
+            else "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #16a34a; border-radius:6px; background:#f0fdf4; color:#15803d; font-weight:800;'>🟢 Confirmed MLB Lineup</div>"
+        )
+        lineup_rows = []
+        batter_name_key = " ".join(str(batter_name).lower().replace(".", "").split())
+        for player in team_lineup:
+            player_name = player.get("name", "")
+            player_name_key = " ".join(str(player_name).lower().replace(".", "").split())
+            is_current = str(player.get("player_id") or "") == str(batter_id or "") or player_name_key == batter_name_key
+            row_style = (
+                "background:#dbeafe; border-left:4px solid #2563eb; font-weight:800;"
+                if is_current
+                else "border-left:4px solid transparent;"
+            )
+            ph = f" ({html.escape(str(player.get('handedness')))})" if player.get("handedness") else ""
+            lineup_rows.append(
+                "<div style='display:grid; grid-template-columns:44px 1fr 72px; align-items:center; border-top:1px solid #e5e7eb; "
+                f"{row_style}'>"
+                f"<div style='padding:6px 10px;'>{player.get('number', '')}</div>"
+                f"<div style='padding:6px 10px;'>{html.escape(str(player_name))}{ph}</div>"
+                f"<div style='padding:6px 10px;'>{html.escape(str(player.get('position', '')))}</div>"
+                "</div>"
+            )
+        with st.container(border=True):
+            st.markdown(
+                "<div class='section-title-strong'>Team Lineup Context</div>"
+                f"{status_html}"
+                "<div style='display:grid; grid-template-columns:44px 1fr 72px; align-items:end; font-size:12px; color:#6b7280; font-weight:700;'>"
+                "<div style='padding:0 10px 6px 10px;'>#</div>"
+                "<div style='padding:0 10px 6px 10px;'>Batter</div>"
+                "<div style='padding:0 10px 6px 10px;'>Pos</div>"
+                "</div>"
+                f"{''.join(lineup_rows)}",
+                unsafe_allow_html=True,
+            )
 
     with st.container(border=True):
         st.markdown(
@@ -1109,6 +1156,12 @@ if st.session_state.get("selected_pitcher"):
     else:
         game = match.iloc[0]
         away_lineup, home_lineup = load_lineups(game["game_pk"])
+        st.session_state.setdefault("lineups_by_game", {})[str(game["game_pk"])] = {
+            "away": away_lineup,
+            "home": home_lineup,
+            "away_team": game.get("away_team", ""),
+            "home_team": game.get("home_team", ""),
+        }
         side = sp.get("side")
         if side == "away":
             name = sp.get("name")
@@ -1487,6 +1540,12 @@ if "games" in st.session_state:
                     )
 
                     away_lineup, home_lineup = load_lineups(game["game_pk"])
+                    st.session_state.setdefault("lineups_by_game", {})[str(game["game_pk"])] = {
+                        "away": away_lineup,
+                        "home": home_lineup,
+                        "away_team": game.get("away_team", ""),
+                        "home_team": game.get("home_team", ""),
+                    }
 
                     away_col, home_col = st.columns(2)
 
