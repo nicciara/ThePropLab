@@ -929,12 +929,26 @@ if st.session_state.get("selected_batter"):
     )
 
     batter_id = sb.get("id", "")
+    game_pk = sb.get("return_game_pk") or st.session_state.get("selected_game", "")
+    lineup_context = get_game_lineups(game_pk) if game_pk else {}
+    batter_team_key = normalize_name(sb.get("team", ""))
     lineup_side = ""
-    if sb.get("return_pitcher_side") == "away":
+    if batter_team_key and normalize_name(lineup_context.get("away_team", "")) == batter_team_key:
+        lineup_side = "away"
+    elif batter_team_key and normalize_name(lineup_context.get("home_team", "")) == batter_team_key:
+        lineup_side = "home"
+    elif sb.get("return_pitcher_side") == "away":
         lineup_side = "home"
     elif sb.get("return_pitcher_side") == "home":
         lineup_side = "away"
-    lineup_context = get_game_lineups(sb.get("return_game_pk")) if has_return_pitcher else {}
+    else:
+        for candidate_side in ("away", "home"):
+            for player in lineup_context.get(candidate_side, []):
+                if str(player.get("player_id") or "") == str(batter_id or "") or normalize_name(player.get("name", "")) == normalize_name(batter_name):
+                    lineup_side = candidate_side
+                    break
+            if lineup_side:
+                break
     team_lineup = lineup_context.get(lineup_side, []) if lineup_side else []
 
     with st.container(border=True):
@@ -982,13 +996,23 @@ if st.session_state.get("selected_batter"):
         with batter_strike_zone_cols[1]:
             strike_zone.display_batter_metric_strike_zone(batter_id, selected_pitch_type, selected_pitcher_throws, selected_metric)
 
-    if team_lineup:
-        with st.container(border=True):
-            st.markdown(
-                "<div class='section-title-strong'>Team Lineup Context</div>"
-                f"{render_lineup_table(team_lineup, current_batter_id=batter_id, current_batter_name=batter_name)}",
-                unsafe_allow_html=True,
-            )
+    with st.container(border=True):
+        lineup_team = lineup_context.get(f"{lineup_side}_team", sb.get("team", "")) if lineup_side else sb.get("team", "")
+        lineup_opponent = lineup_context.get("home_team", "") if lineup_side == "away" else lineup_context.get("away_team", "")
+        batter_lineup_link_context = {
+            "team": lineup_team,
+            "opponent": lineup_opponent or sb.get("opponent", ""),
+            "return_pitcher_id": sb.get("return_pitcher_id", ""),
+            "return_game_pk": game_pk,
+            "return_pitcher_side": sb.get("return_pitcher_side", ""),
+            "return_pitcher_name": sb.get("return_pitcher_name", ""),
+            "return_pitcher_hand": sb.get("return_pitcher_hand", ""),
+        }
+        st.markdown(
+            "<div class='section-title-strong'>Team Lineup Context</div>"
+            f"{render_lineup_table(team_lineup, current_batter_id=batter_id, current_batter_name=batter_name, link_context=batter_lineup_link_context)}",
+            unsafe_allow_html=True,
+        )
 
     st.stop()
 
