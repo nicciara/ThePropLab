@@ -51,7 +51,7 @@ st.markdown(
         --dash-value:#0b1220;
         --dash-accent:#0057d8;
     }
-    section[data-testid="stMain"] .block-container{padding-top:1.5rem;padding-bottom:1rem}
+    section[data-testid="stMain"] .block-container{padding-bottom:1rem}
     section[data-testid="stMain"]{background:linear-gradient(180deg,#f7faff 0%, #f3f7ff 100%)}
     section[data-testid="stMain"] [data-testid="stVerticalBlock"]{gap:0.5rem}
     section[data-testid="stMain"] [data-testid="stHorizontalBlock"]{gap:0.75rem}
