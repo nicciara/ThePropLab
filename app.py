@@ -1120,14 +1120,14 @@ if st.session_state.get("selected_batter"):
             )
             max_hits = max(float(display_log_df["hits"].max()), selected_hits_line, 1.0)
             if game_log_range == "L5":
-                bar_size = 56
-                x_step = 62
+                bar_size = 112
+                x_step = 118
             elif game_log_range == "L10":
-                bar_size = 42
-                x_step = 48
+                bar_size = 64
+                x_step = 70
             elif game_log_range == "L15":
-                bar_size = 32
-                x_step = 38
+                bar_size = 44
+                x_step = 50
             else:
                 bar_size = 9
                 x_step = 12
@@ -1141,7 +1141,7 @@ if st.session_state.get("selected_batter"):
                         sort=None,
                         title=None,
                         axis=alt.Axis(labelAngle=0, labelFontSize=11, labelColor="#475569", labelPadding=8, ticks=False, domain=False),
-                        scale=alt.Scale(paddingInner=0.12, paddingOuter=0.08),
+                        scale=alt.Scale(paddingInner=0.04, paddingOuter=0.03),
                     ),
                     y=alt.Y(
                         "hits:Q",
