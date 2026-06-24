@@ -1119,16 +1119,23 @@ if st.session_state.get("selected_batter"):
                 axis=1,
             )
             max_hits = max(float(display_log_df["hits"].max()), selected_hits_line, 1.0)
+            if game_log_range == "2026":
+                bar_size = 9
+                x_step = 12
+            else:
+                bar_size = 30
+                x_step = 34
 
             bars = (
                 alt.Chart(display_log_df)
-                .mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5, size=28)
+                .mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5, size=bar_size)
                 .encode(
                     x=alt.X(
                         "chart_label:N",
                         sort=None,
                         title=None,
                         axis=alt.Axis(labelAngle=0, labelFontSize=11, labelColor="#475569", labelPadding=8, ticks=False, domain=False),
+                        scale=alt.Scale(paddingInner=0.12, paddingOuter=0.08),
                     ),
                     y=alt.Y(
                         "hits:Q",
@@ -1155,7 +1162,7 @@ if st.session_state.get("selected_batter"):
             )
             line_df = pd.DataFrame({"line": [selected_hits_line]})
             line = alt.Chart(line_df).mark_rule(strokeDash=[6, 4], color="#334155", opacity=0.8).encode(y="line:Q")
-            chart = (bars + labels + line).properties(height=230).configure_view(stroke=None)
+            chart = (bars + labels + line).properties(height=230, width=alt.Step(x_step)).configure_view(stroke=None)
             st.altair_chart(chart, use_container_width=True)
 
     with st.container(border=True):
