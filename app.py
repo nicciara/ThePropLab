@@ -874,14 +874,6 @@ if st.session_state.get("selected_batter"):
     lineup_context = get_game_lineups(sb.get("return_game_pk")) if has_return_pitcher else {}
     team_lineup = lineup_context.get(lineup_side, []) if lineup_side else []
 
-    if team_lineup:
-        with st.container(border=True):
-            st.markdown(
-                "<div class='section-title-strong'>Team Lineup Context</div>"
-                f"{render_lineup_table(team_lineup, current_batter_id=batter_id, current_batter_name=batter_name)}",
-                unsafe_allow_html=True,
-            )
-
     with st.container(border=True):
         st.markdown(
             "<div class='section-title-strong'>Run Value by Pitch Type</div>",
@@ -921,6 +913,14 @@ if st.session_state.get("selected_batter"):
             )
         with batter_strike_zone_cols[1]:
             strike_zone.display_batter_metric_strike_zone(batter_id, selected_pitch_type, selected_pitcher_throws, selected_metric)
+
+    if team_lineup:
+        with st.container(border=True):
+            st.markdown(
+                "<div class='section-title-strong'>Team Lineup Context</div>"
+                f"{render_lineup_table(team_lineup, current_batter_id=batter_id, current_batter_name=batter_name)}",
+                unsafe_allow_html=True,
+            )
 
     st.stop()
 
