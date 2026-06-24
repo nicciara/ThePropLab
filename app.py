@@ -167,6 +167,94 @@ def pitch_type_cell_style(value):
     return f"color:{color}; font-weight:700;" if color else ""
 
 
+RUN_VALUE_STYLE_COLORS = {
+    "bad": "background-color:#fee2e2; color:#991b1b; font-weight:700;",
+    "average": "background-color:#fef3c7; color:#92400e; font-weight:700;",
+    "good": "background-color:#dcfce7; color:#166534; font-weight:700;",
+    "elite": "background-color:#dbeafe; color:#1d4ed8; font-weight:700;",
+}
+
+
+def run_value_threshold_style(value, metric):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return ""
+
+    if metric in {"BA", "xBA"}:
+        if number < 0.220:
+            return RUN_VALUE_STYLE_COLORS["bad"]
+        if 0.240 <= number <= 0.259:
+            return RUN_VALUE_STYLE_COLORS["average"]
+        if 0.270 <= number <= 0.289:
+            return RUN_VALUE_STYLE_COLORS["good"]
+        if number >= 0.300:
+            return RUN_VALUE_STYLE_COLORS["elite"]
+    if metric in {"SLG", "xSLG"}:
+        if number < 0.380:
+            return RUN_VALUE_STYLE_COLORS["bad"]
+        if 0.400 <= number <= 0.439:
+            return RUN_VALUE_STYLE_COLORS["average"]
+        if 0.450 <= number <= 0.499:
+            return RUN_VALUE_STYLE_COLORS["good"]
+        if number >= 0.500:
+            return RUN_VALUE_STYLE_COLORS["elite"]
+    if metric in {"wOBA", "xwOBA"}:
+        if number < 0.290:
+            return RUN_VALUE_STYLE_COLORS["bad"]
+        if 0.310 <= number <= 0.329:
+            return RUN_VALUE_STYLE_COLORS["average"]
+        if 0.340 <= number <= 0.369:
+            return RUN_VALUE_STYLE_COLORS["good"]
+        if number >= 0.380:
+            return RUN_VALUE_STYLE_COLORS["elite"]
+    if metric == "Hard Hit%":
+        if number < 35:
+            return RUN_VALUE_STYLE_COLORS["bad"]
+        if 38 <= number <= 42:
+            return RUN_VALUE_STYLE_COLORS["average"]
+        if 45 <= number <= 49:
+            return RUN_VALUE_STYLE_COLORS["good"]
+        if number >= 50:
+            return RUN_VALUE_STYLE_COLORS["elite"]
+    if metric == "Whiff%":
+        if number < 18:
+            return RUN_VALUE_STYLE_COLORS["bad"]
+        if 22 <= number <= 25:
+            return RUN_VALUE_STYLE_COLORS["average"]
+        if 28 <= number <= 31:
+            return RUN_VALUE_STYLE_COLORS["good"]
+        if number >= 35:
+            return RUN_VALUE_STYLE_COLORS["elite"]
+    if metric == "K%":
+        if number < 15:
+            return RUN_VALUE_STYLE_COLORS["bad"]
+        if 20 <= number <= 23:
+            return RUN_VALUE_STYLE_COLORS["average"]
+        if 25 <= number <= 29:
+            return RUN_VALUE_STYLE_COLORS["good"]
+        if number >= 30:
+            return RUN_VALUE_STYLE_COLORS["elite"]
+    if metric == "PutAway%":
+        if number < 15:
+            return RUN_VALUE_STYLE_COLORS["bad"]
+        if 18 <= number <= 22:
+            return RUN_VALUE_STYLE_COLORS["average"]
+        if 25 <= number <= 29:
+            return RUN_VALUE_STYLE_COLORS["good"]
+        if number >= 30:
+            return RUN_VALUE_STYLE_COLORS["elite"]
+    return ""
+
+
+def style_run_value_table(df):
+    styled = df.style.map(pitch_type_cell_style, subset=["Pitch Type"])
+    for column in ["BA", "SLG", "wOBA", "xBA", "xSLG", "xwOBA", "Hard Hit%", "Whiff%", "K%", "PutAway%"]:
+        if column in df.columns:
+            styled = styled.map(lambda value, metric=column: run_value_threshold_style(value, metric), subset=[column])
+    return styled
+
+
 @st.cache_data(ttl=1800)
 def load_batter_hits_game_log(batter_id):
     if not batter_id:
@@ -1158,7 +1246,7 @@ if st.session_state.get("selected_batter"):
             st.info("Run value by pitch type is unavailable for this batter right now.")
         else:
             st.dataframe(
-                run_value_df.style.map(pitch_type_cell_style, subset=["Pitch Type"]),
+                style_run_value_table(run_value_df),
                 hide_index=True,
                 use_container_width=True,
             )
