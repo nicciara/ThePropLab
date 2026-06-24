@@ -66,7 +66,10 @@ st.markdown(
     .game-card{padding:10px 14px 20px 14px;box-sizing:border-box}
     .game-card .lineup-area{padding:8px 6px}
     /* Style Streamlit buttons used as inline pitcher links to look like normal hyperlinks (scoped to game cards) */
-    .game-card .stButton>button{background:none;border:none;padding:0;color:#0b5fff;text-decoration:underline;cursor:pointer;font-size:inherit}
+    .game-card .stButton>button{background:none;border:none;padding:0;color:var(--dash-value);text-decoration:none;cursor:pointer;font-size:inherit;font-weight:650}
+    .game-card .stButton>button:hover{color:var(--dash-accent);text-decoration:underline}
+    .nav-name-link{color:var(--dash-value)!important;text-decoration:none!important;font-weight:650;cursor:pointer}
+    .nav-name-link:hover{color:var(--dash-accent)!important;text-decoration:underline!important}
     .dash-card{
         border:2px solid var(--dash-border);
         border-radius:16px;
@@ -909,8 +912,7 @@ def render_lineup_table(lineup, current_batter_id="", current_batter_name="", li
                 return_pitcher_hand=link_context.get("return_pitcher_hand", ""),
             )
             batter_cell_html = (
-                f"<a href='{html.escape(batter_href, quote=True)}' target='_self' "
-                "style='color:#0b5fff; text-decoration:underline; font-weight:600; cursor:pointer;'>"
+                f"<a class='nav-name-link' href='{html.escape(batter_href, quote=True)}' target='_self'>"
                 f"{html.escape(str(player_name))}</a>"
             )
 
@@ -1760,8 +1762,7 @@ if "games" in st.session_state:
                                         return_game_pk=game["game_pk"],
                                     )
                                     batter_name_html = (
-                                        f"<a href='{html.escape(batter_href, quote=True)}' target='_self' "
-                                        "style='color:#0b5fff; text-decoration:underline; font-weight:600; cursor:pointer;'>"
+                                        f"<a class='nav-name-link' href='{html.escape(batter_href, quote=True)}' target='_self'>"
                                         f"{html.escape(str(batter_name))}</a>"
                                     )
                                 else:
@@ -1824,8 +1825,7 @@ if "games" in st.session_state:
                                         return_game_pk=game["game_pk"],
                                     )
                                     batter_name_html = (
-                                        f"<a href='{html.escape(batter_href, quote=True)}' target='_self' "
-                                        "style='color:#0b5fff; text-decoration:underline; font-weight:600; cursor:pointer;'>"
+                                        f"<a class='nav-name-link' href='{html.escape(batter_href, quote=True)}' target='_self'>"
                                         f"{html.escape(str(batter_name))}</a>"
                                     )
                                 else:
