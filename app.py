@@ -97,24 +97,6 @@ def eastern_time(utc_time):
     return dt.astimezone(ZoneInfo("America/New_York")).strftime("%I:%M %p ET").lstrip("0")
 
 
-def format_mlb_update_time(timestamp):
-    if not timestamp:
-        return ""
-    for fmt in ("%Y%m%d_%H%M%S", "%Y%m%d_%H%M"):
-        try:
-            dt = datetime.strptime(str(timestamp), fmt).replace(tzinfo=ZoneInfo("UTC"))
-            return dt.astimezone(ZoneInfo("America/New_York")).strftime("%I:%M %p ET").lstrip("0")
-        except Exception:
-            pass
-    try:
-        dt = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
-        return dt.astimezone(ZoneInfo("America/New_York")).strftime("%I:%M %p ET").lstrip("0")
-    except Exception:
-        return ""
-
-
 def normalize_hand_code(code):
     if code in {"L", "R"}:
         return code
@@ -203,7 +185,7 @@ def _build_batter_detail_href(
     return "?" + "&".join(f"{key}={quote_plus(value)}" for key, value in params)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def load_batter_run_value_pitch_type_table(batter_id):
     if not batter_id:
         return pd.DataFrame()
@@ -538,7 +520,7 @@ def get_players_info(player_ids):
     return result
 
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=300)
 def load_schedule(game_date):
     url = "https://statsapi.mlb.com/api/v1/schedule"
     params = {
@@ -759,14 +741,13 @@ def build_fangraphs_lineup_fallback(team_id, team_name):
 
 
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=300)
 def load_lineups(game_pk):
     url = f"https://statsapi.mlb.com/api/v1.1/game/{game_pk}/feed/live"
     data = requests.get(url).json()
 
     boxscore = data.get("liveData", {}).get("boxscore", {}).get("teams", {})
     game_data_players = data.get("gameData", {}).get("players", {})
-    lineup_updated_at = format_mlb_update_time(data.get("metaData", {}).get("timeStamp"))
 
     def extract_player_codes(player_id):
         player_key = f"ID{player_id}"
@@ -820,8 +801,7 @@ def load_lineups(game_pk):
                 "player_id": player_id,
                 "name": person.get("fullName", ""),
                 "handedness": handedness,
-                "position": p.get("position", {}).get("abbreviation", ""),
-                "lineup_updated_at": lineup_updated_at,
+                "position": p.get("position", {}).get("abbreviation", "")
             })
 
         return lineup
@@ -829,7 +809,7 @@ def load_lineups(game_pk):
     return team_lineup("away"), team_lineup("home")
 
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=1800)
 def load_pitcher_stats(player_id):
     if not player_id:
         return {}
@@ -865,7 +845,7 @@ def load_pitcher_stats(player_id):
     }
 
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=1800)
 def load_savant_pitch_arsenal_data():
     year = str(date.today().year)
     url = f"https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats?type=pitcher&year={year}"
@@ -948,7 +928,7 @@ def _find_json_objects_for_player_page(text, marker):
         idx = end
 
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=1800)
 def get_savant_arsenal_for_player(player_id):
     year = str(date.today().year)
     url = f"https://baseballsavant.mlb.com/savant-player/{player_id}"
@@ -974,7 +954,7 @@ def get_savant_arsenal_for_player(player_id):
     return rows
 
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=1800)
 def load_savant_pitcher_data():
     # Load the Basebal Savant custom pitcher leaderboard page and parse inline JSON.
     url = "https://baseballsavant.mlb.com/leaderboard/custom?year=2026&type=pitcher"
@@ -1017,7 +997,7 @@ def load_savant_pitcher_data():
         return []
 
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=1800)
 def get_savant_stats_for_player(player_id):
     all_data = load_savant_pitcher_data()
     for item in all_data:
@@ -1026,7 +1006,7 @@ def get_savant_stats_for_player(player_id):
     return {}
 
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=1800)
 def load_regular_season_pitch_mix(player_id):
     if not player_id:
         return {"R": [], "L": [], "all": []}
@@ -1525,11 +1505,9 @@ if "games" in st.session_state:
                             )
                             away_confirmed_html = ""
                             if not away_warning_html:
-                                away_updated_at = next((player.get("lineup_updated_at") for player in away_lineup if player.get("lineup_updated_at")), "")
                                 away_confirmed_html = (
                                     "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #16a34a; border-radius:6px; background:#f0fdf4; color:#15803d; font-weight:800;'>"
                                     "🟢 Confirmed MLB Lineup"
-                                    f"{f'<br>Updated: {away_updated_at}' if away_updated_at else ''}"
                                     "</div>"
                                 )
                             st.markdown(
@@ -1574,11 +1552,9 @@ if "games" in st.session_state:
                             )
                             home_confirmed_html = ""
                             if not home_warning_html:
-                                home_updated_at = next((player.get("lineup_updated_at") for player in home_lineup if player.get("lineup_updated_at")), "")
                                 home_confirmed_html = (
                                     "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #16a34a; border-radius:6px; background:#f0fdf4; color:#15803d; font-weight:800;'>"
                                     "🟢 Confirmed MLB Lineup"
-                                    f"{f'<br>Updated: {home_updated_at}' if home_updated_at else ''}"
                                     "</div>"
                                 )
                             st.markdown(
