@@ -1007,7 +1007,7 @@ if st.session_state.get("selected_batter"):
             st.info("Run value by pitch type is unavailable for this batter right now.")
         else:
             st.dataframe(
-                run_value_df.style.applymap(pitch_type_cell_style, subset=["Pitch Type"]),
+                run_value_df.style.map(pitch_type_cell_style, subset=["Pitch Type"]),
                 hide_index=True,
                 use_container_width=True,
             )
