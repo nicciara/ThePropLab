@@ -435,135 +435,6 @@ if requested_view == "pitcher_detail" and requested_pitcher_id and requested_gam
         st.session_state["selected_game"] = requested_game_pk
 
 
-if st.session_state.get("selected_batter"):
-    sb = st.session_state.get("selected_batter", {})
-    has_return_pitcher = bool(sb.get("return_pitcher_id") and sb.get("return_game_pk"))
-    back_label = "← Back to Pitcher" if has_return_pitcher else "← Back to Slate"
-    if st.button(back_label):
-        st.session_state.pop("selected_batter", None)
-        if has_return_pitcher:
-            st.query_params.clear()
-            st.query_params["view"] = "pitcher_detail"
-            st.query_params["pitcher_id"] = str(sb.get("return_pitcher_id", ""))
-            st.query_params["game_pk"] = str(sb.get("return_game_pk", ""))
-            if sb.get("return_pitcher_side"):
-                st.query_params["pitcher_side"] = str(sb.get("return_pitcher_side"))
-            if sb.get("return_pitcher_name"):
-                st.query_params["pitcher_name"] = str(sb.get("return_pitcher_name"))
-            if sb.get("return_pitcher_hand"):
-                st.query_params["pitcher_hand"] = str(sb.get("return_pitcher_hand"))
-        else:
-            try:
-                st.query_params.clear()
-            except Exception:
-                pass
-        st.rerun()
-
-    batter_name = sb.get("name") or "Batter Detail"
-    batter_hand = sb.get("hand", "")
-    st.markdown(f"## {batter_name}{f' ({batter_hand})' if batter_hand else ''}")
-    st.markdown(
-        "<div class='dash-card' style='max-width:520px; margin-top:12px; margin-bottom:18px;'>"
-        "<div class='dash-card-title'>Batter Detail</div>"
-        "<div class='dash-grid'>"
-        f"<span class='dash-label'>Hand</span><span class='dash-value'>{html.escape(batter_hand or 'N/A')}</span>"
-        f"<span class='dash-label'>Team</span><span class='dash-value'>{html.escape(str(sb.get('team') or 'N/A'))}</span>"
-        f"<span class='dash-label'>Opponent</span><span class='dash-value'>{html.escape(str(sb.get('opponent') or 'N/A'))}</span>"
-        "</div></div>",
-        unsafe_allow_html=True,
-    )
-
-    batter_id = sb.get("id", "")
-    lineup_context = st.session_state.get("lineups_by_game", {}).get(str(sb.get("return_game_pk", "")), {})
-    lineup_side = ""
-    if sb.get("return_pitcher_side") == "away":
-        lineup_side = "home"
-    elif sb.get("return_pitcher_side") == "home":
-        lineup_side = "away"
-    team_lineup = lineup_context.get(lineup_side, []) if lineup_side else []
-
-    if team_lineup:
-        is_projected_lineup = any(player.get("is_projected") for player in team_lineup)
-        status_html = (
-            "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #dc2626; border-radius:6px; background:#fef2f2; color:#b91c1c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
-            if is_projected_lineup
-            else "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #16a34a; border-radius:6px; background:#f0fdf4; color:#15803d; font-weight:800;'>🟢 Confirmed MLB Lineup</div>"
-        )
-        lineup_rows = []
-        batter_name_key = " ".join(str(batter_name).lower().replace(".", "").split())
-        for player in team_lineup:
-            player_name = player.get("name", "")
-            player_name_key = " ".join(str(player_name).lower().replace(".", "").split())
-            is_current = str(player.get("player_id") or "") == str(batter_id or "") or player_name_key == batter_name_key
-            row_style = (
-                "background:#dbeafe; border-left:4px solid #2563eb; font-weight:800;"
-                if is_current
-                else "border-left:4px solid transparent;"
-            )
-            ph = f" ({html.escape(str(player.get('handedness')))})" if player.get("handedness") else ""
-            lineup_rows.append(
-                "<div style='display:grid; grid-template-columns:44px 1fr 72px; align-items:center; border-top:1px solid #e5e7eb; "
-                f"{row_style}'>"
-                f"<div style='padding:6px 10px;'>{player.get('number', '')}</div>"
-                f"<div style='padding:6px 10px;'>{html.escape(str(player_name))}{ph}</div>"
-                f"<div style='padding:6px 10px;'>{html.escape(str(player.get('position', '')))}</div>"
-                "</div>"
-            )
-        with st.container(border=True):
-            st.markdown(
-                "<div class='section-title-strong'>Team Lineup Context</div>"
-                f"{status_html}"
-                "<div style='display:grid; grid-template-columns:44px 1fr 72px; align-items:end; font-size:12px; color:#6b7280; font-weight:700;'>"
-                "<div style='padding:0 10px 6px 10px;'>#</div>"
-                "<div style='padding:0 10px 6px 10px;'>Batter</div>"
-                "<div style='padding:0 10px 6px 10px;'>Pos</div>"
-                "</div>"
-                f"{''.join(lineup_rows)}",
-                unsafe_allow_html=True,
-            )
-
-    with st.container(border=True):
-        st.markdown(
-            "<div class='section-title-strong'>Run Value by Pitch Type</div>",
-            unsafe_allow_html=True,
-        )
-        run_value_df = load_batter_run_value_pitch_type_table(batter_id)
-        if run_value_df.empty:
-            st.info("Run value by pitch type is unavailable for this batter right now.")
-        else:
-            st.dataframe(run_value_df, hide_index=True, use_container_width=True)
-
-    with st.container(border=True):
-        st.markdown(
-            "<div class='section-title-strong'>Strike Zone</div>",
-            unsafe_allow_html=True,
-        )
-        batter_strike_zone_cols = st.columns([1.15, 4])
-        with batter_strike_zone_cols[0]:
-            pitch_type_options = strike_zone.get_batter_pitch_type_options(batter_id)
-            selected_pitch_type = st.selectbox(
-                "Pitch Type",
-                pitch_type_options,
-                index=0,
-                key=f"batter_strike_zone_pitch_type_{batter_id}",
-            )
-            selected_pitcher_throws = st.selectbox(
-                "Pitcher Throws",
-                ["All", "RHP", "LHP"],
-                index=0,
-                key=f"batter_strike_zone_pitcher_throws_{batter_id}",
-            )
-            selected_metric = st.selectbox(
-                "Metric",
-                ["Pitch %", "Takes", "Batted Balls", "K%", "Home Runs"],
-                index=0,
-                key=f"batter_strike_zone_metric_{batter_id}",
-            )
-        with batter_strike_zone_cols[1]:
-            strike_zone.display_batter_metric_strike_zone(batter_id, selected_pitch_type, selected_pitcher_throws, selected_metric)
-
-    st.stop()
-
 @st.cache_data(ttl=43200)
 def get_players_info(player_ids):
     global PLAYER_API_CALLS
@@ -875,6 +746,185 @@ def load_lineups(game_pk):
     return team_lineup("away"), team_lineup("home")
 
 
+def get_game_lineups(game_pk, game=None):
+    if not game_pk:
+        return {}
+
+    game_key = str(game_pk)
+    lineups_by_game = st.session_state.setdefault("lineups_by_game", {})
+    if game_key not in lineups_by_game:
+        away_lineup, home_lineup = load_lineups(game_pk)
+        lineups_by_game[game_key] = {
+            "away": away_lineup,
+            "home": home_lineup,
+            "away_team": game.get("away_team", "") if game is not None else "",
+            "home_team": game.get("home_team", "") if game is not None else "",
+        }
+    return lineups_by_game.get(game_key, {})
+
+
+def lineup_status_html(lineup):
+    if not lineup:
+        return ""
+    if any(player.get("is_projected") for player in lineup):
+        return "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #dc2626; border-radius:6px; background:#fef2f2; color:#b91c1c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
+    return "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #16a34a; border-radius:6px; background:#f0fdf4; color:#15803d; font-weight:800;'>🟢 Confirmed MLB Lineup</div>"
+
+
+def render_lineup_table(lineup, current_batter_id="", current_batter_name="", link_context=None):
+    if not lineup:
+        return "<div style='font-size:13px; color:#92400e; font-weight:700;'>Lineup not available.</div>"
+
+    current_name_key = normalize_name(current_batter_name)
+    rows = []
+    for player in lineup:
+        player_name = player.get("name", "")
+        player_id = player.get("player_id")
+        is_current = (
+            bool(current_batter_id) and str(player_id or "") == str(current_batter_id)
+        ) or (current_name_key and normalize_name(player_name) == current_name_key)
+        row_style = "background:#dbeafe; border-left:4px solid #2563eb; font-weight:800;" if is_current else "border-left:4px solid transparent;"
+
+        batter_cell_html = html.escape(str(player_name))
+        if link_context and player_id:
+            batter_href = _build_batter_detail_href(
+                player_id,
+                batter_name=player_name,
+                batter_hand=player.get("handedness", ""),
+                team=link_context.get("team", ""),
+                opponent=link_context.get("opponent", ""),
+                return_pitcher_id=link_context.get("return_pitcher_id", ""),
+                return_game_pk=link_context.get("return_game_pk", ""),
+                return_pitcher_side=link_context.get("return_pitcher_side", ""),
+                return_pitcher_name=link_context.get("return_pitcher_name", ""),
+                return_pitcher_hand=link_context.get("return_pitcher_hand", ""),
+            )
+            batter_cell_html = (
+                f"<a href='{html.escape(batter_href, quote=True)}' target='_self' "
+                "style='color:#0b5fff; text-decoration:underline; font-weight:600; cursor:pointer;'>"
+                f"{html.escape(str(player_name))}</a>"
+            )
+
+        rows.append(
+            "<div style='display:grid; grid-template-columns:44px 1fr 64px 64px; align-items:center; border-top:1px solid #e5e7eb; "
+            f"{row_style}'>"
+            f"<div style='padding:6px 10px;'>{player.get('number', '')}</div>"
+            f"<div style='padding:6px 10px;'>{batter_cell_html}</div>"
+            f"<div style='padding:6px 10px;'>{html.escape(str(player.get('handedness', '')))}</div>"
+            f"<div style='padding:6px 10px;'>{html.escape(str(player.get('position', '')))}</div>"
+            "</div>"
+        )
+
+    return (
+        f"{lineup_status_html(lineup)}"
+        "<div style='display:grid; grid-template-columns:44px 1fr 64px 64px; align-items:end; font-size:12px; color:#6b7280; font-weight:700;'>"
+        "<div style='padding:0 10px 6px 10px;'>#</div>"
+        "<div style='padding:0 10px 6px 10px;'>Batter</div>"
+        "<div style='padding:0 10px 6px 10px;'>Hand</div>"
+        "<div style='padding:0 10px 6px 10px;'>Pos</div>"
+        "</div>"
+        f"{''.join(rows)}"
+    )
+
+
+if st.session_state.get("selected_batter"):
+    sb = st.session_state.get("selected_batter", {})
+    has_return_pitcher = bool(sb.get("return_pitcher_id") and sb.get("return_game_pk"))
+    back_label = "← Back to Pitcher" if has_return_pitcher else "← Back to Slate"
+    if st.button(back_label):
+        st.session_state.pop("selected_batter", None)
+        if has_return_pitcher:
+            st.query_params.clear()
+            st.query_params["view"] = "pitcher_detail"
+            st.query_params["pitcher_id"] = str(sb.get("return_pitcher_id", ""))
+            st.query_params["game_pk"] = str(sb.get("return_game_pk", ""))
+            if sb.get("return_pitcher_side"):
+                st.query_params["pitcher_side"] = str(sb.get("return_pitcher_side"))
+            if sb.get("return_pitcher_name"):
+                st.query_params["pitcher_name"] = str(sb.get("return_pitcher_name"))
+            if sb.get("return_pitcher_hand"):
+                st.query_params["pitcher_hand"] = str(sb.get("return_pitcher_hand"))
+        else:
+            try:
+                st.query_params.clear()
+            except Exception:
+                pass
+        st.rerun()
+
+    batter_name = sb.get("name") or "Batter Detail"
+    batter_hand = sb.get("hand", "")
+    st.markdown(f"## {batter_name}{f' ({batter_hand})' if batter_hand else ''}")
+    st.markdown(
+        "<div class='dash-card' style='max-width:520px; margin-top:12px; margin-bottom:18px;'>"
+        "<div class='dash-card-title'>Batter Detail</div>"
+        "<div class='dash-grid'>"
+        f"<span class='dash-label'>Hand</span><span class='dash-value'>{html.escape(batter_hand or 'N/A')}</span>"
+        f"<span class='dash-label'>Team</span><span class='dash-value'>{html.escape(str(sb.get('team') or 'N/A'))}</span>"
+        f"<span class='dash-label'>Opponent</span><span class='dash-value'>{html.escape(str(sb.get('opponent') or 'N/A'))}</span>"
+        "</div></div>",
+        unsafe_allow_html=True,
+    )
+
+    batter_id = sb.get("id", "")
+    lineup_side = ""
+    if sb.get("return_pitcher_side") == "away":
+        lineup_side = "home"
+    elif sb.get("return_pitcher_side") == "home":
+        lineup_side = "away"
+    lineup_context = get_game_lineups(sb.get("return_game_pk")) if has_return_pitcher else {}
+    team_lineup = lineup_context.get(lineup_side, []) if lineup_side else []
+
+    if team_lineup:
+        with st.container(border=True):
+            st.markdown(
+                "<div class='section-title-strong'>Team Lineup Context</div>"
+                f"{render_lineup_table(team_lineup, current_batter_id=batter_id, current_batter_name=batter_name)}",
+                unsafe_allow_html=True,
+            )
+
+    with st.container(border=True):
+        st.markdown(
+            "<div class='section-title-strong'>Run Value by Pitch Type</div>",
+            unsafe_allow_html=True,
+        )
+        run_value_df = load_batter_run_value_pitch_type_table(batter_id)
+        if run_value_df.empty:
+            st.info("Run value by pitch type is unavailable for this batter right now.")
+        else:
+            st.dataframe(run_value_df, hide_index=True, use_container_width=True)
+
+    with st.container(border=True):
+        st.markdown(
+            "<div class='section-title-strong'>Strike Zone</div>",
+            unsafe_allow_html=True,
+        )
+        batter_strike_zone_cols = st.columns([1.15, 4])
+        with batter_strike_zone_cols[0]:
+            pitch_type_options = strike_zone.get_batter_pitch_type_options(batter_id)
+            selected_pitch_type = st.selectbox(
+                "Pitch Type",
+                pitch_type_options,
+                index=0,
+                key=f"batter_strike_zone_pitch_type_{batter_id}",
+            )
+            selected_pitcher_throws = st.selectbox(
+                "Pitcher Throws",
+                ["All", "RHP", "LHP"],
+                index=0,
+                key=f"batter_strike_zone_pitcher_throws_{batter_id}",
+            )
+            selected_metric = st.selectbox(
+                "Metric",
+                ["Pitch %", "Takes", "Batted Balls", "K%", "Home Runs"],
+                index=0,
+                key=f"batter_strike_zone_metric_{batter_id}",
+            )
+        with batter_strike_zone_cols[1]:
+            strike_zone.display_batter_metric_strike_zone(batter_id, selected_pitch_type, selected_pitcher_throws, selected_metric)
+
+    st.stop()
+
+
 @st.cache_data(ttl=1800)
 def load_pitcher_stats(player_id):
     if not player_id:
@@ -1155,13 +1205,9 @@ if st.session_state.get("selected_pitcher"):
         st.info("Game not found")
     else:
         game = match.iloc[0]
-        away_lineup, home_lineup = load_lineups(game["game_pk"])
-        st.session_state.setdefault("lineups_by_game", {})[str(game["game_pk"])] = {
-            "away": away_lineup,
-            "home": home_lineup,
-            "away_team": game.get("away_team", ""),
-            "home_team": game.get("home_team", ""),
-        }
+        lineup_context = get_game_lineups(game["game_pk"], game)
+        away_lineup = lineup_context.get("away", [])
+        home_lineup = lineup_context.get("home", [])
         side = sp.get("side")
         if side == "away":
             name = sp.get("name")
@@ -1388,55 +1434,42 @@ if st.session_state.get("selected_pitcher"):
 
         with st.container(border=True):
             st.markdown(
-                "<div class='section-title-strong'>Opposing Lineup</div>",
+                "<div class='section-title-strong'>Game Lineups</div>",
                 unsafe_allow_html=True,
             )
-            if not opponent_lineup:
-                st.info("Opposing lineup not available.")
-            else:
-                lineup_rows = []
-                for p in opponent_lineup:
-                    batter_id = p.get("player_id")
-                    batter_name = p.get("name", "")
-                    if batter_id:
-                        batter_href = _build_batter_detail_href(
-                            batter_id,
-                            batter_name=batter_name,
-                            batter_hand=p.get("handedness", ""),
-                            team=opponent_team,
-                            opponent=game.get("away_team") if side == "away" else game.get("home_team"),
-                            return_pitcher_id=pid,
-                            return_game_pk=gp,
-                            return_pitcher_side=side,
-                            return_pitcher_name=name,
-                            return_pitcher_hand=hand,
-                        )
-                        batter_cell_html = (
-                            f"<a href='{html.escape(batter_href, quote=True)}' "
-                            "target='_self' "
-                            "style='color:#0b5fff; text-decoration:underline; font-weight:600; cursor:pointer;'>"
-                            f"{html.escape(batter_name)}</a>"
-                        )
-                    else:
-                        batter_cell_html = html.escape(batter_name)
-
-                    lineup_rows.append(
-                        "<div style='display:grid; grid-template-columns:48px 1fr 72px; align-items:center; border-top:1px solid #e5e7eb;'>"
-                        f"<div style='padding:6px 10px;'>{p.get('number', '')}</div>"
-                        f"<div style='padding:6px 10px;'>{batter_cell_html}</div>"
-                        f"<div style='padding:6px 10px; text-align:left;'>{p.get('handedness', '')}</div>"
-                        "</div>"
-                    )
-                lineup_rows_html = "".join(lineup_rows)
+            lineup_cols = st.columns(2)
+            with lineup_cols[0]:
+                st.markdown(f"### {game.get('away_team', 'Away')}")
                 st.markdown(
-                    "<div style='font-size:14px;'>"
-                    "<div style='display:grid; grid-template-columns:48px 1fr 72px; align-items:end;'>"
-                    "<div style='text-align:left; padding:0 10px 6px 10px; color:#6b7280; font-size:12px; font-weight:600;'>#</div>"
-                    "<div style='text-align:left; padding:0 10px 6px 10px; color:#6b7280; font-size:12px; font-weight:600;'>Batter</div>"
-                    "<div style='text-align:left; padding:0 10px 6px 10px; color:#6b7280; font-size:12px; font-weight:600;'>Hand</div>"
-                    "</div>"
-                    f"{lineup_rows_html}"
-                    "</div>",
+                    render_lineup_table(
+                        away_lineup,
+                        link_context={
+                            "team": game.get("away_team", ""),
+                            "opponent": game.get("home_team", ""),
+                            "return_pitcher_id": pid,
+                            "return_game_pk": gp,
+                            "return_pitcher_side": side,
+                            "return_pitcher_name": name,
+                            "return_pitcher_hand": hand,
+                        },
+                    ),
+                    unsafe_allow_html=True,
+                )
+            with lineup_cols[1]:
+                st.markdown(f"### {game.get('home_team', 'Home')}")
+                st.markdown(
+                    render_lineup_table(
+                        home_lineup,
+                        link_context={
+                            "team": game.get("home_team", ""),
+                            "opponent": game.get("away_team", ""),
+                            "return_pitcher_id": pid,
+                            "return_game_pk": gp,
+                            "return_pitcher_side": side,
+                            "return_pitcher_name": name,
+                            "return_pitcher_hand": hand,
+                        },
+                    ),
                     unsafe_allow_html=True,
                 )
 
@@ -1539,13 +1572,9 @@ if "games" in st.session_state:
                         unsafe_allow_html=True,
                     )
 
-                    away_lineup, home_lineup = load_lineups(game["game_pk"])
-                    st.session_state.setdefault("lineups_by_game", {})[str(game["game_pk"])] = {
-                        "away": away_lineup,
-                        "home": home_lineup,
-                        "away_team": game.get("away_team", ""),
-                        "home_team": game.get("home_team", ""),
-                    }
+                    lineup_context = get_game_lineups(game["game_pk"], game)
+                    away_lineup = lineup_context.get("away", [])
+                    home_lineup = lineup_context.get("home", [])
 
                     away_col, home_col = st.columns(2)
 
