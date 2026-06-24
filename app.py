@@ -1119,12 +1119,18 @@ if st.session_state.get("selected_batter"):
                 axis=1,
             )
             max_hits = max(float(display_log_df["hits"].max()), selected_hits_line, 1.0)
-            if game_log_range == "2026":
+            if game_log_range == "L5":
+                bar_size = 56
+                x_step = 62
+            elif game_log_range == "L10":
+                bar_size = 42
+                x_step = 48
+            elif game_log_range == "L15":
+                bar_size = 32
+                x_step = 38
+            else:
                 bar_size = 9
                 x_step = 12
-            else:
-                bar_size = 30
-                x_step = 34
 
             bars = (
                 alt.Chart(display_log_df)
