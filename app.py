@@ -82,10 +82,8 @@ st.markdown(
     .game-card .stButton>button:hover{color:var(--dash-accent);text-decoration:underline}
     .nav-name-link{color:var(--dash-value)!important;text-decoration:none!important;font-weight:650;cursor:pointer}
     .nav-name-link:hover{color:var(--dash-accent)!important;text-decoration:underline!important}
-    .prop-tab-bar{display:flex;gap:8px;overflow-x:auto;white-space:nowrap;padding:0 0 10px 0;margin:0 0 8px 0;scrollbar-width:thin}
-    .prop-tab{display:inline-flex;align-items:center;justify-content:center;border:1px solid #dbe3ef;border-radius:999px;padding:7px 13px;color:var(--dash-value)!important;text-decoration:none!important;font-weight:750;font-size:13px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,0.04)}
-    .prop-tab:hover{border-color:var(--dash-accent);color:var(--dash-accent)!important;text-decoration:none!important}
-    .prop-tab.active{background:var(--dash-accent);border-color:var(--dash-accent);color:#fff!important}
+    div[data-testid="stSegmentedControl"] div[role="radiogroup"]{overflow-x:auto;flex-wrap:nowrap}
+    div[data-testid="stSegmentedControl"] label{white-space:nowrap}
     .dash-card{
         border:2px solid var(--dash-border);
         border-radius:16px;
@@ -453,7 +451,6 @@ def _build_batter_detail_href(
     return_pitcher_side="",
     return_pitcher_name="",
     return_pitcher_hand="",
-    prop="",
 ):
     params = [("view", "batter_detail"), ("batter_id", str(batter_id))]
     if batter_name:
@@ -474,8 +471,6 @@ def _build_batter_detail_href(
         params.append(("return_pitcher_name", str(return_pitcher_name)))
     if return_pitcher_hand:
         params.append(("return_pitcher_hand", str(return_pitcher_hand)))
-    if prop:
-        params.append(("prop", str(prop)))
     return "?" + "&".join(f"{key}={quote_plus(value)}" for key, value in params)
 
 
@@ -1152,30 +1147,16 @@ if st.session_state.get("selected_batter"):
     team_lineup = lineup_context.get(lineup_side, []) if lineup_side else []
 
     with st.container(border=True):
-        selected_prop = _query_param_value("prop", st.session_state.get(f"batter_game_log_prop_{batter_id}", "Hits"))
+        if st.session_state.get("selected_prop") not in GAME_LOG_PROPS:
+            st.session_state["selected_prop"] = "Hits"
+        selected_prop = st.segmented_control(
+            "Prop",
+            GAME_LOG_PROPS,
+            key="selected_prop",
+            label_visibility="collapsed",
+        )
         if selected_prop not in GAME_LOG_PROPS:
             selected_prop = "Hits"
-        st.session_state[f"batter_game_log_prop_{batter_id}"] = selected_prop
-        prop_tabs = []
-        for prop_name in GAME_LOG_PROPS:
-            prop_href = _build_batter_detail_href(
-                batter_id,
-                batter_name=batter_name,
-                batter_hand=batter_hand,
-                team=sb.get("team", ""),
-                opponent=sb.get("opponent", ""),
-                return_pitcher_id=sb.get("return_pitcher_id", ""),
-                return_game_pk=game_pk,
-                return_pitcher_side=sb.get("return_pitcher_side", ""),
-                return_pitcher_name=sb.get("return_pitcher_name", ""),
-                return_pitcher_hand=sb.get("return_pitcher_hand", ""),
-                prop=prop_name,
-            )
-            active_class = " active" if prop_name == selected_prop else ""
-            prop_tabs.append(
-                f"<a class='prop-tab{active_class}' href='{html.escape(prop_href, quote=True)}' target='_self'>{html.escape(prop_name)}</a>"
-            )
-        st.markdown(f"<div class='prop-tab-bar'>{''.join(prop_tabs)}</div>", unsafe_allow_html=True)
 
         prop_column = GAME_LOG_PROP_COLUMNS[selected_prop]
         prop_slug = prop_column.replace("_", "-")
