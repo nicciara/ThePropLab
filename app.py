@@ -117,6 +117,52 @@ def eastern_today():
     return datetime.now(ZoneInfo("America/New_York")).date()
 
 
+PITCH_TYPE_COLORS = {
+    "4-seam fastball": "#dc2626",
+    "four-seam fastball": "#dc2626",
+    "fastball": "#dc2626",
+    "sinker": "#f97316",
+    "sweeper": "#c2410c",
+    "slider": "#b45309",
+    "changeup": "#15803d",
+    "curveball": "#0f766e",
+    "cutter": "#92400e",
+    "split-finger": "#0f766e",
+    "split finger": "#0f766e",
+    "splitter": "#0f766e",
+    "knuckle curve": "#7e22ce",
+    "slurve": "#8b5cf6",
+}
+
+
+def pitch_type_color(pitch_name):
+    normalized = str(pitch_name or "").strip().lower()
+    if not normalized:
+        return ""
+
+    for key in ("4-seam fastball", "four-seam fastball", "knuckle curve", "split-finger", "split finger"):
+        if key in normalized:
+            return PITCH_TYPE_COLORS[key]
+
+    for key, color in PITCH_TYPE_COLORS.items():
+        if key in normalized:
+            return color
+    return ""
+
+
+def pitch_type_text_html(pitch_name):
+    color = pitch_type_color(pitch_name)
+    escaped_name = html.escape(str(pitch_name or ""))
+    if not color:
+        return escaped_name
+    return f"<span style='color:{color}; font-weight:700;'>{escaped_name}</span>"
+
+
+def pitch_type_cell_style(value):
+    color = pitch_type_color(value)
+    return f"color:{color}; font-weight:700;" if color else ""
+
+
 def display_batter_metric_strike_zone_fixed(batter_id, pitch_type, pitcher_throws="All", metric="Pitch %"):
     season_year = date.today().year
     start_date = f"{season_year}-03-01"
@@ -960,7 +1006,11 @@ if st.session_state.get("selected_batter"):
         if run_value_df.empty:
             st.info("Run value by pitch type is unavailable for this batter right now.")
         else:
-            st.dataframe(run_value_df, hide_index=True, use_container_width=True)
+            st.dataframe(
+                run_value_df.style.applymap(pitch_type_cell_style, subset=["Pitch Type"]),
+                hide_index=True,
+                use_container_width=True,
+            )
 
     with st.container(border=True):
         st.markdown(
@@ -970,6 +1020,7 @@ if st.session_state.get("selected_batter"):
         batter_strike_zone_cols = st.columns([1.15, 4])
         with batter_strike_zone_cols[0]:
             pitch_type_options = strike_zone.get_batter_pitch_type_options(batter_id)
+            # Streamlit selectbox options are plain text, so individual pitch names cannot be colored safely here.
             selected_pitch_type = st.selectbox(
                 "Pitch Type",
                 pitch_type_options,
@@ -1421,7 +1472,7 @@ if st.session_state.get("selected_pitcher"):
         def _arsenal_table_html(rows):
             if rows:
                 rows_html = "".join(
-                    f"<span class='dash-label' style='text-transform:none; font-size:12px; letter-spacing:0;'>{row['name']}</span><span class='dash-value dash-accent'>{row['usage_pct']:.1f}%</span>" for row in rows
+                    f"<span class='dash-label' style='text-transform:none; font-size:12px; letter-spacing:0;'>{pitch_type_text_html(row['name'])}</span><span class='dash-value dash-accent'>{row['usage_pct']:.1f}%</span>" for row in rows
                 )
                 return (
                     "<div class='dash-grid' style='grid-template-columns:1fr auto; row-gap:7px; column-gap:12px;'>"
@@ -1487,7 +1538,7 @@ if st.session_state.get("selected_pitcher"):
             "<div class='dash-card' style='max-width:460px; margin-top:12px; margin-bottom:24px;'>"
             "<div class='dash-card-title'>Matchup Read</div>"
             "<div class='dash-grid-compact'>"
-            f"<span class='dash-label'>Primary Pitch</span><span class='dash-value dash-accent'>{primary_pitch}</span>"
+            f"<span class='dash-label'>Primary Pitch</span><span class='dash-value dash-accent'>{pitch_type_text_html(primary_pitch)}</span>"
             f"<span class='dash-label'>Arsenal</span><span class='dash-value'>{arsenal_text}</span>"
             f"<span class='dash-label'>Opposing Lineup</span><span class='dash-value'>{rhb_count} RHB / {lhb_count} LHB / {switch_count} switch</span>"
             "</div>"
@@ -1509,6 +1560,7 @@ if st.session_state.get("selected_pitcher"):
             )
             strike_zone_cols = st.columns([1.15, 4])
             with strike_zone_cols[0]:
+                # Streamlit selectbox options are plain text, so individual pitch names cannot be colored safely here.
                 selected_pitch_type = st.selectbox(
                     "Pitch Type",
                     pitch_type_options,
