@@ -974,6 +974,11 @@ if st.session_state.get("selected_batter"):
                 index=0,
                 key=f"batter_strike_zone_metric_{batter_id}",
             )
+            if selected_metric == "K%":
+                st.markdown(
+                    "<div style='color:#b91c1c; font-size:12.5px; line-height:1.35; text-align:left; margin-top:4px;'>Note: K% includes plate appearances that ended in a strikeout AND plate appearances that did not.</div>",
+                    unsafe_allow_html=True,
+                )
         with batter_strike_zone_cols[1]:
             strike_zone.display_batter_metric_strike_zone(batter_id, selected_pitch_type, selected_pitcher_throws, selected_metric)
 
