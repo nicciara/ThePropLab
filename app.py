@@ -51,7 +51,7 @@ st.markdown(
         --dash-value:#0b1220;
         --dash-accent:#0057d8;
     }
-    section[data-testid="stMain"] .block-container{padding-top:0.75rem;padding-bottom:1rem}
+    section[data-testid="stMain"] .block-container{padding-top:1.5rem;padding-bottom:1rem}
     section[data-testid="stMain"]{background:linear-gradient(180deg,#f7faff 0%, #f3f7ff 100%)}
     section[data-testid="stMain"] [data-testid="stVerticalBlock"]{gap:0.5rem}
     section[data-testid="stMain"] [data-testid="stHorizontalBlock"]{gap:0.75rem}
@@ -95,6 +95,10 @@ def eastern_time(utc_time):
         return "TBD"
     dt = datetime.fromisoformat(utc_time.replace("Z", "+00:00"))
     return dt.astimezone(ZoneInfo("America/New_York")).strftime("%I:%M %p ET").lstrip("0")
+
+
+def eastern_today():
+    return datetime.now(ZoneInfo("America/New_York")).date()
 
 
 def normalize_hand_code(code):
@@ -1083,7 +1087,7 @@ if st.session_state.get("selected_pitcher"):
     gp = st.session_state.get("selected_game")
     games_df = st.session_state.get("games")
     if games_df is None or (isinstance(games_df, pd.DataFrame) and games_df.empty):
-        games_df = load_schedule(st.session_state.get("selected_date", date.today()))
+        games_df = load_schedule(st.session_state.get("selected_date", eastern_today()))
     match = games_df[games_df["game_pk"] == gp]
     if match.empty:
         st.info("Game not found")
@@ -1375,12 +1379,14 @@ if st.session_state.get("selected_pitcher"):
 
 
 if "selected_date" not in st.session_state:
-    st.session_state["selected_date"] = date.today()
+    st.session_state["selected_date"] = eastern_today()
 if "calendar_date" not in st.session_state:
     st.session_state["calendar_date"] = st.session_state["selected_date"]
 
 
 def set_homepage_date(new_date):
+    if new_date == st.session_state.get("selected_date") and "games" in st.session_state:
+        return
     st.session_state["selected_date"] = new_date
     st.session_state["calendar_date"] = new_date
     st.session_state["games"] = load_schedule(new_date)
@@ -1391,7 +1397,7 @@ def shift_homepage_date(days):
 
 
 def set_homepage_today():
-    set_homepage_date(date.today())
+    set_homepage_date(eastern_today())
 
 
 def set_homepage_calendar_date():
