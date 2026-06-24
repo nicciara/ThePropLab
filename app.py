@@ -84,13 +84,21 @@ st.markdown(
     .dash-value{font-weight:800;color:var(--dash-value);font-size:14px}
     .dash-accent{font-weight:800;color:var(--dash-accent)}
     .section-title-strong{font-weight:900;font-size:24px;color:var(--dash-title);margin-bottom:10px;line-height:1.15;letter-spacing:0.01em}
-    section[data-testid="stMain"] [data-baseweb="select"],
-    section[data-testid="stMain"] [data-baseweb="select"] *{
-        transform:none!important;
+    section[data-testid="stMain"] [data-baseweb="select"]{
+        filter:none!important;
+        zoom:1!important;
+    }
+    section[data-testid="stMain"] [data-baseweb="select"] div,
+    section[data-testid="stMain"] [data-baseweb="select"] span{
         filter:none!important;
         font-weight:400!important;
-        text-rendering:optimizeLegibility;
-        -webkit-font-smoothing:antialiased;
+        color:#111827!important;
+        line-height:1.35!important;
+        text-rendering:auto;
+        -webkit-font-smoothing:auto;
+    }
+    section[data-testid="stMain"] [data-baseweb="select"] svg{
+        filter:none!important;
     }
     </style>
     """,
