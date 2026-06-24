@@ -84,6 +84,14 @@ st.markdown(
     .dash-value{font-weight:800;color:var(--dash-value);font-size:14px}
     .dash-accent{font-weight:800;color:var(--dash-accent)}
     .section-title-strong{font-weight:900;font-size:24px;color:var(--dash-title);margin-bottom:10px;line-height:1.15;letter-spacing:0.01em}
+    section[data-testid="stMain"] [data-baseweb="select"],
+    section[data-testid="stMain"] [data-baseweb="select"] *{
+        transform:none!important;
+        filter:none!important;
+        font-weight:400!important;
+        text-rendering:optimizeLegibility;
+        -webkit-font-smoothing:antialiased;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -447,10 +455,9 @@ if st.session_state.get("selected_batter"):
     batter_hand = sb.get("hand", "")
     st.markdown(f"## {batter_name}{f' ({batter_hand})' if batter_hand else ''}")
     st.markdown(
-        "<div class='dash-card' style='max-width:520px; margin-top:12px;'>"
+        "<div class='dash-card' style='max-width:520px; margin-top:12px; margin-bottom:18px;'>"
         "<div class='dash-card-title'>Batter Detail</div>"
         "<div class='dash-grid'>"
-        f"<span class='dash-label'>Batter ID</span><span class='dash-value dash-accent'>{html.escape(str(sb.get('id', 'N/A')))}</span>"
         f"<span class='dash-label'>Hand</span><span class='dash-value'>{html.escape(batter_hand or 'N/A')}</span>"
         f"<span class='dash-label'>Team</span><span class='dash-value'>{html.escape(str(sb.get('team') or 'N/A'))}</span>"
         f"<span class='dash-label'>Opponent</span><span class='dash-value'>{html.escape(str(sb.get('opponent') or 'N/A'))}</span>"
