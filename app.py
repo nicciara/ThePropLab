@@ -117,6 +117,46 @@ def eastern_today():
     return datetime.now(ZoneInfo("America/New_York")).date()
 
 
+def display_batter_metric_strike_zone_fixed(batter_id, pitch_type, pitcher_throws="All", metric="Pitch %"):
+    season_year = date.today().year
+    start_date = f"{season_year}-03-01"
+    end_date = date.today().isoformat()
+
+    try:
+        raw_df = strike_zone.load_batter_pitch_location_data(batter_id, start_date, end_date)
+        filtered_df = strike_zone.filter_by_pitch_type(raw_df, pitch_type)
+        filtered_df = strike_zone.filter_by_pitcher_throws(filtered_df, pitcher_throws)
+    except Exception as exc:
+        logger.error("Strike zone processing failed for batter_id=%s: %s", batter_id, exc)
+        st.info("Strike zone data is unavailable for this batter right now.")
+        return
+
+    if filtered_df.empty:
+        st.info("Strike zone data is unavailable for this batter right now.")
+        return
+
+    metric = metric if metric in {"Pitch %", "Takes", "Batted Balls", "K%", "Home Runs"} else "Pitch %"
+    zone_df = strike_zone._build_metric_zone_dataframe(filtered_df, metric)
+    if zone_df.empty:
+        st.info("Strike zone data is unavailable for this batter right now.")
+        return
+
+    if metric == "Pitch %":
+        outer_df = filtered_df
+    else:
+        metric_mask = strike_zone._batter_metric_mask(filtered_df, metric)
+        outer_df = filtered_df[metric_mask].copy() if not metric_mask.empty else filtered_df.iloc[0:0].copy()
+
+    # Savant's 13-zone layout maps outer quadrants directly: 11=upper-left, 12=upper-right, 13=lower-left, 14=lower-right.
+    outer_df = outer_df[outer_df["zone"].apply(strike_zone._normalize_zone_value).isin({11, 12, 13, 14})]
+    outer_stats = strike_zone._aggregate_outer_quadrants(outer_df)
+    html = strike_zone._build_batter_metric_strike_zone_html(zone_df, outer_stats)
+    st.markdown(html, unsafe_allow_html=True)
+
+
+strike_zone.display_batter_metric_strike_zone = display_batter_metric_strike_zone_fixed
+
+
 def normalize_hand_code(code):
     if code in {"L", "R"}:
         return code
