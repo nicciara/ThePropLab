@@ -168,10 +168,10 @@ def pitch_type_cell_style(value):
 
 
 RUN_VALUE_STYLE_COLORS = {
-    "bad": "background-color:#fee2e2; color:#991b1b; font-weight:700;",
-    "average": "background-color:#fef3c7; color:#92400e; font-weight:700;",
-    "good": "background-color:#dcfce7; color:#166534; font-weight:700;",
-    "elite": "background-color:#dbeafe; color:#1d4ed8; font-weight:700;",
+    "bad": "color:#dc2626; font-weight:700;",
+    "average": "color:#d97706; font-weight:700;",
+    "good": "color:#16a34a; font-weight:700;",
+    "elite": "color:#2563eb; font-weight:700;",
 }
 
 
