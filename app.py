@@ -182,68 +182,61 @@ def run_value_threshold_style(value, metric):
         return ""
 
     if metric in {"BA", "xBA"}:
-        if number < 0.220:
+        if number < 0.240:
             return RUN_VALUE_STYLE_COLORS["bad"]
-        if 0.240 <= number <= 0.259:
+        if number < 0.270:
             return RUN_VALUE_STYLE_COLORS["average"]
-        if 0.270 <= number <= 0.289:
+        if number < 0.300:
             return RUN_VALUE_STYLE_COLORS["good"]
-        if number >= 0.300:
-            return RUN_VALUE_STYLE_COLORS["elite"]
+        return RUN_VALUE_STYLE_COLORS["elite"]
     if metric in {"SLG", "xSLG"}:
-        if number < 0.380:
+        if number < 0.400:
             return RUN_VALUE_STYLE_COLORS["bad"]
-        if 0.400 <= number <= 0.439:
+        if number < 0.450:
             return RUN_VALUE_STYLE_COLORS["average"]
-        if 0.450 <= number <= 0.499:
+        if number < 0.500:
             return RUN_VALUE_STYLE_COLORS["good"]
-        if number >= 0.500:
-            return RUN_VALUE_STYLE_COLORS["elite"]
+        return RUN_VALUE_STYLE_COLORS["elite"]
     if metric in {"wOBA", "xwOBA"}:
-        if number < 0.290:
+        if number < 0.310:
             return RUN_VALUE_STYLE_COLORS["bad"]
-        if 0.310 <= number <= 0.329:
+        if number < 0.340:
             return RUN_VALUE_STYLE_COLORS["average"]
-        if 0.340 <= number <= 0.369:
+        if number < 0.380:
             return RUN_VALUE_STYLE_COLORS["good"]
-        if number >= 0.380:
-            return RUN_VALUE_STYLE_COLORS["elite"]
+        return RUN_VALUE_STYLE_COLORS["elite"]
     if metric == "Hard Hit%":
-        if number < 35:
+        if number < 38:
             return RUN_VALUE_STYLE_COLORS["bad"]
-        if 38 <= number <= 42:
+        if number < 45:
             return RUN_VALUE_STYLE_COLORS["average"]
-        if 45 <= number <= 49:
+        if number < 50:
             return RUN_VALUE_STYLE_COLORS["good"]
-        if number >= 50:
-            return RUN_VALUE_STYLE_COLORS["elite"]
+        return RUN_VALUE_STYLE_COLORS["elite"]
     if metric == "Whiff%":
+        if number < 22:
+            return RUN_VALUE_STYLE_COLORS["bad"]
+        if number < 28:
+            return RUN_VALUE_STYLE_COLORS["average"]
+        if number < 35:
+            return RUN_VALUE_STYLE_COLORS["good"]
+        return RUN_VALUE_STYLE_COLORS["elite"]
+    if metric == "K%":
+        if number < 20:
+            return RUN_VALUE_STYLE_COLORS["bad"]
+        if number < 25:
+            return RUN_VALUE_STYLE_COLORS["average"]
+        if number < 30:
+            return RUN_VALUE_STYLE_COLORS["good"]
+        return RUN_VALUE_STYLE_COLORS["elite"]
+    if metric == "PutAway%":
         if number < 18:
             return RUN_VALUE_STYLE_COLORS["bad"]
-        if 22 <= number <= 25:
+        if number < 25:
             return RUN_VALUE_STYLE_COLORS["average"]
-        if 28 <= number <= 31:
+        if number < 30:
             return RUN_VALUE_STYLE_COLORS["good"]
-        if number >= 35:
-            return RUN_VALUE_STYLE_COLORS["elite"]
-    if metric == "K%":
-        if number < 15:
-            return RUN_VALUE_STYLE_COLORS["bad"]
-        if 20 <= number <= 23:
-            return RUN_VALUE_STYLE_COLORS["average"]
-        if 25 <= number <= 29:
-            return RUN_VALUE_STYLE_COLORS["good"]
-        if number >= 30:
-            return RUN_VALUE_STYLE_COLORS["elite"]
-    if metric == "PutAway%":
-        if number < 15:
-            return RUN_VALUE_STYLE_COLORS["bad"]
-        if 18 <= number <= 22:
-            return RUN_VALUE_STYLE_COLORS["average"]
-        if 25 <= number <= 29:
-            return RUN_VALUE_STYLE_COLORS["good"]
-        if number >= 30:
-            return RUN_VALUE_STYLE_COLORS["elite"]
+        return RUN_VALUE_STYLE_COLORS["elite"]
     return ""
 
 
