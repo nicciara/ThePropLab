@@ -97,6 +97,24 @@ def eastern_time(utc_time):
     return dt.astimezone(ZoneInfo("America/New_York")).strftime("%I:%M %p ET").lstrip("0")
 
 
+def format_mlb_update_time(timestamp):
+    if not timestamp:
+        return ""
+    for fmt in ("%Y%m%d_%H%M%S", "%Y%m%d_%H%M"):
+        try:
+            dt = datetime.strptime(str(timestamp), fmt).replace(tzinfo=ZoneInfo("UTC"))
+            return dt.astimezone(ZoneInfo("America/New_York")).strftime("%I:%M %p ET").lstrip("0")
+        except Exception:
+            pass
+    try:
+        dt = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+        return dt.astimezone(ZoneInfo("America/New_York")).strftime("%I:%M %p ET").lstrip("0")
+    except Exception:
+        return ""
+
+
 def normalize_hand_code(code):
     if code in {"L", "R"}:
         return code
@@ -748,6 +766,7 @@ def load_lineups(game_pk):
 
     boxscore = data.get("liveData", {}).get("boxscore", {}).get("teams", {})
     game_data_players = data.get("gameData", {}).get("players", {})
+    lineup_updated_at = format_mlb_update_time(data.get("metaData", {}).get("timeStamp"))
 
     def extract_player_codes(player_id):
         player_key = f"ID{player_id}"
@@ -801,7 +820,8 @@ def load_lineups(game_pk):
                 "player_id": player_id,
                 "name": person.get("fullName", ""),
                 "handedness": handedness,
-                "position": p.get("position", {}).get("abbreviation", "")
+                "position": p.get("position", {}).get("abbreviation", ""),
+                "lineup_updated_at": lineup_updated_at,
             })
 
         return lineup
@@ -1503,8 +1523,17 @@ if "games" in st.session_state:
                                 if any(player.get("is_projected") for player in away_lineup)
                                 else ""
                             )
+                            away_confirmed_html = ""
+                            if not away_warning_html:
+                                away_updated_at = next((player.get("lineup_updated_at") for player in away_lineup if player.get("lineup_updated_at")), "")
+                                away_confirmed_html = (
+                                    "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #16a34a; border-radius:6px; background:#f0fdf4; color:#15803d; font-weight:800;'>"
+                                    "🟢 Confirmed MLB Lineup"
+                                    f"{f'<br>Updated: {away_updated_at}' if away_updated_at else ''}"
+                                    "</div>"
+                                )
                             st.markdown(
-                                f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start;'>{away_warning_html}{away_lines_html}</div>",
+                                f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start;'>{away_warning_html}{away_confirmed_html}{away_lines_html}</div>",
                                 unsafe_allow_html=True,
                             )
 
@@ -1543,8 +1572,17 @@ if "games" in st.session_state:
                                 if any(player.get("is_projected") for player in home_lineup)
                                 else ""
                             )
+                            home_confirmed_html = ""
+                            if not home_warning_html:
+                                home_updated_at = next((player.get("lineup_updated_at") for player in home_lineup if player.get("lineup_updated_at")), "")
+                                home_confirmed_html = (
+                                    "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #16a34a; border-radius:6px; background:#f0fdf4; color:#15803d; font-weight:800;'>"
+                                    "🟢 Confirmed MLB Lineup"
+                                    f"{f'<br>Updated: {home_updated_at}' if home_updated_at else ''}"
+                                    "</div>"
+                                )
                             st.markdown(
-                                f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start;'>{home_warning_html}{home_lines_html}</div>",
+                                f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start;'>{home_warning_html}{home_confirmed_html}{home_lines_html}</div>",
                                 unsafe_allow_html=True,
                             )
                     st.markdown("</div>", unsafe_allow_html=True)
