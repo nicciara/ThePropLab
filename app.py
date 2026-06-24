@@ -1114,22 +1114,23 @@ if st.session_state.get("selected_batter"):
             display_log_df["result_color"] = display_log_df["hits"].apply(
                 lambda hits: "#16a34a" if hits >= selected_hits_line else "#dc2626"
             )
+            display_log_df["bar_hits"] = display_log_df["hits"].apply(lambda hits: 0.12 if hits == 0 else hits)
             display_log_df["chart_label"] = display_log_df.apply(
                 lambda row: f"{row['game_date'].month}/{row['game_date'].day}\n{('@' + row['opponent']) if row['opponent'] else ''}",
                 axis=1,
             )
             max_hits = max(float(display_log_df["hits"].max()), selected_hits_line, 1.0)
             if game_log_range == "L5":
-                bar_size = 112
-                x_step = 118
+                bar_size = 126
+                x_step = 130
             elif game_log_range == "L10":
-                bar_size = 64
-                x_step = 70
+                bar_size = 72
+                x_step = 76
             elif game_log_range == "L15":
-                bar_size = 44
-                x_step = 50
+                bar_size = 50
+                x_step = 54
             else:
-                bar_size = 9
+                bar_size = 10
                 x_step = 12
 
             bars = (
@@ -1144,7 +1145,7 @@ if st.session_state.get("selected_batter"):
                         scale=alt.Scale(paddingInner=0.04, paddingOuter=0.03),
                     ),
                     y=alt.Y(
-                        "hits:Q",
+                        "bar_hits:Q",
                         title=None,
                         scale=alt.Scale(domain=[0, max_hits + 0.8], nice=False),
                         axis=alt.Axis(grid=True, gridColor="#e2e8f0", gridOpacity=0.7, tickColor="#e2e8f0", domain=False, titleColor="#475569", labelColor="#64748b"),
