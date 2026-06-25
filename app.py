@@ -96,7 +96,7 @@ st.markdown(
     .prop-line-detail{display:flex;align-items:center;justify-content:center;gap:7px;min-height:38px;border:1px solid #dbe3ef;border-radius:999px;background:#f8fafc;color:var(--dash-title);font-weight:850;font-size:13px;box-shadow:0 1px 2px rgba(15,23,42,0.04);white-space:nowrap}
     .prop-line-main{font-size:17px;font-weight:900}
     .prop-source-pill{font-size:11px;font-weight:900;color:#4f46e5;background:#eef2ff;border:1px solid #c7d2fe;border-radius:999px;padding:2px 6px}
-    .prop-boost-icon{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:999px;color:#fff;font-size:11px;font-weight:950;line-height:1}
+    .prop-boost-icon{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:20px;border-radius:999px;color:#fff;font-size:12px;font-weight:950;line-height:1;padding:0 4px}
     .prop-boost-goblin{background:#16a34a}
     .prop-boost-demon{background:#dc2626}
     .prop-alt-row{display:flex;align-items:center;gap:7px;padding:5px 8px;margin:3px 0;border:1px solid #e5e7eb;border-radius:999px;background:#fff;font-size:12px;font-weight:750;color:var(--dash-value);white-space:nowrap}
@@ -143,13 +143,20 @@ st.markdown(
 def _projection_value(record, *keys, default=""):
     if not isinstance(record, dict):
         return default
-    lowered = {str(key).lower(): value for key, value in record.items()}
+    search_records = [record]
+    for nested_key in ("attributes", "data", "projection", "line", "relationships"):
+        nested = record.get(nested_key)
+        if isinstance(nested, dict):
+            search_records.append(nested)
+
     for key in keys:
-        if key in record:
-            return record.get(key)
-        value = lowered.get(str(key).lower())
-        if value not in {None, ""}:
-            return value
+        for candidate in search_records:
+            lowered = {str(candidate_key).lower(): value for candidate_key, value in candidate.items()}
+            if key in candidate:
+                return candidate.get(key)
+            value = lowered.get(str(key).lower())
+            if value not in {None, ""}:
+                return value
     return default
 
 
@@ -166,21 +173,41 @@ def prizepicks_boost_indicator(record):
     if not isinstance(record, dict):
         return ""
 
-    if _projection_truthy(record, "goblin", "isGoblin", "goblinFlag", "is_goblin", "lowerRiskBoosted", "lower_risk_boosted"):
-        return "<span class='prop-boost-icon prop-boost-goblin' title='Goblin / lower-risk boosted line'>G</span>"
+    if _projection_truthy(record, "goblin", "isGoblin", "goblinFlag", "is_goblin", "lowerRiskBoosted", "lower_risk_boosted", "discounted", "isDiscounted"):
+        return "<span class='prop-boost-icon prop-boost-goblin' title='Goblin / lower-risk boosted line'>🟢👺</span>"
     if _projection_truthy(record, "demon", "isDemon", "demonFlag", "is_demon", "higherRiskBoosted", "higher_risk_boosted"):
-        return "<span class='prop-boost-icon prop-boost-demon' title='Demon / higher-risk boosted line'>D</span>"
+        return "<span class='prop-boost-icon prop-boost-demon' title='Demon / higher-risk boosted line'>🔴😈</span>"
 
-    line_type = str(_projection_value(record, "lineType", "line_type", "projectionType", "projection_type", "type", "risk", default="")).lower()
-    if any(token in line_type for token in ("goblin", "lower-risk", "low risk", "lower risk")):
-        return "<span class='prop-boost-icon prop-boost-goblin' title='Goblin / lower-risk boosted line'>G</span>"
-    if any(token in line_type for token in ("demon", "higher-risk", "high risk", "higher risk")):
-        return "<span class='prop-boost-icon prop-boost-demon' title='Demon / higher-risk boosted line'>D</span>"
+    line_text = " ".join(
+        str(_projection_value(record, key, default=""))
+        for key in (
+            "description", "lineType", "line_type", "odds_type", "oddsType",
+            "projection_type", "projectionType", "type", "risk", "promotion_type",
+            "promotionType", "payout_type", "payoutType", "name",
+        )
+    ).lower()
+    flash_sale_line = _projection_value(record, "flash_sale_line_score", "flashSaleLineScore", default="")
+    adjusted_odds = _projection_value(record, "adjusted_odds", "adjustedOdds", default="")
+
+    if flash_sale_line not in {None, ""} or any(
+        token in line_text
+        for token in ("goblin", "discount", "discounted", "lower-risk", "lower risk", "low risk", "flash sale", "reduced")
+    ):
+        return "<span class='prop-boost-icon prop-boost-goblin' title='Goblin / lower-risk boosted line'>🟢👺</span>"
+    if adjusted_odds not in {None, ""} or any(
+        token in line_text
+        for token in ("demon", "higher-risk", "higher risk", "high risk", "boosted", "increased payout", "more risk")
+    ):
+        return "<span class='prop-boost-icon prop-boost-demon' title='Demon / higher-risk boosted line'>🔴😈</span>"
     return ""
 
 
 def _projection_line_value(record):
-    value = _projection_value(record, "line", "line_score", "lineScore", "value", "statValue", "stat_value", "projection")
+    value = _projection_value(
+        record,
+        "flash_sale_line_score", "flashSaleLineScore", "line", "line_score", "lineScore",
+        "value", "statValue", "stat_value", "projection",
+    )
     if value in {None, ""}:
         return None
     try:
