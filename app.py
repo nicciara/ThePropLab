@@ -482,6 +482,8 @@ def run_value_threshold_style(value, metric):
         number = float(value)
     except (TypeError, ValueError):
         return ""
+    if pd.isna(number):
+        return ""
 
     if metric in {"BA", "xBA"}:
         if number < 0.240:
@@ -516,29 +518,29 @@ def run_value_threshold_style(value, metric):
             return RUN_VALUE_STYLE_COLORS["good"]
         return RUN_VALUE_STYLE_COLORS["elite"]
     if metric == "Whiff%":
-        if number < 22:
-            return RUN_VALUE_STYLE_COLORS["bad"]
-        if number < 28:
-            return RUN_VALUE_STYLE_COLORS["average"]
-        if number < 35:
-            return RUN_VALUE_STYLE_COLORS["good"]
-        return RUN_VALUE_STYLE_COLORS["elite"]
-    if metric == "K%":
-        if number < 20:
-            return RUN_VALUE_STYLE_COLORS["bad"]
-        if number < 25:
-            return RUN_VALUE_STYLE_COLORS["average"]
-        if number < 30:
-            return RUN_VALUE_STYLE_COLORS["good"]
-        return RUN_VALUE_STYLE_COLORS["elite"]
-    if metric == "PutAway%":
         if number < 18:
-            return RUN_VALUE_STYLE_COLORS["bad"]
-        if number < 25:
-            return RUN_VALUE_STYLE_COLORS["average"]
-        if number < 30:
+            return RUN_VALUE_STYLE_COLORS["elite"]
+        if number < 22:
             return RUN_VALUE_STYLE_COLORS["good"]
-        return RUN_VALUE_STYLE_COLORS["elite"]
+        if number < 26:
+            return RUN_VALUE_STYLE_COLORS["average"]
+        return RUN_VALUE_STYLE_COLORS["bad"]
+    if metric == "K%":
+        if number < 15:
+            return RUN_VALUE_STYLE_COLORS["elite"]
+        if number < 20:
+            return RUN_VALUE_STYLE_COLORS["good"]
+        if number < 24:
+            return RUN_VALUE_STYLE_COLORS["average"]
+        return RUN_VALUE_STYLE_COLORS["bad"]
+    if metric == "PutAway%":
+        if number < 15:
+            return RUN_VALUE_STYLE_COLORS["elite"]
+        if number < 18:
+            return RUN_VALUE_STYLE_COLORS["good"]
+        if number < 23:
+            return RUN_VALUE_STYLE_COLORS["average"]
+        return RUN_VALUE_STYLE_COLORS["bad"]
     return ""
 
 
