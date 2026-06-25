@@ -96,12 +96,12 @@ st.markdown(
     .nav-name-link:hover{color:var(--dash-accent)!important;text-decoration:underline!important}
     div[data-testid="stSegmentedControl"] div[role="radiogroup"]{overflow-x:auto;flex-wrap:nowrap}
     div[data-testid="stSegmentedControl"] label{white-space:nowrap}
-    .prop-line-value{display:flex;align-items:center;justify-content:center;min-height:38px;border:1px solid #dbe3ef;border-radius:999px;background:#f8fafc;color:var(--dash-title);font-weight:900;font-size:17px;box-shadow:0 1px 2px rgba(15,23,42,0.04)}
-    .prop-line-detail{display:flex;align-items:center;justify-content:center;gap:7px;min-height:38px;border:1px solid #dbe3ef;border-radius:999px;background:#f8fafc;color:var(--dash-title);font-weight:850;font-size:13px;box-shadow:0 1px 2px rgba(15,23,42,0.04);white-space:nowrap}
+    .prop-line-value,.prop-line-detail{display:flex;align-items:center;justify-content:center;min-height:40px;border:1px solid #dbe3ef;border-radius:999px;background:#f8fafc;color:var(--dash-title);font-weight:900;font-size:17px;box-shadow:0 1px 2px rgba(15,23,42,0.04);box-sizing:border-box}
+    .prop-line-detail{width:max-content;max-width:100%;padding:0 12px;margin:0 auto;white-space:nowrap;overflow:visible}
+    .prop-line-inline{display:flex;align-items:center;justify-content:center;gap:6px;flex:0 0 auto;white-space:nowrap}
     .prop-line-main{font-size:17px;font-weight:900}
-    .prop-source-logo{height:24px;width:auto;max-width:96px;object-fit:contain;vertical-align:middle;display:inline-block}
-    .prop-boost-img{height:24px;width:24px;object-fit:contain;vertical-align:middle;display:inline-block}
-    .prop-alt-row{display:flex;align-items:center;gap:7px;padding:5px 8px;margin:3px 0;border:1px solid #e5e7eb;border-radius:999px;background:#fff;font-size:12px;font-weight:750;color:var(--dash-value);white-space:nowrap}
+    .prop-source-logo,.prop-boost-img{height:22px;width:22px;object-fit:contain;vertical-align:middle;display:inline-block;flex:0 0 22px}
+    .prop-alt-row{display:flex;align-items:center;justify-content:center;gap:6px;width:max-content;max-width:100%;padding:6px 10px;margin:4px 0;border:1px solid #e5e7eb;border-radius:999px;background:#fff;font-size:12px;font-weight:750;color:var(--dash-value);white-space:nowrap}
     .prop-control-spacer{height:4px}
     .dash-card{
         border:2px solid var(--dash-border);
@@ -251,16 +251,20 @@ def _prop_match_key(value):
     return aliases.get(compact, compact)
 
 
-def _projection_meta_html(record):
-    if not isinstance(record, dict):
-        return ""
+def render_prizepicks_line_inline(line_value, projection_record=None):
+    try:
+        line_text = f"{float(line_value):.1f}"
+    except (TypeError, ValueError):
+        line_text = str(line_value)
+
     source_html = local_asset_img("assets/prizepicks_logo.png", "prop-source-logo", "PrizePicks")
-    indicator_html = prizepicks_boost_indicator(record)
-    odds = _projection_value(record, "odds", "americanOdds", "american_odds", "price", default="")
-    payout = _projection_value(record, "payout", "multiplier", "count", "entryCount", "entry_count", default="")
-    odds_html = f"<span>{html.escape(str(odds))}</span>" if odds not in {None, ""} else ""
-    payout_html = f"<span>{html.escape(str(payout))}</span>" if payout not in {None, ""} else ""
-    return "".join(part for part in (source_html, indicator_html, odds_html, payout_html) if part)
+    indicator_html = prizepicks_boost_indicator(projection_record) if isinstance(projection_record, dict) else ""
+    return (
+        "<span class='prop-line-inline'>"
+        f"<span class='prop-line-main'>{html.escape(line_text)}</span>"
+        f"{source_html}{indicator_html}"
+        "</span>"
+    )
 
 
 def projection_debug_snapshot(record):
@@ -333,11 +337,8 @@ def get_prop_projection_lines(batter_id, selected_prop, batter_name=""):
 
 
 def render_prizepicks_line_detail(line_value, projection_record=None):
-    line_html = f"<span class='prop-line-main'>{float(line_value):.1f}</span>"
-    meta_html = _projection_meta_html(projection_record)
-    if not meta_html:
-        return f"<div class='prop-line-value'>{line_html}</div>"
-    return f"<div class='prop-line-detail'>{line_html}{meta_html}</div>"
+    class_name = "prop-line-detail" if isinstance(projection_record, dict) else "prop-line-value"
+    return f"<div class='{class_name}'>{render_prizepicks_line_inline(line_value, projection_record)}</div>"
 
 
 @st.cache_data(ttl=300)
@@ -1490,7 +1491,7 @@ if st.session_state.get("selected_batter"):
             except (TypeError, ValueError):
                 continue
         st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
-        line_cols = st.columns([0.34, 0.62, 0.34, 5.2])
+        line_cols = st.columns([0.34, 1.65, 0.34, 4.2])
         with line_cols[0]:
             if st.button("-", key=f"batter_{prop_slug}_line_minus_{batter_id}"):
                 st.session_state[line_key] = max(0.5, float(st.session_state[line_key]) - 1.0)
@@ -1508,23 +1509,16 @@ if st.session_state.get("selected_batter"):
             with st.expander("Alt lines", expanded=False):
                 for idx, projection_line in enumerate(projection_lines):
                     projection_line_value = _projection_line_value(projection_line)
-                    try:
-                        display_line_value = f"{float(projection_line_value):.1f}"
-                    except (TypeError, ValueError):
-                        display_line_value = str(projection_line_value)
-                    row_cols = st.columns([0.65, 4.8])
-                    with row_cols[0]:
-                        if st.button(display_line_value, key=f"batter_{prop_slug}_alt_line_{batter_id}_{idx}"):
-                            try:
-                                st.session_state[line_key] = float(projection_line_value)
-                            except (TypeError, ValueError):
-                                pass
-                            st.rerun()
-                    with row_cols[1]:
-                        st.markdown(
-                            f"<div class='prop-alt-row'>{_projection_meta_html(projection_line)}</div>",
-                            unsafe_allow_html=True,
-                        )
+                    st.markdown(
+                        f"<div class='prop-alt-row'>{render_prizepicks_line_inline(projection_line_value, projection_line)}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    if st.button("Use", key=f"batter_{prop_slug}_alt_line_{batter_id}_{idx}"):
+                        try:
+                            st.session_state[line_key] = float(projection_line_value)
+                        except (TypeError, ValueError):
+                            pass
+                        st.rerun()
         st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
         game_log_range = st.segmented_control(
             "Recent Range",
