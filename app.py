@@ -155,7 +155,9 @@ def _projection_value(record, *keys, default=""):
         for candidate in search_records:
             lowered = {str(candidate_key).lower(): value for candidate_key, value in candidate.items()}
             if key in candidate:
-                return candidate.get(key)
+                value = candidate.get(key)
+                if value not in {None, ""}:
+                    return value
             value = lowered.get(str(key).lower())
             if value not in {None, ""}:
                 return value
@@ -228,7 +230,7 @@ def _projection_player_id(record):
 
 
 def _projection_player_name(record):
-    return str(_projection_value(record, "player_name", "display_name", "displayName", "name", "full_name", "fullName", default="") or "")
+    return str(_projection_value(record, "player", "player_name", "display_name", "displayName", "name", "full_name", "fullName", default="") or "")
 
 
 def _projection_source_label(record):
@@ -323,21 +325,16 @@ def get_prop_projection_lines(batter_id, selected_prop, batter_name=""):
     selected_prop_key = _prop_match_key(selected_prop)
     selected_name_key = normalize_name(batter_name)
     lines = []
-    for state_key in PROJECTION_STATE_KEYS:
-        for record in _flatten_projection_records(st.session_state.get(state_key)):
-            player_id = _projection_player_id(record)
-            if player_id and str(player_id) != str(batter_id):
-                continue
-            player_name = normalize_name(_projection_player_name(record))
-            if not player_id and selected_name_key and player_name and player_name != selected_name_key:
-                continue
-            stat_type = _projection_stat_type(record)
-            if stat_type and _prop_match_key(stat_type) != selected_prop_key:
-                continue
-            source = normalize_name(_projection_source_label(record))
-            if source and source not in {"pp", "prizepicks"}:
-                continue
-            lines.append(record)
+    for record in st.session_state.get("prizepicks_projections", []):
+        if not isinstance(record, dict):
+            continue
+        player_name = normalize_name(record.get("player") or _projection_player_name(record))
+        if selected_name_key and player_name != selected_name_key:
+            continue
+        stat_type = record.get("stat_display_name") or _projection_stat_type(record)
+        if _prop_match_key(stat_type) != selected_prop_key:
+            continue
+        lines.append(record)
     return lines
 
 
@@ -409,6 +406,13 @@ def load_prizepicks_mlb_projections(debug_version=2):
         score = related_object(projection, "score")
         player_attributes = player.get("attributes", {}) if isinstance(player, dict) and isinstance(player.get("attributes"), dict) else {}
 
+        player_name = (
+            player_attributes.get("display_name")
+            or player_attributes.get("name")
+            or player_attributes.get("full_name")
+            or attributes.get("name")
+        )
+
         parsed_projection = {
             "id": projection.get("id"),
             "type": projection.get("type"),
@@ -427,12 +431,8 @@ def load_prizepicks_mlb_projections(debug_version=2):
             "odds_type": attributes.get("odds_type"),
             "payout": attributes.get("payout") or attributes.get("payout_multiplier"),
             "rank": attributes.get("rank"),
-            "player_name": (
-                player_attributes.get("display_name")
-                or player_attributes.get("name")
-                or player_attributes.get("full_name")
-                or attributes.get("name")
-            ),
+            "player": player_name,
+            "player_name": player_name,
             "league": player_attributes.get("league"),
             "team": player_attributes.get("team"),
         }
@@ -1497,34 +1497,45 @@ if st.session_state.get("selected_batter"):
             len(st.session_state.get("prizepicks_projections", [])),
         )
         projection_lines = get_prop_projection_lines(batter_id, selected_prop, batter_name)
-        loaded_prizepicks_rows = list(_flatten_projection_records(st.session_state.get("prizepicks_projections", [])))
+        loaded_prizepicks_rows = [
+            row for row in st.session_state.get("prizepicks_projections", [])
+            if isinstance(row, dict)
+        ]
         selected_batter_name_key = normalize_name(batter_name)
         selected_prop_key = _prop_match_key(selected_prop)
         batter_name_matches = [
             row for row in loaded_prizepicks_rows
-            if selected_batter_name_key and normalize_name(_projection_player_name(row)) == selected_batter_name_key
+            if selected_batter_name_key and normalize_name(row.get("player", "")) == selected_batter_name_key
         ]
         prop_matches = [
             row for row in loaded_prizepicks_rows
-            if _prop_match_key(_projection_stat_type(row)) == selected_prop_key
+            if _prop_match_key(row.get("stat_display_name", "")) == selected_prop_key
         ]
         batter_and_prop_matches = [
             row for row in batter_name_matches
-            if _prop_match_key(_projection_stat_type(row)) == selected_prop_key
+            if _prop_match_key(row.get("stat_display_name", "")) == selected_prop_key
         ]
-        raw_projection_counts = {
-            state_key: sum(1 for _ in _flatten_projection_records(st.session_state.get(state_key)))
-            for state_key in PROJECTION_STATE_KEYS
-            if st.session_state.get(state_key) is not None
-        }
+        final_detection = [
+            {
+                "line_score": row.get("line_score"),
+                "player": row.get("player"),
+                "stat_display_name": row.get("stat_display_name"),
+                "indicator": prizepicks_boost_indicator(row) or "none",
+                "adjusted_odds": row.get("adjusted_odds"),
+                "flash_sale_line_score": row.get("flash_sale_line_score"),
+                "projection_type": row.get("projection_type"),
+                "odds_type": row.get("odds_type"),
+                "description": row.get("description"),
+            }
+            for row in projection_lines
+        ]
         with st.expander("DEBUG PrizePicks alt line projection attributes", expanded=True):
             st.write(
                 {
                     "selected player": {"id": batter_id, "name": batter_name},
                     "selected prop": selected_prop,
-                    "st.session_state['prizepicks_projections'] count": len(st.session_state.get("prizepicks_projections", [])),
-                    "raw projection record counts by session key": raw_projection_counts,
-                    "first 5 loaded PrizePicks rows": [projection_debug_summary(row) for row in loaded_prizepicks_rows[:5]],
+                    "total parsed PrizePicks rows": len(loaded_prizepicks_rows),
+                    "first 5 parsed PrizePicks rows": [projection_debug_summary(row) for row in loaded_prizepicks_rows[:5]],
                     "selected batter name match": {
                         "selected batter normalized": selected_batter_name_key,
                         "matching rows": len(batter_name_matches),
@@ -1540,11 +1551,7 @@ if st.session_state.get("selected_batter"):
                         "first 5 matches": [projection_debug_summary(row) for row in batter_and_prop_matches[:5]],
                     },
                     "filtered PrizePicks lines found": len(projection_lines),
-                    "current goblin/demon condition": (
-                        "goblin: explicit goblin/lower-risk/discounted flags, description/type/risk text, "
-                        "or flash_sale_line_score; demon: explicit demon/higher-risk flags, description/type/risk text, "
-                        "or adjusted_odds"
-                    ),
+                    "final goblin/demon detection result": final_detection,
                     "filtered line snapshots": [projection_debug_snapshot(line) for line in projection_lines],
                 }
             )
