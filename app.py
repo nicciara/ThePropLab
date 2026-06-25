@@ -292,6 +292,20 @@ def projection_debug_snapshot(record):
     }
 
 
+def projection_debug_summary(record):
+    return {
+        "player": _projection_player_name(record),
+        "team": _projection_value(record, "team", default=""),
+        "stat_display_name": _projection_value(record, "stat_display_name", "statDisplayName", default=""),
+        "line_score": _projection_value(record, "line_score", "lineScore", default=""),
+        "description": _projection_value(record, "description", default=""),
+        "adjusted_odds": _projection_value(record, "adjusted_odds", "adjustedOdds", default=""),
+        "projection_type": _projection_value(record, "projection_type", "projectionType", default=""),
+        "payout": _projection_value(record, "payout", "payout_multiplier", "payoutMultiplier", default=""),
+        "rank": _projection_value(record, "rank", default=""),
+    }
+
+
 def _flatten_projection_records(value):
     if isinstance(value, list):
         for item in value:
@@ -336,9 +350,12 @@ def render_prizepicks_line_detail(line_value, projection_record=None):
 
 
 @st.cache_data(ttl=300)
-def load_prizepicks_mlb_projections():
+def load_prizepicks_mlb_projections(debug_version=2):
     headers = {
         "Accept": "application/json",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Origin": "https://app.prizepicks.com",
+        "Referer": "https://app.prizepicks.com/",
         "User-Agent": "Mozilla/5.0",
     }
     params = {
@@ -347,9 +364,17 @@ def load_prizepicks_mlb_projections():
     }
     try:
         response = requests.get(PRIZEPICKS_PROJECTIONS_URL, params=params, headers=headers, timeout=20)
+        print("PrizePicks request URL:", response.url)
+        print("PrizePicks HTTP status:", response.status_code)
+        logger.warning("PrizePicks request URL: %s", response.url)
+        logger.warning("PrizePicks HTTP status: %s", response.status_code)
         response.raise_for_status()
         payload = response.json()
+        data_len = len(payload.get("data", [])) if isinstance(payload, dict) else 0
+        print("PrizePicks response data length:", data_len)
+        logger.warning("PrizePicks response data length: %s", data_len)
     except Exception as exc:
+        print("PrizePicks projections request failed:", repr(exc))
         logger.warning("PrizePicks projections request failed: %s", exc)
         return []
 
@@ -413,6 +438,8 @@ def load_prizepicks_mlb_projections():
         }
         parsed.append(parsed_projection)
 
+    print("PrizePicks parsed projection count:", len(parsed))
+    logger.warning("PrizePicks parsed projection count: %s", len(parsed))
     return parsed
 
 # (Pitcher view rendering via query params moved below helper function definitions)
@@ -1456,8 +1483,35 @@ if st.session_state.get("selected_batter"):
         line_key = f"batter_{prop_column}_line_{batter_id}"
         if line_key not in st.session_state:
             st.session_state[line_key] = 0.5
+        print("Calling PrizePicks loader before batter page render:", {"batter_id": batter_id, "batter_name": batter_name, "prop": selected_prop})
+        logger.warning(
+            "Calling PrizePicks loader before batter page render: batter_id=%s batter_name=%s prop=%s",
+            batter_id,
+            batter_name,
+            selected_prop,
+        )
         st.session_state["prizepicks_projections"] = load_prizepicks_mlb_projections()
+        print("PrizePicks session_state projection count immediately after load:", len(st.session_state.get("prizepicks_projections", [])))
+        logger.warning(
+            "PrizePicks session_state projection count immediately after load: %s",
+            len(st.session_state.get("prizepicks_projections", [])),
+        )
         projection_lines = get_prop_projection_lines(batter_id, selected_prop, batter_name)
+        loaded_prizepicks_rows = list(_flatten_projection_records(st.session_state.get("prizepicks_projections", [])))
+        selected_batter_name_key = normalize_name(batter_name)
+        selected_prop_key = _prop_match_key(selected_prop)
+        batter_name_matches = [
+            row for row in loaded_prizepicks_rows
+            if selected_batter_name_key and normalize_name(_projection_player_name(row)) == selected_batter_name_key
+        ]
+        prop_matches = [
+            row for row in loaded_prizepicks_rows
+            if _prop_match_key(_projection_stat_type(row)) == selected_prop_key
+        ]
+        batter_and_prop_matches = [
+            row for row in batter_name_matches
+            if _prop_match_key(_projection_stat_type(row)) == selected_prop_key
+        ]
         raw_projection_counts = {
             state_key: sum(1 for _ in _flatten_projection_records(st.session_state.get(state_key)))
             for state_key in PROJECTION_STATE_KEYS
@@ -1468,7 +1522,23 @@ if st.session_state.get("selected_batter"):
                 {
                     "selected player": {"id": batter_id, "name": batter_name},
                     "selected prop": selected_prop,
+                    "st.session_state['prizepicks_projections'] count": len(st.session_state.get("prizepicks_projections", [])),
                     "raw projection record counts by session key": raw_projection_counts,
+                    "first 5 loaded PrizePicks rows": [projection_debug_summary(row) for row in loaded_prizepicks_rows[:5]],
+                    "selected batter name match": {
+                        "selected batter normalized": selected_batter_name_key,
+                        "matching rows": len(batter_name_matches),
+                        "first 5 matches": [projection_debug_summary(row) for row in batter_name_matches[:5]],
+                    },
+                    "selected prop stat_display_name match": {
+                        "selected prop key": selected_prop_key,
+                        "matching rows": len(prop_matches),
+                        "first 5 matches": [projection_debug_summary(row) for row in prop_matches[:5]],
+                    },
+                    "selected batter + prop matches": {
+                        "matching rows": len(batter_and_prop_matches),
+                        "first 5 matches": [projection_debug_summary(row) for row in batter_and_prop_matches[:5]],
+                    },
                     "filtered PrizePicks lines found": len(projection_lines),
                     "current goblin/demon condition": (
                         "goblin: explicit goblin/lower-risk/discounted flags, description/type/risk text, "
