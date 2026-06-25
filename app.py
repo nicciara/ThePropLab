@@ -3,11 +3,13 @@ import time
 import json
 import io
 import html
+import base64
 import altair as alt
 import streamlit as st
 import pandas as pd
 import requests
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 from urllib.parse import quote_plus
 
@@ -97,10 +99,7 @@ st.markdown(
     .prop-line-value{display:flex;align-items:center;justify-content:center;min-height:38px;border:1px solid #dbe3ef;border-radius:999px;background:#f8fafc;color:var(--dash-title);font-weight:900;font-size:17px;box-shadow:0 1px 2px rgba(15,23,42,0.04)}
     .prop-line-detail{display:flex;align-items:center;justify-content:center;gap:7px;min-height:38px;border:1px solid #dbe3ef;border-radius:999px;background:#f8fafc;color:var(--dash-title);font-weight:850;font-size:13px;box-shadow:0 1px 2px rgba(15,23,42,0.04);white-space:nowrap}
     .prop-line-main{font-size:17px;font-weight:900}
-    .prop-source-pill{font-size:11px;font-weight:900;color:#4f46e5;background:#eef2ff;border:1px solid #c7d2fe;border-radius:999px;padding:2px 6px}
-    .prop-boost-icon{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:20px;border-radius:999px;color:#fff;font-size:12px;font-weight:950;line-height:1;padding:0 4px}
-    .prop-boost-goblin{background:#16a34a}
-    .prop-boost-demon{background:#dc2626}
+    .prop-source-logo,.prop-boost-img{height:20px;width:20px;object-fit:contain;vertical-align:middle;display:inline-block}
     .prop-alt-row{display:flex;align-items:center;gap:7px;padding:5px 8px;margin:3px 0;border:1px solid #e5e7eb;border-radius:999px;background:#fff;font-size:12px;font-weight:750;color:var(--dash-value);white-space:nowrap}
     .prop-control-spacer{height:4px}
     .dash-card{
@@ -173,36 +172,30 @@ def _projection_truthy(record, *keys):
     return str(value).strip().lower() in {"1", "true", "yes", "y", "goblin", "demon"}
 
 
+@st.cache_data
+def local_asset_data_uri(relative_path):
+    path = Path(relative_path)
+    if not path.exists():
+        return ""
+    return "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode("ascii")
+
+
+def local_asset_img(relative_path, css_class, alt):
+    src = local_asset_data_uri(relative_path)
+    if not src:
+        return ""
+    return f"<img class='{css_class}' src='{src}' alt='{html.escape(alt, quote=True)}' />"
+
+
 def prizepicks_boost_indicator(record):
     if not isinstance(record, dict):
         return ""
 
-    if _projection_truthy(record, "goblin", "isGoblin", "goblinFlag", "is_goblin", "lowerRiskBoosted", "lower_risk_boosted", "discounted", "isDiscounted"):
-        return "<span class='prop-boost-icon prop-boost-goblin' title='Goblin / lower-risk boosted line'>🟢👺</span>"
-    if _projection_truthy(record, "demon", "isDemon", "demonFlag", "is_demon", "higherRiskBoosted", "higher_risk_boosted"):
-        return "<span class='prop-boost-icon prop-boost-demon' title='Demon / higher-risk boosted line'>🔴😈</span>"
-
-    line_text = " ".join(
-        str(_projection_value(record, key, default=""))
-        for key in (
-            "description", "lineType", "line_type", "odds_type", "oddsType",
-            "projection_type", "projectionType", "type", "risk", "promotion_type",
-            "promotionType", "payout_type", "payoutType", "name",
-        )
-    ).lower()
-    flash_sale_line = _projection_value(record, "flash_sale_line_score", "flashSaleLineScore", default="")
-    adjusted_odds = _projection_value(record, "adjusted_odds", "adjustedOdds", default="")
-
-    if flash_sale_line not in {None, ""} or any(
-        token in line_text
-        for token in ("goblin", "discount", "discounted", "lower-risk", "lower risk", "low risk", "flash sale", "reduced")
-    ):
-        return "<span class='prop-boost-icon prop-boost-goblin' title='Goblin / lower-risk boosted line'>🟢👺</span>"
-    if adjusted_odds not in {None, ""} or any(
-        token in line_text
-        for token in ("demon", "higher-risk", "higher risk", "high risk", "boosted", "increased payout", "more risk")
-    ):
-        return "<span class='prop-boost-icon prop-boost-demon' title='Demon / higher-risk boosted line'>🔴😈</span>"
+    odds_type = normalize_name(_projection_value(record, "odds_type", "oddsType", default=""))
+    if odds_type == "goblin":
+        return local_asset_img("assets/goblin.png", "prop-boost-img", "Goblin")
+    if odds_type == "demon":
+        return local_asset_img("assets/demon.png", "prop-boost-img", "Demon")
     return ""
 
 
@@ -260,7 +253,7 @@ def _prop_match_key(value):
 def _projection_meta_html(record):
     if not isinstance(record, dict):
         return ""
-    source_html = f"<span class='prop-source-pill'>{html.escape(_projection_source_label(record))}</span>"
+    source_html = local_asset_img("assets/prizepicks.png", "prop-source-logo", "PrizePicks")
     indicator_html = prizepicks_boost_indicator(record)
     odds = _projection_value(record, "odds", "americanOdds", "american_odds", "price", default="")
     payout = _projection_value(record, "payout", "multiplier", "count", "entryCount", "entry_count", default="")
@@ -1483,78 +1476,8 @@ if st.session_state.get("selected_batter"):
         line_key = f"batter_{prop_column}_line_{batter_id}"
         if line_key not in st.session_state:
             st.session_state[line_key] = 0.5
-        print("Calling PrizePicks loader before batter page render:", {"batter_id": batter_id, "batter_name": batter_name, "prop": selected_prop})
-        logger.warning(
-            "Calling PrizePicks loader before batter page render: batter_id=%s batter_name=%s prop=%s",
-            batter_id,
-            batter_name,
-            selected_prop,
-        )
         st.session_state["prizepicks_projections"] = load_prizepicks_mlb_projections()
-        print("PrizePicks session_state projection count immediately after load:", len(st.session_state.get("prizepicks_projections", [])))
-        logger.warning(
-            "PrizePicks session_state projection count immediately after load: %s",
-            len(st.session_state.get("prizepicks_projections", [])),
-        )
         projection_lines = get_prop_projection_lines(batter_id, selected_prop, batter_name)
-        loaded_prizepicks_rows = [
-            row for row in st.session_state.get("prizepicks_projections", [])
-            if isinstance(row, dict)
-        ]
-        selected_batter_name_key = normalize_name(batter_name)
-        selected_prop_key = _prop_match_key(selected_prop)
-        batter_name_matches = [
-            row for row in loaded_prizepicks_rows
-            if selected_batter_name_key and normalize_name(row.get("player", "")) == selected_batter_name_key
-        ]
-        prop_matches = [
-            row for row in loaded_prizepicks_rows
-            if _prop_match_key(row.get("stat_display_name", "")) == selected_prop_key
-        ]
-        batter_and_prop_matches = [
-            row for row in batter_name_matches
-            if _prop_match_key(row.get("stat_display_name", "")) == selected_prop_key
-        ]
-        final_detection = [
-            {
-                "line_score": row.get("line_score"),
-                "player": row.get("player"),
-                "stat_display_name": row.get("stat_display_name"),
-                "indicator": prizepicks_boost_indicator(row) or "none",
-                "adjusted_odds": row.get("adjusted_odds"),
-                "flash_sale_line_score": row.get("flash_sale_line_score"),
-                "projection_type": row.get("projection_type"),
-                "odds_type": row.get("odds_type"),
-                "description": row.get("description"),
-            }
-            for row in projection_lines
-        ]
-        with st.expander("DEBUG PrizePicks alt line projection attributes", expanded=True):
-            st.write(
-                {
-                    "selected player": {"id": batter_id, "name": batter_name},
-                    "selected prop": selected_prop,
-                    "total parsed PrizePicks rows": len(loaded_prizepicks_rows),
-                    "first 5 parsed PrizePicks rows": [projection_debug_summary(row) for row in loaded_prizepicks_rows[:5]],
-                    "selected batter name match": {
-                        "selected batter normalized": selected_batter_name_key,
-                        "matching rows": len(batter_name_matches),
-                        "first 5 matches": [projection_debug_summary(row) for row in batter_name_matches[:5]],
-                    },
-                    "selected prop stat_display_name match": {
-                        "selected prop key": selected_prop_key,
-                        "matching rows": len(prop_matches),
-                        "first 5 matches": [projection_debug_summary(row) for row in prop_matches[:5]],
-                    },
-                    "selected batter + prop matches": {
-                        "matching rows": len(batter_and_prop_matches),
-                        "first 5 matches": [projection_debug_summary(row) for row in batter_and_prop_matches[:5]],
-                    },
-                    "filtered PrizePicks lines found": len(projection_lines),
-                    "final goblin/demon detection result": final_detection,
-                    "filtered line snapshots": [projection_debug_snapshot(line) for line in projection_lines],
-                }
-            )
         selected_line_value = float(st.session_state[line_key])
         selected_projection_line = None
         for projection_line in projection_lines:
