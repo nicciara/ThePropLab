@@ -28,6 +28,14 @@ GAME_LOG_PROP_COLUMNS = {
     "Walks": "walks",
     "Strikeouts": "strikeouts",
 }
+PROJECTION_STATE_KEYS = (
+    "selected_projection",
+    "selected_batter_projection",
+    "projection_data",
+    "prizepicks_projection",
+    "prizepicks_projections",
+    "prop_projections",
+)
 
 st.set_page_config(page_title="🧪 The Prop Lab", layout="wide")
 
@@ -85,6 +93,13 @@ st.markdown(
     div[data-testid="stSegmentedControl"] div[role="radiogroup"]{overflow-x:auto;flex-wrap:nowrap}
     div[data-testid="stSegmentedControl"] label{white-space:nowrap}
     .prop-line-value{display:flex;align-items:center;justify-content:center;min-height:38px;border:1px solid #dbe3ef;border-radius:999px;background:#f8fafc;color:var(--dash-title);font-weight:900;font-size:17px;box-shadow:0 1px 2px rgba(15,23,42,0.04)}
+    .prop-line-detail{display:flex;align-items:center;justify-content:center;gap:7px;min-height:38px;border:1px solid #dbe3ef;border-radius:999px;background:#f8fafc;color:var(--dash-title);font-weight:850;font-size:13px;box-shadow:0 1px 2px rgba(15,23,42,0.04);white-space:nowrap}
+    .prop-line-main{font-size:17px;font-weight:900}
+    .prop-source-pill{font-size:11px;font-weight:900;color:#4f46e5;background:#eef2ff;border:1px solid #c7d2fe;border-radius:999px;padding:2px 6px}
+    .prop-boost-icon{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:999px;color:#fff;font-size:11px;font-weight:950;line-height:1}
+    .prop-boost-goblin{background:#16a34a}
+    .prop-boost-demon{background:#dc2626}
+    .prop-alt-row{display:flex;align-items:center;gap:7px;padding:5px 8px;margin:3px 0;border:1px solid #e5e7eb;border-radius:999px;background:#fff;font-size:12px;font-weight:750;color:var(--dash-value);white-space:nowrap}
     .prop-control-spacer{height:4px}
     .dash-card{
         border:2px solid var(--dash-border);
@@ -123,6 +138,120 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+
+def _projection_value(record, *keys, default=""):
+    if not isinstance(record, dict):
+        return default
+    lowered = {str(key).lower(): value for key, value in record.items()}
+    for key in keys:
+        if key in record:
+            return record.get(key)
+        value = lowered.get(str(key).lower())
+        if value not in {None, ""}:
+            return value
+    return default
+
+
+def _projection_truthy(record, *keys):
+    value = _projection_value(record, *keys, default=False)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "goblin", "demon"}
+
+
+def prizepicks_boost_indicator(record):
+    if not isinstance(record, dict):
+        return ""
+
+    if _projection_truthy(record, "goblin", "isGoblin", "goblinFlag", "is_goblin", "lowerRiskBoosted", "lower_risk_boosted"):
+        return "<span class='prop-boost-icon prop-boost-goblin' title='Goblin / lower-risk boosted line'>G</span>"
+    if _projection_truthy(record, "demon", "isDemon", "demonFlag", "is_demon", "higherRiskBoosted", "higher_risk_boosted"):
+        return "<span class='prop-boost-icon prop-boost-demon' title='Demon / higher-risk boosted line'>D</span>"
+
+    line_type = str(_projection_value(record, "lineType", "line_type", "projectionType", "projection_type", "type", "risk", default="")).lower()
+    if any(token in line_type for token in ("goblin", "lower-risk", "low risk", "lower risk")):
+        return "<span class='prop-boost-icon prop-boost-goblin' title='Goblin / lower-risk boosted line'>G</span>"
+    if any(token in line_type for token in ("demon", "higher-risk", "high risk", "higher risk")):
+        return "<span class='prop-boost-icon prop-boost-demon' title='Demon / higher-risk boosted line'>D</span>"
+    return ""
+
+
+def _projection_line_value(record):
+    value = _projection_value(record, "line", "line_score", "lineScore", "value", "statValue", "stat_value", "projection")
+    if value in {None, ""}:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return value
+
+
+def _projection_stat_type(record):
+    return normalize_name(_projection_value(record, "stat_type", "statType", "prop", "market", "name", default=""))
+
+
+def _projection_player_id(record):
+    value = _projection_value(record, "player_id", "playerId", "mlbam_id", "mlbamId", "batter_id", "batterId")
+    return str(value or "")
+
+
+def _projection_source_label(record):
+    source = str(_projection_value(record, "source", "sportsbook", "book", "provider", default="PrizePicks") or "PrizePicks")
+    return "PP" if normalize_name(source) == "prizepicks" else source
+
+
+def _projection_meta_html(record):
+    if not isinstance(record, dict):
+        return ""
+    source_html = f"<span class='prop-source-pill'>{html.escape(_projection_source_label(record))}</span>"
+    indicator_html = prizepicks_boost_indicator(record)
+    odds = _projection_value(record, "odds", "americanOdds", "american_odds", "price", default="")
+    payout = _projection_value(record, "payout", "multiplier", "count", "entryCount", "entry_count", default="")
+    odds_html = f"<span>{html.escape(str(odds))}</span>" if odds not in {None, ""} else ""
+    payout_html = f"<span>{html.escape(str(payout))}</span>" if payout not in {None, ""} else ""
+    return "".join(part for part in (source_html, indicator_html, odds_html, payout_html) if part)
+
+
+def _flatten_projection_records(value):
+    if isinstance(value, list):
+        for item in value:
+            yield from _flatten_projection_records(item)
+    elif isinstance(value, dict):
+        if _projection_line_value(value) is not None:
+            yield value
+        for key in ("alt_lines", "altLines", "lines", "projections", "projection_lines", "projectionLines"):
+            nested = value.get(key)
+            if nested is not None:
+                yield from _flatten_projection_records(nested)
+
+
+def get_prop_projection_lines(batter_id, selected_prop):
+    selected_prop_key = normalize_name(selected_prop)
+    lines = []
+    for state_key in PROJECTION_STATE_KEYS:
+        for record in _flatten_projection_records(st.session_state.get(state_key)):
+            player_id = _projection_player_id(record)
+            if player_id and str(player_id) != str(batter_id):
+                continue
+            stat_type = _projection_stat_type(record)
+            if stat_type and stat_type != selected_prop_key:
+                continue
+            source = normalize_name(_projection_source_label(record))
+            if source and source not in {"pp", "prizepicks"}:
+                continue
+            lines.append(record)
+    return lines
+
+
+def render_prizepicks_line_detail(line_value, projection_record=None):
+    line_html = f"<span class='prop-line-main'>{float(line_value):.1f}</span>"
+    meta_html = _projection_meta_html(projection_record)
+    if not meta_html:
+        return f"<div class='prop-line-value'>{line_html}</div>"
+    return f"<div class='prop-line-detail'>{line_html}{meta_html}</div>"
 
 # (Pitcher view rendering via query params moved below helper function definitions)
 def eastern_time(utc_time):
@@ -1165,6 +1294,17 @@ if st.session_state.get("selected_batter"):
         line_key = f"batter_{prop_column}_line_{batter_id}"
         if line_key not in st.session_state:
             st.session_state[line_key] = 0.5
+        projection_lines = get_prop_projection_lines(batter_id, selected_prop)
+        selected_line_value = float(st.session_state[line_key])
+        selected_projection_line = None
+        for projection_line in projection_lines:
+            projection_line_value = _projection_line_value(projection_line)
+            try:
+                if float(projection_line_value) == selected_line_value:
+                    selected_projection_line = projection_line
+                    break
+            except (TypeError, ValueError):
+                continue
         st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
         line_cols = st.columns([0.34, 0.62, 0.34, 5.2])
         with line_cols[0]:
@@ -1173,13 +1313,34 @@ if st.session_state.get("selected_batter"):
                 st.rerun()
         with line_cols[1]:
             st.markdown(
-                f"<div class='prop-line-value'>{float(st.session_state[line_key]):.1f}</div>",
+                render_prizepicks_line_detail(st.session_state[line_key], selected_projection_line),
                 unsafe_allow_html=True,
             )
         with line_cols[2]:
             if st.button("+", key=f"batter_{prop_slug}_line_plus_{batter_id}"):
                 st.session_state[line_key] = float(st.session_state[line_key]) + 1.0
                 st.rerun()
+        if projection_lines:
+            with st.expander("Alt lines", expanded=False):
+                for idx, projection_line in enumerate(projection_lines):
+                    projection_line_value = _projection_line_value(projection_line)
+                    try:
+                        display_line_value = f"{float(projection_line_value):.1f}"
+                    except (TypeError, ValueError):
+                        display_line_value = str(projection_line_value)
+                    row_cols = st.columns([0.65, 4.8])
+                    with row_cols[0]:
+                        if st.button(display_line_value, key=f"batter_{prop_slug}_alt_line_{batter_id}_{idx}"):
+                            try:
+                                st.session_state[line_key] = float(projection_line_value)
+                            except (TypeError, ValueError):
+                                pass
+                            st.rerun()
+                    with row_cols[1]:
+                        st.markdown(
+                            f"<div class='prop-alt-row'>{_projection_meta_html(projection_line)}</div>",
+                            unsafe_allow_html=True,
+                        )
         st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
         game_log_range = st.segmented_control(
             "Recent Range",
