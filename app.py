@@ -477,7 +477,35 @@ RUN_VALUE_STYLE_COLORS = {
 }
 
 
+def canonical_run_value_metric(metric):
+    normalized = str(metric or "").strip().lower().replace(" ", "").replace("_", "")
+    metric_map = {
+        "ba": "BA",
+        "xba": "xBA",
+        "slg": "SLG",
+        "xslg": "xSLG",
+        "woba": "wOBA",
+        "xwoba": "xwOBA",
+        "hardhit%": "Hard Hit%",
+        "hardhitpct": "Hard Hit%",
+        "hardhitpercent": "Hard Hit%",
+        "whiff%": "Whiff%",
+        "whiffpct": "Whiff%",
+        "whiffpercent": "Whiff%",
+        "k%": "K%",
+        "kpct": "K%",
+        "kpercent": "K%",
+        "putaway%": "PutAway%",
+        "putawaypct": "PutAway%",
+        "putawaypercent": "PutAway%",
+    }
+    return metric_map.get(normalized, "")
+
+
 def run_value_threshold_style(value, metric):
+    metric = canonical_run_value_metric(metric)
+    if not metric:
+        return ""
     try:
         number = float(value)
     except (TypeError, ValueError):
@@ -546,9 +574,10 @@ def run_value_threshold_style(value, metric):
 
 def style_run_value_table(df):
     styled = df.style.map(pitch_type_cell_style, subset=["Pitch Type"])
-    for column in ["BA", "SLG", "wOBA", "xBA", "xSLG", "xwOBA", "Hard Hit%", "Whiff%", "K%", "PutAway%"]:
-        if column in df.columns:
-            styled = styled.map(lambda value, metric=column: run_value_threshold_style(value, metric), subset=[column])
+    for column in df.columns:
+        metric = canonical_run_value_metric(column)
+        if metric:
+            styled = styled.map(lambda value, metric=metric: run_value_threshold_style(value, metric), subset=[column])
     return styled
 
 
