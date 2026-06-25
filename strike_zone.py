@@ -19,6 +19,7 @@ ZONE_LAYOUT = [
     {"zone_id": 8, "x_min": -0.8, "x_max": 0.8, "y_min": 1.0, "y_max": 2.2},
     {"zone_id": 9, "x_min": 0.8, "x_max": 2.5, "y_min": 1.0, "y_max": 2.2},
 ]
+DISPLAY_ZONE_IDS = set(range(1, 10)) | {11, 12, 13, 14}
 
 
 def _normalize_zone_value(zone_value):
@@ -193,6 +194,80 @@ def _metric_label(metric):
     return metric_name if metric_name in {"Pitch %", "Takes", "Batted Balls", "K%", "Home Runs"} else "Pitch %"
 
 
+def _clean_batter_metric_dataframe(filtered_df):
+    working_df = filtered_df.copy()
+    if working_df.empty:
+        return pd.DataFrame()
+
+    pitch_col = "pitch_name" if "pitch_name" in working_df.columns else "pitch_type"
+    if pitch_col not in working_df.columns:
+        return pd.DataFrame()
+
+    working_df[pitch_col] = working_df[pitch_col].astype(str).str.strip()
+    return working_df[(working_df[pitch_col] != "") & (working_df[pitch_col].str.lower() != "nan")].copy()
+
+
+def _build_batter_metric_dataframe(filtered_df, metric):
+    working_df = _clean_batter_metric_dataframe(filtered_df)
+    if working_df.empty:
+        return pd.DataFrame()
+
+    metric = _metric_label(metric)
+    if metric == "Pitch %":
+        return working_df
+    if metric in {"Takes", "Batted Balls", "Home Runs"}:
+        metric_mask = _batter_metric_mask(working_df, metric)
+        return working_df[metric_mask].copy() if not metric_mask.empty else working_df.iloc[0:0].copy()
+    return working_df.iloc[0:0].copy()
+
+
+def _filter_display_zone_dataframe(df):
+    if df.empty:
+        return df.copy()
+
+    zone_ids = df["zone"].apply(_normalize_zone_value)
+    return df[zone_ids.isin(DISPLAY_ZONE_IDS)].copy()
+
+
+def _build_distribution_zone_outputs(filtered_df, metric):
+    metric_df = _filter_display_zone_dataframe(_build_batter_metric_dataframe(filtered_df, metric))
+    denominator = len(metric_df)
+
+    zone_counts = {zone["zone_id"]: 0 for zone in ZONE_LAYOUT}
+    outer_counts = {"tl": 0, "tr": 0, "bl": 0, "br": 0}
+    outer_zone_to_quad = {11: "tl", 12: "tr", 13: "bl", 14: "br"}
+
+    zone_ids = metric_df["zone"].apply(_normalize_zone_value) if not metric_df.empty else pd.Series(dtype=object)
+    for zone_id in zone_ids.dropna().astype(int):
+        if zone_id in zone_counts:
+            zone_counts[zone_id] += 1
+        else:
+            key = outer_zone_to_quad.get(zone_id)
+            if key is not None:
+                outer_counts[key] += 1
+
+    zone_rows = []
+    for zone in ZONE_LAYOUT:
+        count = zone_counts[zone["zone_id"]]
+        zone_rows.append(
+            {
+                **zone,
+                "pitch_count": int(count),
+                "pitch_pct": (count / denominator * 100.0) if denominator else 0.0,
+            }
+        )
+
+    outer_stats = {
+        key: {
+            "pitch_count": int(count),
+            "pitch_pct": (count / denominator * 100.0) if denominator else 0.0,
+        }
+        for key, count in outer_counts.items()
+    }
+
+    return pd.DataFrame(zone_rows), outer_stats, denominator
+
+
 def _plate_appearance_key(df):
     if {"game_pk", "at_bat_number"}.issubset(df.columns):
         return (
@@ -225,31 +300,13 @@ def get_batter_pitch_type_options(batter_id):
 
 
 def _build_metric_zone_dataframe(filtered_df, metric):
-    working_df = filtered_df.copy()
-    if working_df.empty:
-        return pd.DataFrame()
-
-    pitch_col = "pitch_name" if "pitch_name" in working_df.columns else "pitch_type"
-    if pitch_col not in working_df.columns:
-        return pd.DataFrame()
-
-    working_df[pitch_col] = working_df[pitch_col].astype(str).str.strip()
-    working_df = working_df[(working_df[pitch_col] != "") & (working_df[pitch_col].str.lower() != "nan")].copy()
+    working_df = _clean_batter_metric_dataframe(filtered_df)
     if working_df.empty:
         return pd.DataFrame()
 
     if metric in {"Pitch %", "Takes", "Batted Balls", "Home Runs"}:
-        metric_masks = {
-            "Pitch %": pd.Series(True, index=working_df.index),
-            "Takes": working_df["description"].astype(str).str.lower().isin({"called_strike", "ball", "ballinplay", "blocked_ball", "pitchout"}) if "description" in working_df.columns else pd.Series(False, index=working_df.index),
-            "Batted Balls": working_df["events"].astype(str).str.lower().isin({"single", "double", "triple", "home_run", "field_out", "grounded_into_double_play", "force_out", "fielders_choice_out", "field_error", "double_play", "triple_play", "other_out", "sac_fly", "sac_fly_double_play", "fielders_choice"}) if "events" in working_df.columns else pd.Series(False, index=working_df.index),
-            "Home Runs": working_df["events"].astype(str).str.lower().eq("home_run") if "events" in working_df.columns else pd.Series(False, index=working_df.index),
-        }
-        metric_mask = metric_masks.get(metric, pd.Series(False, index=working_df.index))
-        if metric == "Pitch %":
-            metric_df = working_df.copy()
-        else:
-            metric_df = working_df[metric_mask].copy()
+        zone_df, _, _ = _build_distribution_zone_outputs(working_df, metric)
+        return zone_df
     elif metric == "K%":
         if "events" not in working_df.columns:
             return pd.DataFrame()
@@ -325,12 +382,17 @@ def display_batter_metric_strike_zone(batter_id, pitch_type, pitcher_throws="All
         st.info("Strike zone data is unavailable for this batter right now.")
         return
 
-    zone_df = _build_metric_zone_dataframe(filtered_df, metric)
-    if zone_df.empty:
-        st.info("Strike zone data is unavailable for this batter right now.")
-        return
+    if metric == "K%":
+        zone_df = _build_metric_zone_dataframe(filtered_df, metric)
+        if zone_df.empty:
+            st.info("Strike zone data is unavailable for this batter right now.")
+            return
 
-    outer_stats = _aggregate_outer_quadrants(filtered_df if metric == "Pitch %" else filtered_df[filtered_df["zone"].apply(_normalize_zone_value).isin({11, 12, 13, 14})])
+        outer_df = filtered_df[filtered_df["zone"].apply(_normalize_zone_value).isin({11, 12, 13, 14})]
+        outer_total = len(outer_df)
+        outer_stats = _aggregate_outer_quadrants(outer_df, total_pitches=outer_total)
+    else:
+        zone_df, outer_stats, _ = _build_distribution_zone_outputs(filtered_df, metric)
     html = _build_batter_metric_strike_zone_html(zone_df, outer_stats)
     st.markdown(html, unsafe_allow_html=True)
 
@@ -364,8 +426,8 @@ def _format_cell_text(count, pct):
     return f"{int(count)}<br>{pct:.1f}%"
 
 
-def _aggregate_outer_quadrants(statcast_df, total_pitches=None):
-    total_pitches = len(statcast_df) if total_pitches is None else total_pitches
+def _aggregate_outer_quadrants(statcast_df, total_pitches):
+    total_pitches = 0 if total_pitches is None else total_pitches
     counts = {"tl": 0, "tr": 0, "bl": 0, "br": 0}
 
     if total_pitches > 0:
@@ -506,6 +568,7 @@ def _build_strike_zone_html(zone_df, outer_stats):
 
 
 def render_strike_zone_grid(zone_df, filtered_df, total_pitches=None):
+    total_pitches = len(filtered_df) if total_pitches is None else total_pitches
     outer_stats = _aggregate_outer_quadrants(filtered_df, total_pitches=total_pitches)
     return _build_strike_zone_html(zone_df, outer_stats)
 

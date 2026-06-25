@@ -662,15 +662,12 @@ def display_batter_metric_strike_zone_fixed(batter_id, pitch_type, pitcher_throw
         return
 
     metric = metric if metric in {"Pitch %", "Takes", "Batted Balls", "K%", "Home Runs"} else "Pitch %"
-    zone_df = strike_zone._build_metric_zone_dataframe(filtered_df, metric)
-    if zone_df.empty:
-        st.info("Strike zone data is unavailable for this batter right now.")
-        return
+    if metric == "K%":
+        zone_df = strike_zone._build_metric_zone_dataframe(filtered_df, metric)
+        if zone_df.empty:
+            st.info("Strike zone data is unavailable for this batter right now.")
+            return
 
-    if metric == "Pitch %":
-        outer_df = filtered_df
-        outer_total = None
-    elif metric == "K%":
         working_df = filtered_df.copy()
         working_df["_pa_key"] = strike_zone._plate_appearance_key(working_df)
         k_pa_keys = set(working_df.loc[working_df["events"].astype(str).str.lower().eq("strikeout"), "_pa_key"].astype(str))
@@ -691,16 +688,21 @@ def display_batter_metric_strike_zone_fixed(batter_id, pitch_type, pitcher_throw
             for key in ("tl", "tr", "bl", "br")
         }
     else:
-        metric_mask = strike_zone._batter_metric_mask(filtered_df, metric)
-        outer_df = filtered_df[metric_mask].copy() if not metric_mask.empty else filtered_df.iloc[0:0].copy()
-        outer_total = None
+        zone_df, outer_stats, shared_denominator = strike_zone._build_distribution_zone_outputs(filtered_df, metric)
 
-    if metric != "K%":
-        # Savant's 13-zone layout maps outer quadrants directly: 11=upper-left, 12=upper-right, 13=lower-left, 14=lower-right.
-        outer_df = outer_df[outer_df["zone"].apply(strike_zone._normalize_zone_value).isin({11, 12, 13, 14})]
-        outer_stats = strike_zone._aggregate_outer_quadrants(outer_df, total_pitches=outer_total)
     html = strike_zone._build_batter_metric_strike_zone_html(zone_df, outer_stats)
     st.markdown(html, unsafe_allow_html=True)
+    if metric != "K%":
+        inner_percent_sum = float(zone_df["pitch_pct"].sum()) if "pitch_pct" in zone_df.columns else 0.0
+        outer_percent_sum = sum(float(outer_stats[key]["pitch_pct"]) for key in ("tl", "tr", "bl", "br"))
+        total_percent_sum = inner_percent_sum + outer_percent_sum
+        st.caption(
+            f"inner_sum={inner_percent_sum:.1f} "
+            f"outer_sum={outer_percent_sum:.1f} "
+            f"total_sum={total_percent_sum:.1f} "
+            f"inner_denominator={shared_denominator} "
+            f"outer_denominator_used={shared_denominator}"
+        )
 
 
 strike_zone.display_batter_metric_strike_zone = display_batter_metric_strike_zone_fixed
