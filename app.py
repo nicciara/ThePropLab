@@ -3,13 +3,11 @@ import time
 import json
 import io
 import html
-import base64
 import altair as alt
 import streamlit as st
 import pandas as pd
 import requests
 from datetime import date, datetime, timedelta
-from pathlib import Path
 from zoneinfo import ZoneInfo
 from urllib.parse import quote_plus
 
@@ -96,12 +94,14 @@ st.markdown(
     .nav-name-link:hover{color:var(--dash-accent)!important;text-decoration:underline!important}
     div[data-testid="stSegmentedControl"] div[role="radiogroup"]{overflow-x:auto;flex-wrap:nowrap}
     div[data-testid="stSegmentedControl"] label{white-space:nowrap}
-    .prop-line-value,.prop-line-detail{display:flex;align-items:center;justify-content:center;min-height:40px;border:1px solid #dbe3ef;border-radius:999px;background:#f8fafc;color:var(--dash-title);font-weight:900;font-size:17px;box-shadow:0 1px 2px rgba(15,23,42,0.04);box-sizing:border-box}
-    .prop-line-detail{width:max-content;max-width:100%;padding:0 12px;margin:0 auto;white-space:nowrap;overflow:visible}
-    .prop-line-inline{display:flex;align-items:center;justify-content:center;gap:6px;flex:0 0 auto;white-space:nowrap}
-    .prop-line-main{font-size:17px;font-weight:900}
-    .prop-source-logo,.prop-boost-img{height:22px;width:22px;object-fit:contain;vertical-align:middle;display:inline-block;flex:0 0 22px}
-    .prop-alt-row{display:flex;align-items:center;justify-content:center;gap:6px;width:max-content;max-width:100%;padding:6px 10px;margin:4px 0;border:1px solid #e5e7eb;border-radius:999px;background:#fff;font-size:12px;font-weight:750;color:var(--dash-value);white-space:nowrap}
+    .line-badge{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:6px 12px;border:1px solid #ddd;border-radius:999px;min-width:120px;background:#f8fafc;box-shadow:0 1px 2px rgba(15,23,42,0.04);white-space:nowrap}
+    .line-value{font-weight:700;font-size:22px;color:var(--dash-title);line-height:1}
+    .book-badge,.boost-badge{display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;line-height:1;padding:4px 8px;border-radius:999px;white-space:nowrap}
+    .book-badge{background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd}
+    .goblin-badge{background:#dcfce7;color:#166534;border:1px solid #86efac}
+    .demon-badge{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
+    .line-badge-wrap{display:flex;align-items:center;justify-content:center}
+    .alt-line-row{display:flex;align-items:center;gap:8px;margin:4px 0}
     .prop-control-spacer{height:4px}
     .dash-card{
         border:2px solid var(--dash-border);
@@ -173,31 +173,26 @@ def _projection_truthy(record, *keys):
     return str(value).strip().lower() in {"1", "true", "yes", "y", "goblin", "demon"}
 
 
-@st.cache_data
-def local_asset_data_uri(relative_path):
-    path = Path(relative_path)
-    if not path.exists():
-        return ""
-    return "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode("ascii")
+def render_line_badge(line_value, odds_type=""):
+    try:
+        line_text = f"{float(line_value):.1f}"
+    except (TypeError, ValueError):
+        line_text = str(line_value)
 
+    normalized_odds_type = normalize_name(odds_type)
+    boost_html = ""
+    if normalized_odds_type == "goblin":
+        boost_html = '<span class="boost-badge goblin-badge">Goblin</span>'
+    elif normalized_odds_type == "demon":
+        boost_html = '<span class="boost-badge demon-badge">Demon</span>'
 
-def local_asset_img(relative_path, css_class, alt):
-    src = local_asset_data_uri(relative_path)
-    if not src:
-        return ""
-    return f"<img class='{css_class}' src='{src}' alt='{html.escape(alt, quote=True)}' />"
-
-
-def prizepicks_boost_indicator(record):
-    if not isinstance(record, dict):
-        return ""
-
-    odds_type = normalize_name(_projection_value(record, "odds_type", "oddsType", default=""))
-    if odds_type == "goblin":
-        return local_asset_img("assets/goblin.png", "prop-boost-img", "Goblin")
-    if odds_type == "demon":
-        return local_asset_img("assets/demon.png", "prop-boost-img", "Demon")
-    return ""
+    return (
+        '<div class="line-badge">'
+        f'<span class="line-value">{html.escape(line_text)}</span>'
+        '<span class="book-badge">PP</span>'
+        f'{boost_html}'
+        '</div>'
+    )
 
 
 def _projection_line_value(record):
@@ -251,22 +246,6 @@ def _prop_match_key(value):
     return aliases.get(compact, compact)
 
 
-def render_prizepicks_line_inline(line_value, projection_record=None):
-    try:
-        line_text = f"{float(line_value):.1f}"
-    except (TypeError, ValueError):
-        line_text = str(line_value)
-
-    source_html = local_asset_img("assets/prizepicks_logo.png", "prop-source-logo", "PrizePicks")
-    indicator_html = prizepicks_boost_indicator(projection_record) if isinstance(projection_record, dict) else ""
-    return (
-        "<span class='prop-line-inline'>"
-        f"<span class='prop-line-main'>{html.escape(line_text)}</span>"
-        f"{source_html}{indicator_html}"
-        "</span>"
-    )
-
-
 def projection_debug_snapshot(record):
     interesting_keys = [
         "adjusted_odds", "adjustedOdds", "odds_type", "oddsType", "projection_type",
@@ -277,7 +256,7 @@ def projection_debug_snapshot(record):
     return {
         "line value": _projection_line_value(record),
         "sportsbook/source": _projection_source_label(record),
-        "boost indicator html": prizepicks_boost_indicator(record),
+        "boost odds_type": _projection_value(record, "odds_type", "oddsType", default=""),
         "player_id": _projection_player_id(record),
         "stat_type": _projection_stat_type(record),
         "interesting fields": {
@@ -334,11 +313,6 @@ def get_prop_projection_lines(batter_id, selected_prop, batter_name=""):
             continue
         lines.append(record)
     return lines
-
-
-def render_prizepicks_line_detail(line_value, projection_record=None):
-    class_name = "prop-line-detail" if isinstance(projection_record, dict) else "prop-line-value"
-    return f"<div class='{class_name}'>{render_prizepicks_line_inline(line_value, projection_record)}</div>"
 
 
 @st.cache_data(ttl=300)
@@ -1497,8 +1471,9 @@ if st.session_state.get("selected_batter"):
                 st.session_state[line_key] = max(0.5, float(st.session_state[line_key]) - 1.0)
                 st.rerun()
         with line_cols[1]:
+            selected_odds_type = _projection_value(selected_projection_line, "odds_type", "oddsType", default="") if isinstance(selected_projection_line, dict) else ""
             st.markdown(
-                render_prizepicks_line_detail(st.session_state[line_key], selected_projection_line),
+                f"<div class='line-badge-wrap'>{render_line_badge(st.session_state[line_key], selected_odds_type)}</div>",
                 unsafe_allow_html=True,
             )
         with line_cols[2]:
@@ -1509,8 +1484,9 @@ if st.session_state.get("selected_batter"):
             with st.expander("Alt lines", expanded=False):
                 for idx, projection_line in enumerate(projection_lines):
                     projection_line_value = _projection_line_value(projection_line)
+                    projection_odds_type = _projection_value(projection_line, "odds_type", "oddsType", default="")
                     st.markdown(
-                        f"<div class='prop-alt-row'>{render_prizepicks_line_inline(projection_line_value, projection_line)}</div>",
+                        f"<div class='alt-line-row'>{render_line_badge(projection_line_value, projection_odds_type)}</div>",
                         unsafe_allow_html=True,
                     )
                     if st.button("Use", key=f"batter_{prop_slug}_alt_line_{batter_id}_{idx}"):
