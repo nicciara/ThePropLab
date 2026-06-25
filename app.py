@@ -99,7 +99,8 @@ st.markdown(
     .prop-line-value{display:flex;align-items:center;justify-content:center;min-height:38px;border:1px solid #dbe3ef;border-radius:999px;background:#f8fafc;color:var(--dash-title);font-weight:900;font-size:17px;box-shadow:0 1px 2px rgba(15,23,42,0.04)}
     .prop-line-detail{display:flex;align-items:center;justify-content:center;gap:7px;min-height:38px;border:1px solid #dbe3ef;border-radius:999px;background:#f8fafc;color:var(--dash-title);font-weight:850;font-size:13px;box-shadow:0 1px 2px rgba(15,23,42,0.04);white-space:nowrap}
     .prop-line-main{font-size:17px;font-weight:900}
-    .prop-source-logo,.prop-boost-img{height:20px;width:20px;object-fit:contain;vertical-align:middle;display:inline-block}
+    .prop-source-logo{height:24px;width:auto;max-width:96px;object-fit:contain;vertical-align:middle;display:inline-block}
+    .prop-boost-img{height:24px;width:24px;object-fit:contain;vertical-align:middle;display:inline-block}
     .prop-alt-row{display:flex;align-items:center;gap:7px;padding:5px 8px;margin:3px 0;border:1px solid #e5e7eb;border-radius:999px;background:#fff;font-size:12px;font-weight:750;color:var(--dash-value);white-space:nowrap}
     .prop-control-spacer{height:4px}
     .dash-card{
@@ -253,7 +254,7 @@ def _prop_match_key(value):
 def _projection_meta_html(record):
     if not isinstance(record, dict):
         return ""
-    source_html = local_asset_img("assets/prizepicks.png", "prop-source-logo", "PrizePicks")
+    source_html = local_asset_img("assets/prizepicks_logo.png", "prop-source-logo", "PrizePicks")
     indicator_html = prizepicks_boost_indicator(record)
     odds = _projection_value(record, "odds", "americanOdds", "american_odds", "price", default="")
     payout = _projection_value(record, "payout", "multiplier", "count", "entryCount", "entry_count", default="")
