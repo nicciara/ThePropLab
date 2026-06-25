@@ -28,6 +28,8 @@ GAME_LOG_PROP_COLUMNS = {
     "Walks": "walks",
     "Strikeouts": "strikeouts",
 }
+PRIZEPICKS_MLB_LEAGUE_ID = 2
+PRIZEPICKS_PROJECTIONS_URL = "https://api.prizepicks.com/projections"
 PROJECTION_STATE_KEYS = (
     "selected_projection",
     "selected_batter_projection",
@@ -217,7 +219,7 @@ def _projection_line_value(record):
 
 
 def _projection_stat_type(record):
-    return normalize_name(_projection_value(record, "stat_type", "statType", "prop", "market", "name", default=""))
+    return normalize_name(_projection_value(record, "stat_display_name", "statDisplayName", "stat_type", "statType", "prop", "market", "name", default=""))
 
 
 def _projection_player_id(record):
@@ -225,9 +227,32 @@ def _projection_player_id(record):
     return str(value or "")
 
 
+def _projection_player_name(record):
+    return str(_projection_value(record, "player_name", "display_name", "displayName", "name", "full_name", "fullName", default="") or "")
+
+
 def _projection_source_label(record):
     source = str(_projection_value(record, "source", "sportsbook", "book", "provider", default="PrizePicks") or "PrizePicks")
     return "PP" if normalize_name(source) == "prizepicks" else source
+
+
+def _prop_match_key(value):
+    normalized = normalize_name(value).replace("+", " ")
+    compact = normalized.replace(" ", "")
+    aliases = {
+        "hits": "hits",
+        "runs": "runs",
+        "rbi": "rbi",
+        "rbis": "rbi",
+        "hrrrbi": "hrrrbi",
+        "hitsrunsrbis": "hrrrbi",
+        "hitsrunsrbi": "hrrrbi",
+        "totalbases": "totalbases",
+        "homeruns": "homeruns",
+        "walks": "walks",
+        "strikeouts": "strikeouts",
+    }
+    return aliases.get(compact, compact)
 
 
 def _projection_meta_html(record):
@@ -240,6 +265,31 @@ def _projection_meta_html(record):
     odds_html = f"<span>{html.escape(str(odds))}</span>" if odds not in {None, ""} else ""
     payout_html = f"<span>{html.escape(str(payout))}</span>" if payout not in {None, ""} else ""
     return "".join(part for part in (source_html, indicator_html, odds_html, payout_html) if part)
+
+
+def projection_debug_snapshot(record):
+    interesting_keys = [
+        "adjusted_odds", "adjustedOdds", "odds_type", "oddsType", "projection_type",
+        "projectionType", "flash_sale_line_score", "flashSaleLineScore", "line_score",
+        "lineScore", "payout", "rank", "description", "stat_type", "statType",
+    ]
+    attrs = record.get("attributes", {}) if isinstance(record, dict) else {}
+    return {
+        "line value": _projection_line_value(record),
+        "sportsbook/source": _projection_source_label(record),
+        "boost indicator html": prizepicks_boost_indicator(record),
+        "player_id": _projection_player_id(record),
+        "stat_type": _projection_stat_type(record),
+        "interesting fields": {
+            key: _projection_value(record, key, default="")
+            for key in interesting_keys
+            if _projection_value(record, key, default="") not in {None, ""}
+        },
+        "top-level keys": list(record.keys()) if isinstance(record, dict) else [],
+        "attribute keys": list(attrs.keys()) if isinstance(attrs, dict) else [],
+        "full attributes": attrs,
+        "full projection object": record,
+    }
 
 
 def _flatten_projection_records(value):
@@ -255,16 +305,20 @@ def _flatten_projection_records(value):
                 yield from _flatten_projection_records(nested)
 
 
-def get_prop_projection_lines(batter_id, selected_prop):
-    selected_prop_key = normalize_name(selected_prop)
+def get_prop_projection_lines(batter_id, selected_prop, batter_name=""):
+    selected_prop_key = _prop_match_key(selected_prop)
+    selected_name_key = normalize_name(batter_name)
     lines = []
     for state_key in PROJECTION_STATE_KEYS:
         for record in _flatten_projection_records(st.session_state.get(state_key)):
             player_id = _projection_player_id(record)
             if player_id and str(player_id) != str(batter_id):
                 continue
+            player_name = normalize_name(_projection_player_name(record))
+            if not player_id and selected_name_key and player_name and player_name != selected_name_key:
+                continue
             stat_type = _projection_stat_type(record)
-            if stat_type and stat_type != selected_prop_key:
+            if stat_type and _prop_match_key(stat_type) != selected_prop_key:
                 continue
             source = normalize_name(_projection_source_label(record))
             if source and source not in {"pp", "prizepicks"}:
@@ -279,6 +333,87 @@ def render_prizepicks_line_detail(line_value, projection_record=None):
     if not meta_html:
         return f"<div class='prop-line-value'>{line_html}</div>"
     return f"<div class='prop-line-detail'>{line_html}{meta_html}</div>"
+
+
+@st.cache_data(ttl=300)
+def load_prizepicks_mlb_projections():
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0",
+    }
+    params = {
+        "league_id": PRIZEPICKS_MLB_LEAGUE_ID,
+        "per_page": 1000,
+    }
+    try:
+        response = requests.get(PRIZEPICKS_PROJECTIONS_URL, params=params, headers=headers, timeout=20)
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:
+        logger.warning("PrizePicks projections request failed: %s", exc)
+        return []
+
+    included_by_type_id = {}
+    for item in payload.get("included", []):
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type", "")
+        item_id = str(item.get("id", ""))
+        if item_type and item_id:
+            included_by_type_id[(item_type, item_id)] = item
+
+    def related_object(projection, relationship_name):
+        rel_data = projection.get("relationships", {}).get(relationship_name, {}).get("data")
+        if isinstance(rel_data, list):
+            return [
+                included_by_type_id.get((item.get("type", ""), str(item.get("id", ""))))
+                for item in rel_data
+                if isinstance(item, dict)
+            ]
+        if isinstance(rel_data, dict):
+            return included_by_type_id.get((rel_data.get("type", ""), str(rel_data.get("id", ""))))
+        return None
+
+    parsed = []
+    for projection in payload.get("data", []):
+        if not isinstance(projection, dict):
+            continue
+        attributes = projection.get("attributes", {}) if isinstance(projection.get("attributes"), dict) else {}
+        relationships = projection.get("relationships", {}) if isinstance(projection.get("relationships"), dict) else {}
+        player = related_object(projection, "new_player") or related_object(projection, "player")
+        score = related_object(projection, "score")
+        player_attributes = player.get("attributes", {}) if isinstance(player, dict) and isinstance(player.get("attributes"), dict) else {}
+
+        parsed_projection = {
+            "id": projection.get("id"),
+            "type": projection.get("type"),
+            "source": "PrizePicks",
+            "attributes": attributes,
+            "relationships": relationships,
+            "new_player": player,
+            "score": score,
+            "raw_projection": projection,
+            "stat_display_name": attributes.get("stat_display_name"),
+            "description": attributes.get("description"),
+            "line_score": attributes.get("line_score"),
+            "flash_sale_line_score": attributes.get("flash_sale_line_score"),
+            "adjusted_odds": attributes.get("adjusted_odds"),
+            "projection_type": attributes.get("projection_type"),
+            "odds_type": attributes.get("odds_type"),
+            "payout": attributes.get("payout") or attributes.get("payout_multiplier"),
+            "rank": attributes.get("rank"),
+            "player_name": (
+                player_attributes.get("display_name")
+                or player_attributes.get("name")
+                or player_attributes.get("full_name")
+                or attributes.get("name")
+            ),
+            "league": player_attributes.get("league"),
+            "team": player_attributes.get("team"),
+        }
+        parsed.append(parsed_projection)
+
+    return parsed
 
 # (Pitcher view rendering via query params moved below helper function definitions)
 def eastern_time(utc_time):
@@ -1321,7 +1456,28 @@ if st.session_state.get("selected_batter"):
         line_key = f"batter_{prop_column}_line_{batter_id}"
         if line_key not in st.session_state:
             st.session_state[line_key] = 0.5
-        projection_lines = get_prop_projection_lines(batter_id, selected_prop)
+        st.session_state["prizepicks_projections"] = load_prizepicks_mlb_projections()
+        projection_lines = get_prop_projection_lines(batter_id, selected_prop, batter_name)
+        raw_projection_counts = {
+            state_key: sum(1 for _ in _flatten_projection_records(st.session_state.get(state_key)))
+            for state_key in PROJECTION_STATE_KEYS
+            if st.session_state.get(state_key) is not None
+        }
+        with st.expander("DEBUG PrizePicks alt line projection attributes", expanded=True):
+            st.write(
+                {
+                    "selected player": {"id": batter_id, "name": batter_name},
+                    "selected prop": selected_prop,
+                    "raw projection record counts by session key": raw_projection_counts,
+                    "filtered PrizePicks lines found": len(projection_lines),
+                    "current goblin/demon condition": (
+                        "goblin: explicit goblin/lower-risk/discounted flags, description/type/risk text, "
+                        "or flash_sale_line_score; demon: explicit demon/higher-risk flags, description/type/risk text, "
+                        "or adjusted_odds"
+                    ),
+                    "filtered line snapshots": [projection_debug_snapshot(line) for line in projection_lines],
+                }
+            )
         selected_line_value = float(st.session_state[line_key])
         selected_projection_line = None
         for projection_line in projection_lines:
