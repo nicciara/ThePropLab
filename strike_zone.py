@@ -40,10 +40,10 @@ ZONE_METRIC_BASELINES = {
 }
 
 ZONE_Z_SCORE_BACKGROUND_COLORS = {
-    "red": "#dc2626",
-    "orange": "#d97706",
-    "green": "#16a34a",
-    "blue": "#2563eb",
+    "red": "#e62727",
+    "orange": "#edb228",
+    "green": "#73e31e",
+    "blue": "#1cb8e8",
 }
 
 
