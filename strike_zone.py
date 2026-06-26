@@ -268,6 +268,59 @@ def _build_distribution_zone_outputs(filtered_df, metric):
     return pd.DataFrame(zone_rows), outer_stats, denominator
 
 
+def _build_k_distribution_zone_outputs(filtered_df):
+    working_df = _clean_batter_metric_dataframe(filtered_df)
+    if working_df.empty or "events" not in working_df.columns:
+        outer_stats = {
+            key: {"pitch_count": 0, "pitch_pct": 0.0}
+            for key in ("tl", "tr", "bl", "br")
+        }
+        return pd.DataFrame(), outer_stats, 0
+
+    working_df["_pa_key"] = _plate_appearance_key(working_df)
+    k_pa_keys = set(working_df.loc[working_df["events"].astype(str).str.lower().eq("strikeout"), "_pa_key"].astype(str))
+    k_df = working_df[working_df["_pa_key"].astype(str).isin(k_pa_keys)].copy()
+    k_df = _filter_display_zone_dataframe(k_df)
+
+    zone_counts = {zone["zone_id"]: 0 for zone in ZONE_LAYOUT}
+    outer_counts = {"tl": 0, "tr": 0, "bl": 0, "br": 0}
+    outer_zone_to_quad = {11: "tl", 12: "tr", 13: "bl", 14: "br"}
+
+    if not k_df.empty:
+        k_df["_zone_id"] = k_df["zone"].apply(_normalize_zone_value)
+        touched_zones = k_df[["_pa_key", "_zone_id"]].dropna().drop_duplicates()
+        for zone_id in touched_zones["_zone_id"].astype(int):
+            if zone_id in zone_counts:
+                zone_counts[zone_id] += 1
+            else:
+                key = outer_zone_to_quad.get(zone_id)
+                if key is not None:
+                    outer_counts[key] += 1
+
+    denominator = sum(zone_counts.values()) + sum(outer_counts.values())
+
+    zone_rows = []
+    for zone in ZONE_LAYOUT:
+        count = zone_counts[zone["zone_id"]]
+        zone_rows.append(
+            {
+                **zone,
+                "pitch_count": int(count),
+                "pitch_pct": (count / denominator * 100.0) if denominator else 0.0,
+            }
+        )
+
+    outer_stats = {
+        key: {
+            "pitch_count": int(count),
+            "pitch_pct": (count / denominator * 100.0) if denominator else 0.0,
+        }
+        for key, count in outer_counts.items()
+    }
+
+    return pd.DataFrame(zone_rows), outer_stats, denominator
+
+
 def _plate_appearance_key(df):
     if {"game_pk", "at_bat_number"}.issubset(df.columns):
         return (
@@ -308,56 +361,9 @@ def _build_metric_zone_dataframe(filtered_df, metric):
         zone_df, _, _ = _build_distribution_zone_outputs(working_df, metric)
         return zone_df
     elif metric == "K%":
-        if "events" not in working_df.columns:
-            return pd.DataFrame()
-        # Use plate appearances, not pitch rows, so zone K% behaves like Savant's pitch highlighter.
-        working_df["_pa_key"] = _plate_appearance_key(working_df)
-        k_pa_keys = set(working_df.loc[working_df["events"].astype(str).str.lower().eq("strikeout"), "_pa_key"].astype(str))
-    else:
-        return pd.DataFrame()
-
-    zone_counts = {zone["zone_id"]: 0 for zone in ZONE_LAYOUT}
-    zone_denominators = {zone["zone_id"]: 0 for zone in ZONE_LAYOUT}
-
-    if metric == "K%":
-        zone_pa_sets = {zone["zone_id"]: set() for zone in ZONE_LAYOUT}
-        zone_k_pa_sets = {zone["zone_id"]: set() for zone in ZONE_LAYOUT}
-
-        for zone_id, pa_key in zip(working_df["zone"].apply(_normalize_zone_value), working_df["_pa_key"].astype(str)):
-            if zone_id in zone_pa_sets:
-                zone_pa_sets[zone_id].add(pa_key)
-                if pa_key in k_pa_keys:
-                    zone_k_pa_sets[zone_id].add(pa_key)
-
-        for zone in ZONE_LAYOUT:
-            zone_id = zone["zone_id"]
-            zone_denominators[zone_id] = len(zone_pa_sets[zone_id])
-            zone_counts[zone_id] = len(zone_k_pa_sets[zone_id])
-    else:
-        if working_df.empty:
-            return pd.DataFrame()
-
-        zone_ids = metric_df["zone"].apply(_normalize_zone_value)
-        for zone_id in zone_ids.dropna().astype(int):
-            if zone_id in zone_counts:
-                zone_counts[zone_id] += 1
-
-        total = float(len(metric_df))
-
-    rows = []
-    for zone in ZONE_LAYOUT:
-        zone_id = zone["zone_id"]
-        count = zone_counts[zone_id]
-        total_for_zone = zone_denominators[zone_id] if metric == "K%" else total
-        rows.append(
-            {
-                **zone,
-                "pitch_count": int(count),
-                "pitch_pct": (count / total_for_zone * 100.0) if total_for_zone else 0.0,
-            }
-        )
-
-    return pd.DataFrame(rows)
+        zone_df, _, _ = _build_k_distribution_zone_outputs(working_df)
+        return zone_df
+    return pd.DataFrame()
 
 
 def _build_batter_metric_strike_zone_html(zone_df, outer_stats):
@@ -383,14 +389,10 @@ def display_batter_metric_strike_zone(batter_id, pitch_type, pitcher_throws="All
         return
 
     if metric == "K%":
-        zone_df = _build_metric_zone_dataframe(filtered_df, metric)
+        zone_df, outer_stats, _ = _build_k_distribution_zone_outputs(filtered_df)
         if zone_df.empty:
             st.info("Strike zone data is unavailable for this batter right now.")
             return
-
-        outer_df = filtered_df[filtered_df["zone"].apply(_normalize_zone_value).isin({11, 12, 13, 14})]
-        outer_total = len(outer_df)
-        outer_stats = _aggregate_outer_quadrants(outer_df, total_pitches=outer_total)
     else:
         zone_df, outer_stats, _ = _build_distribution_zone_outputs(filtered_df, metric)
     html = _build_batter_metric_strike_zone_html(zone_df, outer_stats)

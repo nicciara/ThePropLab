@@ -663,39 +663,26 @@ def display_batter_metric_strike_zone_fixed(batter_id, pitch_type, pitcher_throw
 
     metric = metric if metric in {"Pitch %", "Takes", "Batted Balls", "K%", "Home Runs"} else "Pitch %"
     if metric == "K%":
-        zone_df = strike_zone._build_metric_zone_dataframe(filtered_df, metric)
+        zone_df, outer_stats, k_denominator = strike_zone._build_k_distribution_zone_outputs(filtered_df)
         if zone_df.empty:
             st.info("Strike zone data is unavailable for this batter right now.")
             return
-
-        working_df = filtered_df.copy()
-        working_df["_pa_key"] = strike_zone._plate_appearance_key(working_df)
-        k_pa_keys = set(working_df.loc[working_df["events"].astype(str).str.lower().eq("strikeout"), "_pa_key"].astype(str))
-        zone_to_quad = {11: "tl", 12: "tr", 13: "bl", 14: "br"}
-        zone_pa_sets = {key: set() for key in zone_to_quad.values()}
-        zone_k_pa_sets = {key: set() for key in zone_to_quad.values()}
-        for zone_id, pa_key in zip(working_df["zone"].apply(strike_zone._normalize_zone_value), working_df["_pa_key"].astype(str)):
-            key = zone_to_quad.get(zone_id)
-            if key is not None:
-                zone_pa_sets[key].add(pa_key)
-                if pa_key in k_pa_keys:
-                    zone_k_pa_sets[key].add(pa_key)
-        outer_stats = {
-            key: {
-                "pitch_count": len(zone_k_pa_sets[key]),
-                "pitch_pct": (len(zone_k_pa_sets[key]) / len(zone_pa_sets[key]) * 100.0) if zone_pa_sets[key] else 0.0,
-            }
-            for key in ("tl", "tr", "bl", "br")
-        }
     else:
         zone_df, outer_stats, shared_denominator = strike_zone._build_distribution_zone_outputs(filtered_df, metric)
 
     html = strike_zone._build_batter_metric_strike_zone_html(zone_df, outer_stats)
     st.markdown(html, unsafe_allow_html=True)
-    if metric != "K%":
-        inner_percent_sum = float(zone_df["pitch_pct"].sum()) if "pitch_pct" in zone_df.columns else 0.0
-        outer_percent_sum = sum(float(outer_stats[key]["pitch_pct"]) for key in ("tl", "tr", "bl", "br"))
-        total_percent_sum = inner_percent_sum + outer_percent_sum
+    inner_percent_sum = float(zone_df["pitch_pct"].sum()) if "pitch_pct" in zone_df.columns else 0.0
+    outer_percent_sum = sum(float(outer_stats[key]["pitch_pct"]) for key in ("tl", "tr", "bl", "br"))
+    total_percent_sum = inner_percent_sum + outer_percent_sum
+    if metric == "K%":
+        st.caption(
+            f"inner_sum={inner_percent_sum:.1f} "
+            f"outer_sum={outer_percent_sum:.1f} "
+            f"total_sum={total_percent_sum:.1f} "
+            f"denominator_used={k_denominator}"
+        )
+    else:
         st.caption(
             f"inner_sum={inner_percent_sum:.1f} "
             f"outer_sum={outer_percent_sum:.1f} "
@@ -1652,7 +1639,7 @@ if st.session_state.get("selected_batter"):
             )
             if selected_metric == "K%":
                 st.markdown(
-                    "<div style='color:#b91c1c; font-size:12.5px; font-weight:600; line-height:1.35; text-align:left; margin:6px 0 0 0; padding:0 0 12px 12px;'>Note: K% includes plate appearances that ended in a strikeout AND plate appearances that did not.</div>",
+                    "<div style='color:#b91c1c; font-size:12.5px; font-weight:600; line-height:1.35; text-align:left; margin:6px 0 0 0; padding:0 0 12px 12px;'>Note: K% shows the zone-touch distribution for plate appearances that ended in a strikeout.</div>",
                     unsafe_allow_html=True,
                 )
         with batter_strike_zone_cols[1]:
