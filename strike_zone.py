@@ -522,6 +522,10 @@ def _build_strike_zone_html(zone_df, outer_stats, metric=None):
         }
         for key in ("tl", "tr", "bl", "br")
     }
+    outer_bg_html = "".join(
+        f'<div class="sz-quad-bg sz-quad-bg-{key}"{outer_html[key]["style"]}></div>'
+        for key in ("tl", "tr", "bl", "br")
+    )
 
     return f"""
     <style>
@@ -559,6 +563,17 @@ def _build_strike_zone_html(zone_df, outer_stats, metric=None):
         width: 2px;
         transform: translateX(-50%);
       }}
+            .sz-quad-bg {{
+                position: absolute;
+                width: 50%;
+                height: 50%;
+                z-index: 0;
+                background-color: var(--sz-bg, #fff) !important;
+            }}
+            .sz-quad-bg-tl {{ top: 0; left: 0; }}
+            .sz-quad-bg-tr {{ top: 0; left: 50%; }}
+            .sz-quad-bg-bl {{ top: 50%; left: 0; }}
+            .sz-quad-bg-br {{ top: 50%; left: 50%; }}
             .sz-quad {{
                 position: absolute;
                 z-index: 3;
@@ -606,11 +621,12 @@ def _build_strike_zone_html(zone_df, outer_stats, metric=None):
         color: #111;
         line-height: 1.35;
         box-sizing: border-box;
-        background: #fff;
+        background-color: var(--sz-bg, #fff) !important;
       }}
     </style>
     <div class="sz-chart-wrap">
       <div class="sz-outer">
+        {outer_bg_html}
         <div class="sz-cross-h"></div>
         <div class="sz-cross-v"></div>
         <div class="sz-quad sz-quad-tl"{outer_html["tl"]["style"]}>{outer_html["tl"]["text"]}</div>
