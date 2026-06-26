@@ -474,7 +474,7 @@ def _format_cell_text(count, pct, metric=None, zone_id=None):
 
 def _zone_background_style(metric, zone_id, pct):
     color = _zone_percentage_text_color(metric, zone_id, pct)
-    return f' style="background:{color};"' if color else ""
+    return f' style="background-color:{color} !important;"' if color else ""
 
 
 def _aggregate_outer_quadrants(statcast_df, total_pitches):
