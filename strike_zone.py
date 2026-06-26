@@ -469,11 +469,12 @@ def _zone_percentage_text_color(metric, zone_id, pct):
 
 
 def _format_cell_text(count, pct, metric=None, zone_id=None):
-    pct_text = f"{pct:.1f}%"
+    return f"{int(count)}<br>{pct:.1f}%"
+
+
+def _zone_background_style(metric, zone_id, pct):
     color = _zone_percentage_text_color(metric, zone_id, pct)
-    if color:
-        pct_text = f"<span style='color:{color};'>{pct_text}</span>"
-    return f"{int(count)}<br>{pct_text}"
+    return f' style="background:{color};"' if color else ""
 
 
 def _aggregate_outer_quadrants(statcast_df, total_pitches):
@@ -504,20 +505,21 @@ def _build_strike_zone_html(zone_df, outer_stats, metric=None):
     for zone_id in range(1, 10):
         row = zone_lookup.get(zone_id)
         if row is not None:
-            inner_cells.append(_format_cell_text(row["pitch_count"], row["pitch_pct"], metric=metric, zone_id=zone_id))
+            cell_text = _format_cell_text(row["pitch_count"], row["pitch_pct"], metric=metric, zone_id=zone_id)
+            cell_style = _zone_background_style(metric, zone_id, row["pitch_pct"])
         else:
-            inner_cells.append(_format_cell_text(0, 0.0, metric=metric, zone_id=zone_id))
+            cell_text = _format_cell_text(0, 0.0, metric=metric, zone_id=zone_id)
+            cell_style = _zone_background_style(metric, zone_id, 0.0)
+        inner_cells.append(f'<div class="sz-cell"{cell_style}>{cell_text}</div>')
 
-    inner_html = "".join(f'<div class="sz-cell">{text}</div>' for text in inner_cells)
+    inner_html = "".join(inner_cells)
 
     outer_zone_ids = {"tl": 11, "tr": 12, "bl": 13, "br": 14}
     outer_html = {
-        key: _format_cell_text(
-            outer_stats[key]["pitch_count"],
-            outer_stats[key]["pitch_pct"],
-            metric=metric,
-            zone_id=outer_zone_ids[key],
-        )
+        key: {
+            "text": _format_cell_text(outer_stats[key]["pitch_count"], outer_stats[key]["pitch_pct"]),
+            "style": _zone_background_style(metric, outer_zone_ids[key], outer_stats[key]["pitch_pct"]),
+        }
         for key in ("tl", "tr", "bl", "br")
     }
 
@@ -611,10 +613,10 @@ def _build_strike_zone_html(zone_df, outer_stats, metric=None):
       <div class="sz-outer">
         <div class="sz-cross-h"></div>
         <div class="sz-cross-v"></div>
-        <div class="sz-quad sz-quad-tl">{outer_html["tl"]}</div>
-        <div class="sz-quad sz-quad-tr">{outer_html["tr"]}</div>
-        <div class="sz-quad sz-quad-bl">{outer_html["bl"]}</div>
-        <div class="sz-quad sz-quad-br">{outer_html["br"]}</div>
+        <div class="sz-quad sz-quad-tl"{outer_html["tl"]["style"]}>{outer_html["tl"]["text"]}</div>
+        <div class="sz-quad sz-quad-tr"{outer_html["tr"]["style"]}>{outer_html["tr"]["text"]}</div>
+        <div class="sz-quad sz-quad-bl"{outer_html["bl"]["style"]}>{outer_html["bl"]["text"]}</div>
+        <div class="sz-quad sz-quad-br"{outer_html["br"]["style"]}>{outer_html["br"]["text"]}</div>
         <div class="sz-inner">
           {inner_html}
         </div>
