@@ -391,7 +391,7 @@ def _build_metric_zone_dataframe(filtered_df, metric):
     return pd.DataFrame()
 
 
-def _build_batter_metric_strike_zone_html(zone_df, outer_stats, metric=None):
+def _build_batter_metric_strike_zone_html(zone_df, outer_stats, metric=None, **_kwargs):
     return _build_strike_zone_html(zone_df, outer_stats, metric=metric)
 
 
