@@ -39,7 +39,7 @@ ZONE_METRIC_BASELINES = {
     }
 }
 
-ZONE_Z_SCORE_TEXT_COLORS = {
+ZONE_Z_SCORE_BACKGROUND_COLORS = {
     "red": "#dc2626",
     "orange": "#d97706",
     "green": "#16a34a",
@@ -449,7 +449,7 @@ def aggregate_to_zones(statcast_df, total_pitches=None):
     return pd.DataFrame(zone_rows)
 
 
-def _zone_percentage_text_color(metric, zone_id, pct):
+def _zone_background_color(metric, zone_id, pct):
     baseline = ZONE_METRIC_BASELINES.get(metric, {}).get(zone_id)
     if not baseline:
         return ""
@@ -460,20 +460,20 @@ def _zone_percentage_text_color(metric, zone_id, pct):
 
     z_score = (float(pct) - baseline["mean"]) / std
     if z_score < -0.75:
-        return ZONE_Z_SCORE_TEXT_COLORS["red"]
+        return ZONE_Z_SCORE_BACKGROUND_COLORS["red"]
     if z_score < 0.75:
-        return ZONE_Z_SCORE_TEXT_COLORS["orange"]
+        return ZONE_Z_SCORE_BACKGROUND_COLORS["orange"]
     if z_score < 1.50:
-        return ZONE_Z_SCORE_TEXT_COLORS["green"]
-    return ZONE_Z_SCORE_TEXT_COLORS["blue"]
+        return ZONE_Z_SCORE_BACKGROUND_COLORS["green"]
+    return ZONE_Z_SCORE_BACKGROUND_COLORS["blue"]
 
 
-def _format_cell_text(count, pct, metric=None, zone_id=None):
+def _format_cell_text(count, pct):
     return f"{int(count)}<br>{pct:.1f}%"
 
 
 def _zone_background_style(metric, zone_id, pct):
-    color = _zone_percentage_text_color(metric, zone_id, pct)
+    color = _zone_background_color(metric, zone_id, pct)
     return f' style="background-color:{color} !important;"' if color else ""
 
 
@@ -505,10 +505,10 @@ def _build_strike_zone_html(zone_df, outer_stats, metric=None):
     for zone_id in range(1, 10):
         row = zone_lookup.get(zone_id)
         if row is not None:
-            cell_text = _format_cell_text(row["pitch_count"], row["pitch_pct"], metric=metric, zone_id=zone_id)
+            cell_text = _format_cell_text(row["pitch_count"], row["pitch_pct"])
             cell_style = _zone_background_style(metric, zone_id, row["pitch_pct"])
         else:
-            cell_text = _format_cell_text(0, 0.0, metric=metric, zone_id=zone_id)
+            cell_text = _format_cell_text(0, 0.0)
             cell_style = _zone_background_style(metric, zone_id, 0.0)
         inner_cells.append(f'<div class="sz-cell"{cell_style}>{cell_text}</div>')
 
