@@ -21,6 +21,31 @@ ZONE_LAYOUT = [
 ]
 DISPLAY_ZONE_IDS = set(range(1, 10)) | {11, 12, 13, 14}
 
+ZONE_METRIC_BASELINES = {
+    "Pitch %": {
+        1: {"mean": 4.2779, "std": 0.8585},
+        2: {"mean": 5.3092, "std": 0.7895},
+        3: {"mean": 3.7112, "std": 0.8559},
+        4: {"mean": 5.5823, "std": 1.0416},
+        5: {"mean": 7.0652, "std": 0.7984},
+        6: {"mean": 5.5636, "std": 1.1518},
+        7: {"mean": 4.5870, "std": 1.1427},
+        8: {"mean": 6.1730, "std": 0.9133},
+        9: {"mean": 5.0530, "std": 1.1568},
+        11: {"mean": 12.1429, "std": 2.8654},
+        12: {"mean": 9.0247, "std": 2.0795},
+        13: {"mean": 13.3472, "std": 4.0073},
+        14: {"mean": 18.1630, "std": 4.8096},
+    }
+}
+
+ZONE_Z_SCORE_TEXT_COLORS = {
+    "red": "#dc2626",
+    "orange": "#d97706",
+    "green": "#16a34a",
+    "blue": "#2563eb",
+}
+
 
 def _normalize_zone_value(zone_value):
     if pd.isna(zone_value):
@@ -366,8 +391,8 @@ def _build_metric_zone_dataframe(filtered_df, metric):
     return pd.DataFrame()
 
 
-def _build_batter_metric_strike_zone_html(zone_df, outer_stats):
-    return _build_strike_zone_html(zone_df, outer_stats)
+def _build_batter_metric_strike_zone_html(zone_df, outer_stats, metric=None):
+    return _build_strike_zone_html(zone_df, outer_stats, metric=metric)
 
 
 def display_batter_metric_strike_zone(batter_id, pitch_type, pitcher_throws="All", metric="Pitch %"):
@@ -395,7 +420,7 @@ def display_batter_metric_strike_zone(batter_id, pitch_type, pitcher_throws="All
             return
     else:
         zone_df, outer_stats, _ = _build_distribution_zone_outputs(filtered_df, metric)
-    html = _build_batter_metric_strike_zone_html(zone_df, outer_stats)
+    html = _build_batter_metric_strike_zone_html(zone_df, outer_stats, metric=metric)
     st.markdown(html, unsafe_allow_html=True)
 
 
@@ -424,8 +449,31 @@ def aggregate_to_zones(statcast_df, total_pitches=None):
     return pd.DataFrame(zone_rows)
 
 
-def _format_cell_text(count, pct):
-    return f"{int(count)}<br>{pct:.1f}%"
+def _zone_percentage_text_color(metric, zone_id, pct):
+    baseline = ZONE_METRIC_BASELINES.get(metric, {}).get(zone_id)
+    if not baseline:
+        return ""
+
+    std = baseline.get("std", 0)
+    if not std:
+        return ""
+
+    z_score = (float(pct) - baseline["mean"]) / std
+    if z_score < -0.75:
+        return ZONE_Z_SCORE_TEXT_COLORS["red"]
+    if z_score < 0.75:
+        return ZONE_Z_SCORE_TEXT_COLORS["orange"]
+    if z_score < 1.50:
+        return ZONE_Z_SCORE_TEXT_COLORS["green"]
+    return ZONE_Z_SCORE_TEXT_COLORS["blue"]
+
+
+def _format_cell_text(count, pct, metric=None, zone_id=None):
+    pct_text = f"{pct:.1f}%"
+    color = _zone_percentage_text_color(metric, zone_id, pct)
+    if color:
+        pct_text = f"<span style='color:{color};'>{pct_text}</span>"
+    return f"{int(count)}<br>{pct_text}"
 
 
 def _aggregate_outer_quadrants(statcast_df, total_pitches):
@@ -449,21 +497,27 @@ def _aggregate_outer_quadrants(statcast_df, total_pitches):
     }
 
 
-def _build_strike_zone_html(zone_df, outer_stats):
+def _build_strike_zone_html(zone_df, outer_stats, metric=None):
     zone_lookup = {int(row["zone_id"]): row for _, row in zone_df.iterrows()}
 
     inner_cells = []
     for zone_id in range(1, 10):
         row = zone_lookup.get(zone_id)
         if row is not None:
-            inner_cells.append(_format_cell_text(row["pitch_count"], row["pitch_pct"]))
+            inner_cells.append(_format_cell_text(row["pitch_count"], row["pitch_pct"], metric=metric, zone_id=zone_id))
         else:
-            inner_cells.append("0<br>0.0%")
+            inner_cells.append(_format_cell_text(0, 0.0, metric=metric, zone_id=zone_id))
 
     inner_html = "".join(f'<div class="sz-cell">{text}</div>' for text in inner_cells)
 
+    outer_zone_ids = {"tl": 11, "tr": 12, "bl": 13, "br": 14}
     outer_html = {
-        key: _format_cell_text(outer_stats[key]["pitch_count"], outer_stats[key]["pitch_pct"])
+        key: _format_cell_text(
+            outer_stats[key]["pitch_count"],
+            outer_stats[key]["pitch_pct"],
+            metric=metric,
+            zone_id=outer_zone_ids[key],
+        )
         for key in ("tl", "tr", "bl", "br")
     }
 

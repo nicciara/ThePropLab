@@ -670,7 +670,7 @@ def display_batter_metric_strike_zone_fixed(batter_id, pitch_type, pitcher_throw
     else:
         zone_df, outer_stats, shared_denominator = strike_zone._build_distribution_zone_outputs(filtered_df, metric)
 
-    html = strike_zone._build_batter_metric_strike_zone_html(zone_df, outer_stats)
+    html = strike_zone._build_batter_metric_strike_zone_html(zone_df, outer_stats, metric=metric)
     st.markdown(html, unsafe_allow_html=True)
     inner_percent_sum = float(zone_df["pitch_pct"].sum()) if "pitch_pct" in zone_df.columns else 0.0
     outer_percent_sum = sum(float(outer_stats[key]["pitch_pct"]) for key in ("tl", "tr", "bl", "br"))
