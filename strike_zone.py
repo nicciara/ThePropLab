@@ -474,7 +474,7 @@ def _format_cell_text(count, pct):
 
 def _zone_background_style(metric, zone_id, pct):
     color = _zone_background_color(metric, zone_id, pct)
-    return f' style="background-color:{color} !important;"' if color else ""
+    return f' style="--sz-bg:{color}; background-color:{color} !important;"' if color else ""
 
 
 def _aggregate_outer_quadrants(statcast_df, total_pitches):
@@ -536,7 +536,7 @@ def _build_strike_zone_html(zone_df, outer_stats, metric=None):
                 max-width: 620px;
         aspect-ratio: 1;
         border: 2px solid #000;
-        background: #fff;
+        background-color: var(--sz-bg, #fff) !important;
         box-sizing: border-box;
       }}
       .sz-cross-h,
@@ -573,7 +573,7 @@ def _build_strike_zone_html(zone_df, outer_stats, metric=None):
                 width: auto;
                 height: auto;
                 padding: 2px 4px;
-                background: #fff;
+                background-color: var(--sz-bg, #fff) !important;
                 transform: translate(-50%, -50%);
             }}
             .sz-quad-tl {{ top: 14%; left: 14%; }}
@@ -591,7 +591,7 @@ def _build_strike_zone_html(zone_df, outer_stats, metric=None):
         grid-template-columns: repeat(3, 1fr);
         grid-template-rows: repeat(3, 1fr);
         border: 3px solid #000;
-        background: #fff;
+        background-color: var(--sz-bg, #fff) !important;
         box-sizing: border-box;
         z-index: 2;
       }}
