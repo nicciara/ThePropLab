@@ -917,6 +917,101 @@ def load_batter_hit_details_by_game_for_seasons(batter_id, seasons):
     return details_by_game
 
 
+@st.cache_data(ttl=86400)
+def load_game_starting_pitchers(game_pk):
+    game_key = normalize_game_pk(game_pk)
+    if not game_key:
+        return {}
+
+    url = f"https://statsapi.mlb.com/api/v1.1/game/{game_key}/feed/live"
+    try:
+        data = requests.get(url, timeout=20).json()
+    except Exception as exc:
+        logger.warning("Game starter feed request failed for game_pk=%s: %s", game_key, exc)
+        return {}
+
+    boxscore = data.get("liveData", {}).get("boxscore", {}).get("teams", {})
+    starters = {}
+    starter_ids = []
+    for side in ("away", "home"):
+        team = boxscore.get(side, {}) or {}
+        players = team.get("players", {}) or {}
+        pitcher_ids = team.get("pitchers", []) or []
+        starter_id = None
+        starter_name = ""
+        for pitcher_id in pitcher_ids:
+            player = players.get(f"ID{pitcher_id}", {}) or {}
+            pitching_stats = player.get("stats", {}).get("pitching", {}) or {}
+            try:
+                games_started = int(pitching_stats.get("gamesStarted", 0) or 0)
+            except (TypeError, ValueError):
+                games_started = 0
+            if games_started > 0:
+                starter_id = pitcher_id
+                starter_name = player.get("person", {}).get("fullName", "")
+                break
+
+        if not starter_id:
+            probable = data.get("gameData", {}).get("probablePitchers", {}).get(side, {}) or {}
+            starter_id = probable.get("id")
+            starter_name = probable.get("fullName", "")
+
+        try:
+            starter_id_int = int(starter_id) if starter_id else None
+        except (TypeError, ValueError):
+            starter_id_int = None
+        if starter_id_int:
+            starter_ids.append(starter_id_int)
+
+        starters[side] = {
+            "team_id": str(team.get("team", {}).get("id") or "").strip(),
+            "team_name": team.get("team", {}).get("name", ""),
+            "pitcher_id": starter_id_int,
+            "pitcher_name": starter_name or "N/A",
+            "pitcher_hand": "",
+        }
+
+    pitcher_info = get_players_info(tuple(starter_ids)) if starter_ids else {}
+    for side, starter in starters.items():
+        pitcher_id = starter.get("pitcher_id")
+        if pitcher_id and pitcher_info.get(pitcher_id):
+            starter["pitcher_name"] = pitcher_info[pitcher_id].get("fullName") or starter.get("pitcher_name") or "N/A"
+            starter["pitcher_hand"] = format_pitcher_hand(normalize_hand_code(pitcher_info[pitcher_id].get("pitchHand", "")))
+        if not starter.get("pitcher_name"):
+            starter["pitcher_name"] = "N/A"
+
+    return starters
+
+
+def game_log_starting_pitcher_tooltips(row):
+    starters = load_game_starting_pitchers(row.get("game_pk"))
+    if not starters:
+        return "N/A", "N/A"
+
+    opponent_id = str(row.get("opponent_team_id") or "").strip()
+    away_id = str(starters.get("away", {}).get("team_id") or "").strip()
+    home_id = str(starters.get("home", {}).get("team_id") or "").strip()
+
+    if opponent_id and opponent_id == away_id:
+        opponent_side = "away"
+        player_side = "home"
+    elif opponent_id and opponent_id == home_id:
+        opponent_side = "home"
+        player_side = "away"
+    else:
+        opponent_prefix = str(row.get("opponent", "")).strip()
+        opponent_side = "home" if opponent_prefix.startswith("@") else "away"
+        player_side = "home" if opponent_side == "away" else "away"
+
+    def _format_starter(side):
+        starter = starters.get(side, {}) or {}
+        name = starter.get("pitcher_name") or "N/A"
+        hand = starter.get("pitcher_hand") or ""
+        return f"{name} ({hand})" if name != "N/A" and hand else name
+
+    return _format_starter(player_side), _format_starter(opponent_side)
+
+
 def display_batter_metric_strike_zone_fixed(
     batter_id,
     pitch_type,
@@ -1338,8 +1433,9 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
     )
     display_log_df["tooltip_date"] = display_log_df["game_date"].apply(game_log_full_date_label)
     display_log_df["tooltip_game"] = display_log_df.apply(game_log_matchup_tooltip, axis=1)
-    display_log_df["tooltip_player_sp"] = "N/A"
-    display_log_df["tooltip_opponent_sp"] = "N/A"
+    starter_tooltips = display_log_df.apply(game_log_starting_pitcher_tooltips, axis=1)
+    display_log_df["tooltip_player_sp"] = starter_tooltips.apply(lambda value: value[0])
+    display_log_df["tooltip_opponent_sp"] = starter_tooltips.apply(lambda value: value[1])
     if "hits" in display_log_df.columns:
         display_log_df["tooltip_hits"] = pd.to_numeric(display_log_df["hits"], errors="coerce").fillna(0).astype(int)
     else:
