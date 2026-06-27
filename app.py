@@ -128,7 +128,16 @@ st.markdown(
     .nav-name-link:hover{color:var(--dash-accent)!important;text-decoration:underline!important}
     div[data-testid="stSegmentedControl"] div[role="radiogroup"]{overflow-x:auto;flex-wrap:nowrap}
     div[data-testid="stSegmentedControl"] label{white-space:pre-line;line-height:1.2}
-    .st-key-selected_prop div[data-testid="stSegmentedControl"]{
+    .st-key-prop_selector_scroll,
+    .st-key-prop_selector_scroll > div,
+    .st-key-prop_selector_scroll [data-testid="stVerticalBlock"],
+    .st-key-prop_selector_scroll [data-testid="stElementContainer"],
+    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"]{
+        max-width:100%;
+    }
+    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"]{
+        display:block;
+        width:100%;
         overflow-x:auto;
         overflow-y:hidden;
         padding:0 6px 6px 6px;
@@ -137,24 +146,28 @@ st.markdown(
         scrollbar-width:thin;
         scrollbar-color:var(--dash-control-border) transparent;
     }
-    .st-key-selected_prop div[data-testid="stSegmentedControl"]::-webkit-scrollbar{
+    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"]::-webkit-scrollbar{
         height:6px;
     }
-    .st-key-selected_prop div[data-testid="stSegmentedControl"]::-webkit-scrollbar-track{
+    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"]::-webkit-scrollbar-track{
         background:transparent;
     }
-    .st-key-selected_prop div[data-testid="stSegmentedControl"]::-webkit-scrollbar-thumb{
+    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"]::-webkit-scrollbar-thumb{
         background:var(--dash-control-border);
         border-radius:999px;
     }
-    .st-key-selected_prop div[data-testid="stSegmentedControl"] div[role="radiogroup"]{
+    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"] div[role="radiogroup"],
+    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"] [data-baseweb="radio-group"]{
         display:flex;
         flex-wrap:nowrap!important;
-        width:max-content;
-        min-width:100%;
+        width:max-content!important;
+        min-width:max-content!important;
     }
-    .st-key-selected_prop div[data-testid="stSegmentedControl"] label{
+    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"] label{
         flex:0 0 auto;
+        white-space:nowrap!important;
+    }
+    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"] label > div{
         white-space:nowrap!important;
     }
     .st-key-game_log_range_tiles [data-testid="stHorizontalBlock"]{overflow-x:auto;flex-wrap:nowrap;gap:0.65rem}
@@ -2494,12 +2507,13 @@ if st.session_state.get("selected_batter"):
     with st.container(border=True):
         if st.session_state.get("selected_prop") not in GAME_LOG_PROPS:
             st.session_state["selected_prop"] = "Hits"
-        selected_prop = st.segmented_control(
-            "Prop",
-            GAME_LOG_PROPS,
-            key="selected_prop",
-            label_visibility="collapsed",
-        )
+        with st.container(key="prop_selector_scroll"):
+            selected_prop = st.segmented_control(
+                "Prop",
+                GAME_LOG_PROPS,
+                key="selected_prop",
+                label_visibility="collapsed",
+            )
         if selected_prop not in GAME_LOG_PROPS:
             selected_prop = "Hits"
 
