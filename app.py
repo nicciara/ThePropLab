@@ -706,6 +706,44 @@ def display_batter_metric_strike_zone_fixed(
 strike_zone.display_batter_metric_strike_zone = display_batter_metric_strike_zone_fixed
 
 
+def batter_heatmap_legend_html(heatmap_scale):
+    colors = strike_zone.ZONE_Z_SCORE_BACKGROUND_COLORS
+    if heatmap_scale == strike_zone.HEATMAP_SCALE_SELF:
+        title = "HEATMAP KEY (Vs. Self)"
+        rows = [
+            ("blue", "Most frequent zones for this hitter"),
+            ("green", "Above this hitter's normal zone frequency"),
+            ("orange", "Below this hitter's normal zone frequency"),
+            ("red", "Least frequent zones for this hitter"),
+        ]
+        note = "Compared only to this hitter's own 13-zone distribution."
+    else:
+        title = "HEATMAP KEY (Vs. League Average)"
+        rows = [
+            ("blue", "Elite / Much higher than league average"),
+            ("green", "Above average"),
+            ("orange", "Around average"),
+            ("red", "Below average"),
+        ]
+        note = "Compared to qualified MLB hitters for the selected metric and zone."
+
+    row_html = "".join(
+        "<div style='display:flex; align-items:center; gap:7px; margin:3px 0;'>"
+        f"<span style='display:inline-block; width:11px; height:11px; border:1px solid #111; background:{colors[color_key]}; flex:0 0 auto;'></span>"
+        f"<span>{label}</span>"
+        "</div>"
+        for color_key, label in rows
+    )
+    return (
+        "<div style='border:1px solid #d1d5db; border-radius:6px; padding:7px 8px; margin:8px 0 8px 0; "
+        "font-size:11.5px; line-height:1.25; color:#111; background:#fff;'>"
+        f"<div style='font-weight:800; font-size:11px; letter-spacing:0.02em; margin-bottom:5px;'>{title}</div>"
+        f"{row_html}"
+        f"<div style='font-size:10.5px; color:#374151; margin-top:5px;'>{note}</div>"
+        "</div>"
+    )
+
+
 def normalize_hand_code(code):
     if code in {"L", "R"}:
         return code
@@ -1653,6 +1691,10 @@ if st.session_state.get("selected_batter"):
                 [strike_zone.HEATMAP_SCALE_LEAGUE, strike_zone.HEATMAP_SCALE_SELF],
                 index=0,
                 key=f"batter_strike_zone_heatmap_scale_{batter_id}",
+            )
+            st.markdown(
+                batter_heatmap_legend_html(selected_heatmap_scale),
+                unsafe_allow_html=True,
             )
             if selected_metric == "K%":
                 st.markdown(
