@@ -643,7 +643,13 @@ def load_batter_prop_game_log(batter_id):
     return game_log
 
 
-def display_batter_metric_strike_zone_fixed(batter_id, pitch_type, pitcher_throws="All", metric="Pitch %"):
+def display_batter_metric_strike_zone_fixed(
+    batter_id,
+    pitch_type,
+    pitcher_throws="All",
+    metric="Pitch %",
+    heatmap_scale=strike_zone.HEATMAP_SCALE_LEAGUE,
+):
     season_year = date.today().year
     start_date = f"{season_year}-03-01"
     end_date = date.today().isoformat()
@@ -670,7 +676,12 @@ def display_batter_metric_strike_zone_fixed(batter_id, pitch_type, pitcher_throw
     else:
         zone_df, outer_stats, shared_denominator = strike_zone._build_distribution_zone_outputs(filtered_df, metric)
 
-    html = strike_zone._build_batter_metric_strike_zone_html(zone_df, outer_stats, metric=metric)
+    html = strike_zone._build_batter_metric_strike_zone_html(
+        zone_df,
+        outer_stats,
+        metric=metric,
+        heatmap_scale=heatmap_scale,
+    )
     st.markdown(html, unsafe_allow_html=True)
     inner_percent_sum = float(zone_df["pitch_pct"].sum()) if "pitch_pct" in zone_df.columns else 0.0
     outer_percent_sum = sum(float(outer_stats[key]["pitch_pct"]) for key in ("tl", "tr", "bl", "br"))
@@ -1637,13 +1648,25 @@ if st.session_state.get("selected_batter"):
                 index=0,
                 key=f"batter_strike_zone_metric_{batter_id}",
             )
+            selected_heatmap_scale = st.selectbox(
+                "Heatmap Scale",
+                [strike_zone.HEATMAP_SCALE_LEAGUE, strike_zone.HEATMAP_SCALE_SELF],
+                index=0,
+                key=f"batter_strike_zone_heatmap_scale_{batter_id}",
+            )
             if selected_metric == "K%":
                 st.markdown(
                     "<div style='color:#b91c1c; font-size:12.5px; font-weight:600; line-height:1.35; text-align:left; margin:6px 0 0 0; padding:0 0 12px 12px;'>Note: K% shows the zone-touch distribution for plate appearances that ended in a strikeout.</div>",
                     unsafe_allow_html=True,
                 )
         with batter_strike_zone_cols[1]:
-            strike_zone.display_batter_metric_strike_zone(batter_id, selected_pitch_type, selected_pitcher_throws, selected_metric)
+            strike_zone.display_batter_metric_strike_zone(
+                batter_id,
+                selected_pitch_type,
+                selected_pitcher_throws,
+                selected_metric,
+                selected_heatmap_scale,
+            )
 
     with st.container(border=True):
         lineup_team = lineup_context.get(f"{lineup_side}_team", sb.get("team", "")) if lineup_side else sb.get("team", "")
