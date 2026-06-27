@@ -71,6 +71,13 @@ st.markdown(
     """
     <style>
     :root{
+        --dash-page-bg:linear-gradient(180deg,#f7faff 0%, #f3f7ff 100%);
+        --dash-card-bg:#ffffff;
+        --dash-text:#0b1220;
+        --dash-muted:#475569;
+        --dash-control-bg:#ffffff;
+        --dash-control-text:#111827;
+        --dash-control-border:#cbd5e1;
         --dash-surface:#edf4ff;
         --dash-surface-2:#e3eeff;
         --dash-border:#5f7598;
@@ -80,8 +87,27 @@ st.markdown(
         --dash-value:#0b1220;
         --dash-accent:#0057d8;
     }
+    @media (prefers-color-scheme: dark){
+        :root{
+            --dash-page-bg:linear-gradient(180deg,#07111f 0%, #0b1526 100%);
+            --dash-card-bg:#0f1b2d;
+            --dash-text:#e5edf8;
+            --dash-muted:#b7c4d8;
+            --dash-border:#4f6688;
+            --dash-control-bg:#111c2e;
+            --dash-control-text:#f8fafc;
+            --dash-control-border:#5f7598;
+            --dash-surface:#102033;
+            --dash-surface-2:#16283f;
+            --dash-shadow:0 10px 24px rgba(0,0,0,0.34);
+            --dash-title:#f8fafc;
+            --dash-label:#cbd5e1;
+            --dash-value:#f1f5f9;
+            --dash-accent:#7dd3fc;
+        }
+    }
     section[data-testid="stMain"] .block-container{padding-bottom:1rem}
-    section[data-testid="stMain"]{background:linear-gradient(180deg,#f7faff 0%, #f3f7ff 100%)}
+    section[data-testid="stMain"]{background:var(--dash-page-bg);color:var(--dash-text)}
     section[data-testid="stMain"] [data-testid="stVerticalBlock"]{gap:0.5rem}
     section[data-testid="stMain"] [data-testid="stHorizontalBlock"]{gap:0.75rem}
     section[data-testid="stMain"] h1,section[data-testid="stMain"] h2,section[data-testid="stMain"] h3{margin-top:0.2rem;margin-bottom:0.45rem}
@@ -89,8 +115,9 @@ st.markdown(
     section[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]{
         border:2px solid var(--dash-border)!important;
         border-radius:16px!important;
-        background:#ffffff!important;
+        background:var(--dash-card-bg)!important;
         box-shadow:var(--dash-shadow)!important;
+        color:var(--dash-text)!important;
     }
     .game-card{padding:10px 14px 20px 14px;box-sizing:border-box}
     .game-card .lineup-area{padding:8px 6px}
@@ -128,7 +155,7 @@ st.markdown(
         box-shadow:0 0 0 2px rgba(56,189,248,0.22),0 10px 20px rgba(15,23,42,0.28);
         color:#ffffff;
     }
-    .line-badge{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:6px 12px;border:1px solid #ddd;border-radius:999px;min-width:120px;background:#f8fafc;box-shadow:0 1px 2px rgba(15,23,42,0.04);white-space:nowrap}
+    .line-badge{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:6px 12px;border:1px solid var(--dash-control-border);border-radius:999px;min-width:120px;background:var(--dash-card-bg);box-shadow:0 1px 2px rgba(15,23,42,0.04);white-space:nowrap}
     .line-value{font-weight:700;font-size:22px;color:var(--dash-title);line-height:1}
     .book-badge,.boost-badge{display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;line-height:1;padding:4px 8px;border-radius:999px;white-space:nowrap}
     .book-badge{background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd}
@@ -140,7 +167,7 @@ st.markdown(
     .dash-card{
         border:2px solid var(--dash-border);
         border-radius:16px;
-        background:#ffffff;
+        background:var(--dash-card-bg);
         box-shadow:var(--dash-shadow);
         padding:14px 16px;
         position:relative;
@@ -154,21 +181,64 @@ st.markdown(
     .dash-value{font-weight:800;color:var(--dash-value);font-size:14px}
     .dash-accent{font-weight:800;color:var(--dash-accent)}
     .section-title-strong{font-weight:900;font-size:24px;color:var(--dash-title);margin-bottom:10px;line-height:1.15;letter-spacing:0.01em}
+    section[data-testid="stMain"] [data-testid="stWidgetLabel"] label,
+    section[data-testid="stMain"] [data-testid="stWidgetLabel"] p{
+        color:var(--dash-text)!important;
+    }
     section[data-testid="stMain"] [data-baseweb="select"]{
         filter:none!important;
         zoom:1!important;
+    }
+    section[data-testid="stMain"] [data-baseweb="select"] > div{
+        background-color:var(--dash-control-bg)!important;
+        border-color:var(--dash-control-border)!important;
+        color:var(--dash-control-text)!important;
     }
     section[data-testid="stMain"] [data-baseweb="select"] div,
     section[data-testid="stMain"] [data-baseweb="select"] span{
         filter:none!important;
         font-weight:400!important;
-        color:#111827!important;
+        color:var(--dash-control-text)!important;
         line-height:1.35!important;
         text-rendering:auto;
         -webkit-font-smoothing:auto;
     }
+    section[data-testid="stMain"] [data-baseweb="select"] input{
+        color:var(--dash-control-text)!important;
+    }
+    section[data-testid="stMain"] [data-baseweb="select"] input::placeholder{
+        color:var(--dash-muted)!important;
+        opacity:1!important;
+    }
     section[data-testid="stMain"] [data-baseweb="select"] svg{
         filter:none!important;
+        color:var(--dash-control-text)!important;
+        fill:var(--dash-control-text)!important;
+    }
+    div[data-baseweb="popover"] [role="listbox"],
+    div[data-baseweb="popover"] ul,
+    div[data-baseweb="menu"]{
+        background-color:var(--dash-control-bg)!important;
+        color:var(--dash-control-text)!important;
+        border-color:var(--dash-control-border)!important;
+    }
+    div[data-baseweb="popover"] [role="option"],
+    div[data-baseweb="popover"] li,
+    div[data-baseweb="menu"] li{
+        background-color:var(--dash-control-bg)!important;
+        color:var(--dash-control-text)!important;
+    }
+    div[data-baseweb="popover"] [role="option"] *,
+    div[data-baseweb="popover"] li *,
+    div[data-baseweb="menu"] li *{
+        color:var(--dash-control-text)!important;
+    }
+    div[data-baseweb="popover"] [role="option"]:hover,
+    div[data-baseweb="popover"] li:hover,
+    div[data-baseweb="menu"] li:hover,
+    div[data-baseweb="popover"] [aria-selected="true"]{
+        background-color:var(--dash-surface-2)!important;
+        color:var(--dash-control-text)!important;
     }
     </style>
     """,
@@ -537,7 +607,7 @@ def run_value_title_with_legend_html():
     return (
         "<div style='display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:10px;'>"
         "<div class='section-title-strong' style='margin-bottom:0;'>Run Value by Pitch Type</div>"
-        f"<div style='display:flex; align-items:center; gap:14px; flex-wrap:wrap; color:#111; font-size:12px; font-weight:700;'>{legend_html}</div>"
+        f"<div style='display:flex; align-items:center; gap:14px; flex-wrap:wrap; color:var(--dash-text); font-size:12px; font-weight:700;'>{legend_html}</div>"
         "</div>"
     )
 
@@ -1173,17 +1243,17 @@ def batter_heatmap_legend_html(heatmap_scale):
 
     row_html = "".join(
         "<div style='display:flex; align-items:center; gap:7px; margin:3px 0;'>"
-        f"<span style='display:inline-block; width:11px; height:11px; border:1px solid #111; background:{colors[color_key]}; flex:0 0 auto;'></span>"
+        f"<span style='display:inline-block; width:11px; height:11px; border:1px solid var(--dash-text); background:{colors[color_key]}; flex:0 0 auto;'></span>"
         f"<span>{label}</span>"
         "</div>"
         for color_key, label in rows
     )
     return (
-        "<div style='border:1px solid #d1d5db; border-radius:6px; padding:7px 8px; margin:8px 0 8px 0; "
-        "font-size:11.5px; line-height:1.25; color:#111; background:#fff;'>"
+        "<div style='border:1px solid var(--dash-control-border); border-radius:6px; padding:7px 8px; margin:8px 0 8px 0; "
+        "font-size:11.5px; line-height:1.25; color:var(--dash-text); background:var(--dash-card-bg);'>"
         f"<div style='font-weight:800; font-size:11px; letter-spacing:0.02em; margin-bottom:5px;'>{title}</div>"
         f"{row_html}"
-        f"<div style='font-size:10.5px; color:#374151; margin-top:5px;'>{note}</div>"
+        f"<div style='font-size:10.5px; color:var(--dash-muted); margin-top:5px;'>{note}</div>"
         "</div>"
     )
 
@@ -1211,17 +1281,17 @@ def pitcher_heatmap_legend_html(heatmap_scale):
 
     row_html = "".join(
         "<div style='display:flex; align-items:center; gap:7px; margin:3px 0;'>"
-        f"<span style='display:inline-block; width:11px; height:11px; border:1px solid #111; background:{colors[color_key]}; flex:0 0 auto;'></span>"
+        f"<span style='display:inline-block; width:11px; height:11px; border:1px solid var(--dash-text); background:{colors[color_key]}; flex:0 0 auto;'></span>"
         f"<span>{label}</span>"
         "</div>"
         for color_key, label in rows
     )
     return (
-        "<div style='border:1px solid #d1d5db; border-radius:6px; padding:7px 8px; margin:8px 0 8px 0; "
-        "font-size:11.5px; line-height:1.25; color:#111; background:#fff;'>"
+        "<div style='border:1px solid var(--dash-control-border); border-radius:6px; padding:7px 8px; margin:8px 0 8px 0; "
+        "font-size:11.5px; line-height:1.25; color:var(--dash-text); background:var(--dash-card-bg);'>"
         f"<div style='font-weight:800; font-size:11px; letter-spacing:0.02em; margin-bottom:5px;'>{title}</div>"
         f"{row_html}"
-        f"<div style='font-size:10.5px; color:#374151; margin-top:5px;'>{note}</div>"
+        f"<div style='font-size:10.5px; color:var(--dash-muted); margin-top:5px;'>{note}</div>"
         "</div>"
     )
 
