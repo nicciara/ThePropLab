@@ -128,6 +128,35 @@ st.markdown(
     .nav-name-link:hover{color:var(--dash-accent)!important;text-decoration:underline!important}
     div[data-testid="stSegmentedControl"] div[role="radiogroup"]{overflow-x:auto;flex-wrap:nowrap}
     div[data-testid="stSegmentedControl"] label{white-space:pre-line;line-height:1.2}
+    .st-key-selected_prop div[data-testid="stSegmentedControl"]{
+        overflow-x:auto;
+        overflow-y:hidden;
+        padding:0 6px 6px 6px;
+        scroll-behavior:smooth;
+        -webkit-overflow-scrolling:touch;
+        scrollbar-width:thin;
+        scrollbar-color:var(--dash-control-border) transparent;
+    }
+    .st-key-selected_prop div[data-testid="stSegmentedControl"]::-webkit-scrollbar{
+        height:6px;
+    }
+    .st-key-selected_prop div[data-testid="stSegmentedControl"]::-webkit-scrollbar-track{
+        background:transparent;
+    }
+    .st-key-selected_prop div[data-testid="stSegmentedControl"]::-webkit-scrollbar-thumb{
+        background:var(--dash-control-border);
+        border-radius:999px;
+    }
+    .st-key-selected_prop div[data-testid="stSegmentedControl"] div[role="radiogroup"]{
+        display:flex;
+        flex-wrap:nowrap!important;
+        width:max-content;
+        min-width:100%;
+    }
+    .st-key-selected_prop div[data-testid="stSegmentedControl"] label{
+        flex:0 0 auto;
+        white-space:nowrap!important;
+    }
     .st-key-game_log_range_tiles [data-testid="stHorizontalBlock"]{overflow-x:auto;flex-wrap:nowrap;gap:0.65rem}
     .st-key-game_log_range_tiles .stButton>button{
         min-width:132px;
