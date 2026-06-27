@@ -641,11 +641,10 @@ def style_run_value_table(df):
 
 
 @st.cache_data(ttl=1800)
-def load_batter_prop_game_log(batter_id):
+def load_batter_prop_game_log(batter_id, season_year=2026):
     if not batter_id:
         return pd.DataFrame()
 
-    season_year = 2026
     url = f"https://statsapi.mlb.com/api/v1/people/{batter_id}/stats"
     params = {"stats": "gameLog", "group": "hitting", "season": season_year, "sportIds": 1}
 
@@ -670,16 +669,23 @@ def load_batter_prop_game_log(batter_id):
             continue
         opponent = split.get("opponent", {}) or {}
         opponent_label = opponent.get("abbreviation") or opponent.get("teamName") or opponent.get("name", "")
+        opponent_name = opponent.get("name") or opponent.get("teamName") or opponent_label
         raw_is_home = split.get("isHome", False)
         is_home = raw_is_home if isinstance(raw_is_home, bool) else str(raw_is_home).lower() == "true"
         prefix = "" if is_home else "@"
+        game = split.get("game", {}) or {}
         hits = _int_stat(stat, "hits")
         runs = _int_stat(stat, "runs")
         rbi = _int_stat(stat, "rbi")
         rows.append(
             {
+                "game_pk": game.get("gamePk") or game.get("id") or "",
+                "season": int(season_year),
                 "game_date": game_date,
                 "opponent": f"{prefix}{opponent_label}" if opponent_label else "",
+                "opponent_team_id": opponent.get("id", ""),
+                "opponent_name": opponent_name,
+                "opponent_abbrev": opponent.get("abbreviation") or "",
                 "hits": hits,
                 "runs": runs,
                 "rbi": rbi,
@@ -700,6 +706,58 @@ def load_batter_prop_game_log(batter_id):
         axis=1,
     )
     return game_log
+
+
+@st.cache_data(ttl=86400)
+def load_batter_prop_game_log_seasons(batter_id):
+    if not batter_id:
+        return []
+
+    url = f"https://statsapi.mlb.com/api/v1/people/{batter_id}/stats"
+    params = {"stats": "yearByYear", "group": "hitting", "sportIds": 1}
+    try:
+        data = requests.get(url, params=params, timeout=20).json()
+    except Exception as exc:
+        logger.warning("MLB batter year-by-year request failed for %s: %s", batter_id, exc)
+        return [date.today().year]
+
+    seasons = []
+    current_year = date.today().year
+    splits = data.get("stats", [{}])[0].get("splits", []) if data.get("stats") else []
+    for split in splits:
+        try:
+            season = int(split.get("season"))
+        except (TypeError, ValueError):
+            continue
+        if season <= current_year:
+            seasons.append(season)
+
+    return sorted(set(seasons))
+
+
+@st.cache_data(ttl=86400)
+def load_batter_prop_all_game_logs(batter_id):
+    seasons = load_batter_prop_game_log_seasons(batter_id)
+    if not seasons:
+        seasons = [date.today().year]
+
+    frames = []
+    for season in seasons:
+        season_df = load_batter_prop_game_log(batter_id, season_year=season)
+        if not season_df.empty:
+            frames.append(season_df)
+
+    if not frames:
+        return pd.DataFrame()
+
+    all_logs = pd.concat(frames, ignore_index=True).sort_values("game_date").reset_index(drop=True)
+    if "game_pk" in all_logs.columns:
+        has_game_pk = all_logs["game_pk"].astype(str).str.strip() != ""
+        logs_with_game_pk = all_logs[has_game_pk].drop_duplicates(subset=["game_pk", "game_date"], keep="last")
+        logs_without_game_pk = all_logs[~has_game_pk]
+        all_logs = pd.concat([logs_without_game_pk, logs_with_game_pk], ignore_index=True)
+        all_logs = all_logs.sort_values("game_date").reset_index(drop=True)
+    return all_logs.reset_index(drop=True)
 
 
 def display_batter_metric_strike_zone_fixed(
@@ -803,18 +861,29 @@ def batter_heatmap_legend_html(heatmap_scale):
     )
 
 
-def prop_hit_rate_sample_summary(game_log_df, prop_column, selected_prop_line, sample_label):
+def game_log_sample_dataframe(game_log_df, sample_label):
     if sample_label in {"L5", "L10", "L15"}:
-        sample_df = game_log_df.tail(int(sample_label[1:])).copy()
-    else:
-        sample_df = game_log_df.copy()
+        return game_log_df.tail(int(sample_label[1:])).copy()
+    return game_log_df.copy()
 
+
+def prop_hit_rate_summary_for_df(sample_df, prop_column, selected_prop_line, empty_hit_rate_text="--", empty_avg_text="--"):
     if sample_df.empty or prop_column not in sample_df.columns:
-        return {"hit_rate_text": "--", "avg_text": "--", "indicator": ""}
+        return {
+            "hit_rate_text": empty_hit_rate_text,
+            "avg_text": empty_avg_text,
+            "indicator": "",
+            "games": 0,
+        }
 
     values = pd.to_numeric(sample_df[prop_column], errors="coerce").dropna()
     if values.empty:
-        return {"hit_rate_text": "--", "avg_text": "--", "indicator": ""}
+        return {
+            "hit_rate_text": empty_hit_rate_text,
+            "avg_text": empty_avg_text,
+            "indicator": "",
+            "games": 0,
+        }
 
     hit_rate = float((values >= selected_prop_line).mean() * 100.0)
     avg_value = float(values.mean())
@@ -829,12 +898,63 @@ def prop_hit_rate_sample_summary(game_log_df, prop_column, selected_prop_line, s
         "hit_rate_text": f"{hit_rate:.0f}%",
         "avg_text": f"{avg_value:.2f}",
         "indicator": indicator,
+        "games": int(len(values)),
     }
 
 
-def prop_hit_rate_sample_summaries(game_log_df, prop_column, selected_prop_line):
+def prop_hit_rate_sample_summary(game_log_df, prop_column, selected_prop_line, sample_label, opponent_context=None):
+    sample_df = game_log_sample_dataframe(game_log_df, sample_label)
+    if opponent_context:
+        sample_df = filter_game_logs_vs_opponent(sample_df, opponent_context)
+    return prop_hit_rate_summary_for_df(sample_df, prop_column, selected_prop_line)
+
+
+def prop_h2h_summary(game_log_df, prop_column, selected_prop_line, opponent_context):
+    h2h_df = filter_game_logs_vs_opponent(game_log_df, opponent_context)
+    return prop_hit_rate_summary_for_df(h2h_df, prop_column, selected_prop_line, empty_hit_rate_text="N/A", empty_avg_text="—")
+
+
+def strip_game_log_opponent_prefix(value):
+    return str(value or "").strip().lstrip("@").strip()
+
+
+def filter_game_logs_vs_opponent(game_log_df, opponent_context):
+    if game_log_df.empty or not opponent_context:
+        return game_log_df.iloc[0:0].copy()
+
+    opponent_id = str(opponent_context.get("id") or "").strip()
+    if opponent_id and "opponent_team_id" in game_log_df.columns:
+        opponent_ids = game_log_df["opponent_team_id"].astype(str).str.strip()
+        return game_log_df[opponent_ids == opponent_id].copy()
+
+    opponent_keys = {
+        normalize_name(opponent_context.get("name", "")),
+        normalize_name(opponent_context.get("abbr", "")),
+    }
+    opponent_keys.discard("")
+    if not opponent_keys:
+        return game_log_df.iloc[0:0].copy()
+
+    candidate_columns = [column for column in ("opponent_name", "opponent_abbrev", "opponent") if column in game_log_df.columns]
+    if not candidate_columns:
+        return game_log_df.iloc[0:0].copy()
+
+    mask = pd.Series(False, index=game_log_df.index)
+    for column in candidate_columns:
+        normalized_values = game_log_df[column].apply(lambda value: normalize_name(strip_game_log_opponent_prefix(value)))
+        mask = mask | normalized_values.isin(opponent_keys)
+    return game_log_df[mask].copy()
+
+
+def prop_hit_rate_sample_summaries(game_log_df, prop_column, selected_prop_line, opponent_context=None):
     return {
-        sample_label: prop_hit_rate_sample_summary(game_log_df, prop_column, selected_prop_line, sample_label)
+        sample_label: prop_hit_rate_sample_summary(
+            game_log_df,
+            prop_column,
+            selected_prop_line,
+            sample_label,
+            opponent_context=opponent_context,
+        )
         for sample_label in GAME_LOG_SAMPLE_RANGES
     }
 
@@ -846,6 +966,79 @@ def prop_hit_rate_sample_label(sample_label, summaries):
     avg_text = summary.get("avg_text", "--")
     hr_prefix = f"{indicator} HR" if indicator else "HR"
     return f"**{sample_label}**\n{hr_prefix} {hit_rate_text}\nAvg {avg_text}"
+
+
+def prop_h2h_tile_label(summary):
+    if not summary or summary.get("games", 0) <= 0:
+        return "**H2H**\nN/A\nAvg —"
+    indicator = summary.get("indicator", "")
+    hit_rate_text = summary.get("hit_rate_text", "N/A")
+    avg_text = summary.get("avg_text", "—")
+    hr_prefix = f"{indicator} HR" if indicator else "HR"
+    return f"**H2H**\n{hr_prefix} {hit_rate_text}\nAvg {avg_text}"
+
+
+def selected_batter_opponent_context(sb, game_pk, lineup_context, lineup_side):
+    context = {
+        "id": str(sb.get("opponent_id") or "").strip(),
+        "name": str(sb.get("opponent") or "").strip(),
+        "abbr": "",
+    }
+
+    if lineup_side in {"away", "home"}:
+        opponent_side = "home" if lineup_side == "away" else "away"
+        context["id"] = context["id"] or str(lineup_context.get(f"{opponent_side}_team_id") or "").strip()
+        context["name"] = context["name"] or str(lineup_context.get(f"{opponent_side}_team") or "").strip()
+        context["abbr"] = str(lineup_context.get(f"{opponent_side}_abbrev") or "").strip()
+
+    if context["id"] or context["name"]:
+        return context
+
+    if not game_pk:
+        return context
+
+    try:
+        schedule_df = load_schedule(date.today())
+    except Exception as exc:
+        logger.warning("Unable to resolve H2H opponent from schedule for game_pk=%s: %s", game_pk, exc)
+        return context
+
+    if schedule_df.empty or "game_pk" not in schedule_df.columns:
+        return context
+
+    game_match = schedule_df[schedule_df["game_pk"].astype(str) == str(game_pk)]
+    if game_match.empty:
+        return context
+
+    game = game_match.iloc[0].to_dict()
+    batter_team_key = normalize_name(sb.get("team", ""))
+    if batter_team_key and normalize_name(game.get("away_team", "")) == batter_team_key:
+        return {
+            "id": str(game.get("home_team_id") or "").strip(),
+            "name": str(game.get("home_team") or "").strip(),
+            "abbr": str(game.get("home_abbrev") or "").strip(),
+        }
+    if batter_team_key and normalize_name(game.get("home_team", "")) == batter_team_key:
+        return {
+            "id": str(game.get("away_team_id") or "").strip(),
+            "name": str(game.get("away_team") or "").strip(),
+            "abbr": str(game.get("away_abbrev") or "").strip(),
+        }
+
+    if sb.get("return_pitcher_side") == "away":
+        return {
+            "id": str(game.get("away_team_id") or "").strip(),
+            "name": str(game.get("away_team") or "").strip(),
+            "abbr": str(game.get("away_abbrev") or "").strip(),
+        }
+    if sb.get("return_pitcher_side") == "home":
+        return {
+            "id": str(game.get("home_team_id") or "").strip(),
+            "name": str(game.get("home_team") or "").strip(),
+            "abbr": str(game.get("home_abbrev") or "").strip(),
+        }
+
+    return context
 
 
 def normalize_hand_code(code):
@@ -907,7 +1100,9 @@ def _build_batter_detail_href(
     batter_name="",
     batter_hand="",
     team="",
+    team_id="",
     opponent="",
+    opponent_id="",
     return_pitcher_id="",
     return_game_pk="",
     return_pitcher_side="",
@@ -921,8 +1116,12 @@ def _build_batter_detail_href(
         params.append(("batter_hand", str(batter_hand)))
     if team:
         params.append(("team", str(team)))
+    if team_id:
+        params.append(("team_id", str(team_id)))
     if opponent:
         params.append(("opponent", str(opponent)))
+    if opponent_id:
+        params.append(("opponent_id", str(opponent_id)))
     if return_pitcher_id:
         params.append(("return_pitcher_id", str(return_pitcher_id)))
     if return_game_pk:
@@ -1143,7 +1342,9 @@ if requested_view == "batter_detail" and requested_batter_id:
         "id": requested_batter_id,
         "hand": _query_param_value("batter_hand", ""),
         "team": _query_param_value("team", ""),
+        "team_id": _query_param_value("team_id", ""),
         "opponent": _query_param_value("opponent", ""),
+        "opponent_id": _query_param_value("opponent_id", ""),
         "return_pitcher_id": _query_param_value("return_pitcher_id", ""),
         "return_game_pk": _query_param_value("return_game_pk", ""),
         "return_pitcher_side": _query_param_value("return_pitcher_side", ""),
@@ -1490,6 +1691,10 @@ def get_game_lineups(game_pk, game=None):
             "home": home_lineup,
             "away_team": game.get("away_team", "") if game is not None else "",
             "home_team": game.get("home_team", "") if game is not None else "",
+            "away_team_id": game.get("away_team_id", "") if game is not None else "",
+            "home_team_id": game.get("home_team_id", "") if game is not None else "",
+            "away_abbrev": game.get("away_abbrev", "") if game is not None else "",
+            "home_abbrev": game.get("home_abbrev", "") if game is not None else "",
         }
     return lineups_by_game.get(game_key, {})
 
@@ -1523,7 +1728,9 @@ def render_lineup_table(lineup, current_batter_id="", current_batter_name="", li
                 batter_name=player_name,
                 batter_hand=player.get("handedness", ""),
                 team=link_context.get("team", ""),
+                team_id=link_context.get("team_id", ""),
                 opponent=link_context.get("opponent", ""),
+                opponent_id=link_context.get("opponent_id", ""),
                 return_pitcher_id=link_context.get("return_pitcher_id", ""),
                 return_game_pk=link_context.get("return_game_pk", ""),
                 return_pitcher_side=link_context.get("return_pitcher_side", ""),
@@ -1607,6 +1814,7 @@ if st.session_state.get("selected_batter"):
             if lineup_side:
                 break
     team_lineup = lineup_context.get(lineup_side, []) if lineup_side else []
+    current_opponent_context = selected_batter_opponent_context(sb, game_pk, lineup_context, lineup_side)
 
     with st.container(border=True):
         if st.session_state.get("selected_prop") not in GAME_LOG_PROPS:
@@ -1670,10 +1878,38 @@ if st.session_state.get("selected_batter"):
                         st.rerun()
         selected_prop_line = float(st.session_state[line_key])
         game_log_df = load_batter_prop_game_log(batter_id)
-        sample_summaries = prop_hit_rate_sample_summaries(game_log_df, prop_column, selected_prop_line)
         range_key = f"batter_game_log_range_{batter_id}"
-        if st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES:
+        h2h_key = f"batter_game_log_h2h_{batter_id}"
+        h2h_enabled = bool(st.session_state.get(h2h_key, False))
+        if st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES and not h2h_enabled:
             st.session_state[range_key] = "L10"
+        elif st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES:
+            st.session_state[range_key] = None
+
+        has_opponent_context = bool(current_opponent_context.get("id") or current_opponent_context.get("name"))
+        all_game_log_df = load_batter_prop_all_game_logs(batter_id) if has_opponent_context else pd.DataFrame()
+        summary_opponent_context = current_opponent_context if h2h_enabled else None
+        sample_summaries = prop_hit_rate_sample_summaries(
+            game_log_df,
+            prop_column,
+            selected_prop_line,
+            opponent_context=summary_opponent_context,
+        )
+        active_sample_label = st.session_state.get(range_key)
+        if h2h_enabled and active_sample_label in GAME_LOG_SAMPLE_RANGES:
+            h2h_tile_df = filter_game_logs_vs_opponent(
+                game_log_sample_dataframe(game_log_df, active_sample_label),
+                current_opponent_context,
+            )
+        else:
+            h2h_tile_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context)
+        h2h_summary = prop_hit_rate_summary_for_df(
+            h2h_tile_df,
+            prop_column,
+            selected_prop_line,
+            empty_hit_rate_text="N/A",
+            empty_avg_text="—",
+        )
         st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
         with st.container(key="game_log_range_tiles", horizontal=True, gap="small"):
             for sample_label in GAME_LOG_SAMPLE_RANGES:
@@ -1683,16 +1919,41 @@ if st.session_state.get("selected_batter"):
                     key=f"{range_key}_{sample_label}",
                     type="primary" if is_selected_sample else "secondary",
                 ):
-                    st.session_state[range_key] = sample_label
+                    if h2h_enabled and is_selected_sample:
+                        st.session_state[range_key] = None
+                    else:
+                        st.session_state[range_key] = sample_label
+                    st.rerun()
+            if st.button(
+                prop_h2h_tile_label(h2h_summary),
+                key=f"{h2h_key}_tile",
+                type="primary" if h2h_enabled else "secondary",
+            ):
+                st.session_state[h2h_key] = not h2h_enabled
+                if h2h_enabled:
+                    if st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES:
+                        st.session_state[range_key] = "L10"
+                else:
+                    st.session_state[range_key] = None
                     st.rerun()
         game_log_range = st.session_state[range_key]
-        if game_log_df.empty:
-            st.info("Game log data is unavailable for this batter right now.")
-        else:
-            if game_log_range in {"L5", "L10", "L15"}:
-                display_log_df = game_log_df.tail(int(game_log_range[1:])).copy()
+        if h2h_enabled:
+            if game_log_range in GAME_LOG_SAMPLE_RANGES:
+                display_log_df = filter_game_logs_vs_opponent(
+                    game_log_sample_dataframe(game_log_df, game_log_range),
+                    current_opponent_context,
+                )
             else:
-                display_log_df = game_log_df.copy()
+                display_log_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context)
+        else:
+            display_log_df = game_log_sample_dataframe(game_log_df, game_log_range)
+
+        if display_log_df.empty:
+            if h2h_enabled:
+                st.info("No previous games vs today's opponent.")
+            else:
+                st.info("Game log data is unavailable for this batter right now.")
+        else:
             display_log_df["prop_value"] = pd.to_numeric(display_log_df[prop_column], errors="coerce").fillna(0)
             display_log_df["result_color"] = display_log_df["prop_value"].apply(
                 lambda value: "#16a34a" if value >= selected_prop_line else "#dc2626"
@@ -1825,9 +2086,14 @@ if st.session_state.get("selected_batter"):
     with st.container(border=True):
         lineup_team = lineup_context.get(f"{lineup_side}_team", sb.get("team", "")) if lineup_side else sb.get("team", "")
         lineup_opponent = lineup_context.get("home_team", "") if lineup_side == "away" else lineup_context.get("away_team", "")
+        lineup_team_id = lineup_context.get(f"{lineup_side}_team_id", sb.get("team_id", "")) if lineup_side else sb.get("team_id", "")
+        lineup_opponent_side = "home" if lineup_side == "away" else "away"
+        lineup_opponent_id = lineup_context.get(f"{lineup_opponent_side}_team_id", sb.get("opponent_id", "")) if lineup_side else sb.get("opponent_id", "")
         batter_lineup_link_context = {
             "team": lineup_team,
+            "team_id": lineup_team_id,
             "opponent": lineup_opponent or sb.get("opponent", ""),
+            "opponent_id": lineup_opponent_id,
             "return_pitcher_id": sb.get("return_pitcher_id", ""),
             "return_game_pk": game_pk,
             "return_pitcher_side": sb.get("return_pitcher_side", ""),
@@ -2364,7 +2630,9 @@ if st.session_state.get("selected_pitcher"):
                         away_lineup,
                         link_context={
                             "team": game.get("away_team", ""),
+                            "team_id": game.get("away_team_id", ""),
                             "opponent": game.get("home_team", ""),
+                            "opponent_id": game.get("home_team_id", ""),
                             "return_pitcher_id": pid,
                             "return_game_pk": gp,
                             "return_pitcher_side": side,
@@ -2381,7 +2649,9 @@ if st.session_state.get("selected_pitcher"):
                         home_lineup,
                         link_context={
                             "team": game.get("home_team", ""),
+                            "team_id": game.get("home_team_id", ""),
                             "opponent": game.get("away_team", ""),
+                            "opponent_id": game.get("away_team_id", ""),
                             "return_pitcher_id": pid,
                             "return_game_pk": gp,
                             "return_pitcher_side": side,
@@ -2531,7 +2801,9 @@ if "games" in st.session_state:
                                         batter_name=batter_name,
                                         batter_hand=player.get("handedness", ""),
                                         team=game.get("away_team", ""),
+                                        team_id=game.get("away_team_id", ""),
                                         opponent=game.get("home_team", ""),
+                                        opponent_id=game.get("home_team_id", ""),
                                         return_game_pk=game["game_pk"],
                                     )
                                     batter_name_html = (
@@ -2594,7 +2866,9 @@ if "games" in st.session_state:
                                         batter_name=batter_name,
                                         batter_hand=player.get("handedness", ""),
                                         team=game.get("home_team", ""),
+                                        team_id=game.get("home_team_id", ""),
                                         opponent=game.get("away_team", ""),
+                                        opponent_id=game.get("away_team_id", ""),
                                         return_game_pk=game["game_pk"],
                                     )
                                     batter_name_html = (
