@@ -646,7 +646,7 @@ def style_run_value_table(df):
     return styled
 
 
-@st.cache_data(ttl=1800)
+@st.cache_data(ttl=1800, show_spinner=False)
 def load_batter_prop_game_log(batter_id, season_year=2026):
     if not batter_id:
         return pd.DataFrame()
@@ -714,7 +714,7 @@ def load_batter_prop_game_log(batter_id, season_year=2026):
     return game_log
 
 
-@st.cache_data(ttl=86400)
+@st.cache_data(ttl=86400, show_spinner=False)
 def load_batter_prop_game_log_seasons(batter_id):
     if not batter_id:
         return []
@@ -741,7 +741,7 @@ def load_batter_prop_game_log_seasons(batter_id):
     return sorted(set(seasons))
 
 
-@st.cache_data(ttl=86400)
+@st.cache_data(ttl=86400, show_spinner=False)
 def load_batter_prop_all_game_logs(batter_id):
     seasons = load_batter_prop_game_log_seasons(batter_id)
     if not seasons:
@@ -823,7 +823,7 @@ def savant_batter_detail_params(batter_id, start_date, end_date):
     }
 
 
-@st.cache_data(ttl=86400)
+@st.cache_data(ttl=86400, show_spinner=False)
 def load_batter_hit_details_by_game(batter_id, season_year):
     if not batter_id or not season_year:
         return {}
@@ -908,6 +908,7 @@ def load_batter_hit_details_by_game(batter_id, season_year):
     return details_by_game
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
 def load_batter_hit_details_by_game_for_seasons(batter_id, seasons):
     details_by_game = {}
     for season in sorted({int(season) for season in seasons if season}):
@@ -917,7 +918,7 @@ def load_batter_hit_details_by_game_for_seasons(batter_id, seasons):
     return details_by_game
 
 
-@st.cache_data(ttl=86400)
+@st.cache_data(ttl=86400, show_spinner=False)
 def load_game_starting_pitchers(game_pk):
     game_key = normalize_game_pk(game_pk)
     if not game_key:
@@ -1010,6 +1011,93 @@ def game_log_starting_pitcher_tooltips(row):
         return f"{name} ({hand})" if name != "N/A" and hand else name
 
     return _format_starter(player_side), _format_starter(opponent_side)
+
+
+def add_game_log_static_tooltip_columns(game_log_df, batter_id):
+    if game_log_df.empty:
+        return game_log_df.copy()
+
+    enriched_df = game_log_df.copy()
+    enriched_df["tooltip_date"] = enriched_df["game_date"].apply(game_log_full_date_label)
+    enriched_df["tooltip_game"] = enriched_df.apply(game_log_matchup_tooltip, axis=1)
+
+    starter_map = {}
+    if "game_pk" in enriched_df.columns:
+        for game_key in sorted({normalize_game_pk(value) for value in enriched_df["game_pk"]}):
+            if game_key:
+                starter_map[game_key] = load_game_starting_pitchers(game_key)
+
+    def _starter_tooltips_from_map(row):
+        game_key = normalize_game_pk(row.get("game_pk"))
+        starters = starter_map.get(game_key, {})
+        if not starters:
+            return "N/A", "N/A"
+
+        opponent_id = str(row.get("opponent_team_id") or "").strip()
+        away_id = str(starters.get("away", {}).get("team_id") or "").strip()
+        home_id = str(starters.get("home", {}).get("team_id") or "").strip()
+
+        if opponent_id and opponent_id == away_id:
+            opponent_side = "away"
+            player_side = "home"
+        elif opponent_id and opponent_id == home_id:
+            opponent_side = "home"
+            player_side = "away"
+        else:
+            opponent_prefix = str(row.get("opponent", "")).strip()
+            opponent_side = "home" if opponent_prefix.startswith("@") else "away"
+            player_side = "home" if opponent_side == "away" else "away"
+
+        def _format_starter(side):
+            starter = starters.get(side, {}) or {}
+            name = starter.get("pitcher_name") or "N/A"
+            hand = starter.get("pitcher_hand") or ""
+            return f"{name} ({hand})" if name != "N/A" and hand else name
+
+        return _format_starter(player_side), _format_starter(opponent_side)
+
+    starter_tooltips = enriched_df.apply(_starter_tooltips_from_map, axis=1)
+    enriched_df["tooltip_player_sp"] = starter_tooltips.apply(lambda value: value[0])
+    enriched_df["tooltip_opponent_sp"] = starter_tooltips.apply(lambda value: value[1])
+
+    if "hits" in enriched_df.columns:
+        enriched_df["tooltip_hits"] = pd.to_numeric(enriched_df["hits"], errors="coerce").fillna(0).astype(int)
+    else:
+        enriched_df["tooltip_hits"] = 0
+
+    rows_with_hits = enriched_df[enriched_df["tooltip_hits"] > 0]
+    if rows_with_hits.empty:
+        hit_details_by_game = {}
+    else:
+        if "season" in rows_with_hits.columns:
+            hit_detail_seasons = pd.to_numeric(rows_with_hits["season"], errors="coerce").dropna().astype(int).unique().tolist()
+        else:
+            hit_detail_seasons = rows_with_hits["game_date"].dt.year.dropna().astype(int).unique().tolist()
+        hit_details_by_game = load_batter_hit_details_by_game_for_seasons(batter_id, tuple(hit_detail_seasons))
+
+    enriched_df["tooltip_hit_details"] = enriched_df.apply(
+        lambda row: game_log_hit_details_tooltip(row, hit_details_by_game=hit_details_by_game),
+        axis=1,
+    )
+    return enriched_df
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_enriched_batter_prop_game_log(batter_id):
+    game_log_df = load_batter_prop_game_log(batter_id)
+    return add_game_log_static_tooltip_columns(game_log_df, batter_id)
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_enriched_batter_h2h_game_log(batter_id, opponent_id, opponent_name, opponent_abbr):
+    game_log_df = load_batter_prop_all_game_logs(batter_id)
+    opponent_context = {
+        "id": str(opponent_id or "").strip(),
+        "name": str(opponent_name or "").strip(),
+        "abbr": str(opponent_abbr or "").strip(),
+    }
+    h2h_df = filter_game_logs_vs_opponent(game_log_df, opponent_context)
+    return add_game_log_static_tooltip_columns(h2h_df, batter_id)
 
 
 def display_batter_metric_strike_zone_fixed(
@@ -1351,7 +1439,7 @@ def toggle_game_log_h2h_selection(h2h_key, range_key):
 
 @st.fragment
 def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop, selected_prop_line, current_opponent_context):
-    game_log_df = load_batter_prop_game_log(batter_id)
+    game_log_df = load_enriched_batter_prop_game_log(batter_id)
     range_key = f"batter_game_log_range_{batter_id}"
     h2h_key = f"batter_game_log_h2h_{batter_id}"
     h2h_enabled = bool(st.session_state.get(h2h_key, False))
@@ -1362,6 +1450,7 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
 
     has_opponent_context = bool(current_opponent_context.get("id") or current_opponent_context.get("name"))
     all_game_log_df = load_batter_prop_all_game_logs(batter_id) if has_opponent_context else pd.DataFrame()
+    all_h2h_game_log_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
     summary_opponent_context = current_opponent_context if h2h_enabled else None
     sample_summaries = prop_hit_rate_sample_summaries(
         game_log_df,
@@ -1376,7 +1465,7 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
             current_opponent_context,
         )
     else:
-        h2h_tile_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context)
+        h2h_tile_df = all_h2h_game_log_df
     h2h_summary = prop_hit_rate_summary_for_df(
         h2h_tile_df,
         prop_column,
@@ -1410,7 +1499,12 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
                 current_opponent_context,
             )
         else:
-            display_log_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context)
+            display_log_df = load_enriched_batter_h2h_game_log(
+                batter_id,
+                current_opponent_context.get("id", ""),
+                current_opponent_context.get("name", ""),
+                current_opponent_context.get("abbr", ""),
+            )
     else:
         display_log_df = game_log_sample_dataframe(game_log_df, game_log_range)
 
@@ -1429,28 +1523,6 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
     display_log_df["label_y"] = display_log_df["bar_value"].apply(lambda value: value + 0.22)
     display_log_df["chart_label"] = display_log_df.apply(
         lambda row: game_log_chart_axis_label(row, h2h_active=h2h_enabled),
-        axis=1,
-    )
-    display_log_df["tooltip_date"] = display_log_df["game_date"].apply(game_log_full_date_label)
-    display_log_df["tooltip_game"] = display_log_df.apply(game_log_matchup_tooltip, axis=1)
-    starter_tooltips = display_log_df.apply(game_log_starting_pitcher_tooltips, axis=1)
-    display_log_df["tooltip_player_sp"] = starter_tooltips.apply(lambda value: value[0])
-    display_log_df["tooltip_opponent_sp"] = starter_tooltips.apply(lambda value: value[1])
-    if "hits" in display_log_df.columns:
-        display_log_df["tooltip_hits"] = pd.to_numeric(display_log_df["hits"], errors="coerce").fillna(0).astype(int)
-    else:
-        display_log_df["tooltip_hits"] = 0
-    rows_with_hits = display_log_df[display_log_df["tooltip_hits"] > 0]
-    if rows_with_hits.empty:
-        hit_details_by_game = {}
-    else:
-        if "season" in rows_with_hits.columns:
-            hit_detail_seasons = pd.to_numeric(rows_with_hits["season"], errors="coerce").dropna().astype(int).unique().tolist()
-        else:
-            hit_detail_seasons = rows_with_hits["game_date"].dt.year.dropna().astype(int).unique().tolist()
-        hit_details_by_game = load_batter_hit_details_by_game_for_seasons(batter_id, tuple(hit_detail_seasons))
-    display_log_df["tooltip_hit_details"] = display_log_df.apply(
-        lambda row: game_log_hit_details_tooltip(row, hit_details_by_game=hit_details_by_game),
         axis=1,
     )
     max_value = max(float(display_log_df["prop_value"].max()), selected_prop_line, 1.0)
