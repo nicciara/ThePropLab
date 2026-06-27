@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 PLAYER_API_CALLS = 0
 LINEUP_MIN_HEIGHT = 220
 GAME_LOG_PROPS = ["Hits", "Runs", "RBI", "H+R+RBI", "Total Bases", "Home Runs", "Walks", "Strikeouts"]
+GAME_LOG_SAMPLE_RANGES = ("L5", "L10", "L15", "2026")
 GAME_LOG_PROP_COLUMNS = {
     "Hits": "hits",
     "Runs": "runs",
@@ -93,7 +94,7 @@ st.markdown(
     .nav-name-link{color:var(--dash-value)!important;text-decoration:none!important;font-weight:650;cursor:pointer}
     .nav-name-link:hover{color:var(--dash-accent)!important;text-decoration:underline!important}
     div[data-testid="stSegmentedControl"] div[role="radiogroup"]{overflow-x:auto;flex-wrap:nowrap}
-    div[data-testid="stSegmentedControl"] label{white-space:nowrap}
+    div[data-testid="stSegmentedControl"] label{white-space:pre-line;line-height:1.2}
     .line-badge{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:6px 12px;border:1px solid #ddd;border-radius:999px;min-width:120px;background:#f8fafc;box-shadow:0 1px 2px rgba(15,23,42,0.04);white-space:nowrap}
     .line-value{font-weight:700;font-size:22px;color:var(--dash-title);line-height:1}
     .book-badge,.boost-badge{display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;line-height:1;padding:4px 8px;border-radius:999px;white-space:nowrap}
@@ -775,45 +776,49 @@ def batter_heatmap_legend_html(heatmap_scale):
     )
 
 
-def prop_hit_rate_summary_cards_html(game_log_df, prop_column, selected_prop_line):
-    samples = [("L5", 5), ("L10", 10), ("L15", 15), ("2026", None)]
-    rows = []
-    for label, sample_size in samples:
-        sample_df = game_log_df.tail(sample_size).copy() if sample_size else game_log_df.copy()
-        if sample_df.empty or prop_column not in sample_df.columns:
-            hit_rate_text = "--"
-            avg_text = "--"
-            hit_rate_color = "#64748b"
-        else:
-            values = pd.to_numeric(sample_df[prop_column], errors="coerce").dropna()
-            if values.empty:
-                hit_rate_text = "--"
-                avg_text = "--"
-                hit_rate_color = "#64748b"
-            else:
-                hit_rate = float((values >= selected_prop_line).mean() * 100.0)
-                avg_value = float(values.mean())
-                hit_rate_text = f"{hit_rate:.0f}%"
-                avg_text = f"{avg_value:.2f}"
-                if hit_rate >= 60:
-                    hit_rate_color = "#16a34a"
-                elif hit_rate >= 45:
-                    hit_rate_color = "#d97706"
-                else:
-                    hit_rate_color = "#dc2626"
-        rows.append(
-            "<div style='border:1px solid #d1d5db; border-radius:7px; padding:7px 10px; min-width:92px; "
-            "background:#fff; display:flex; flex-direction:column; gap:3px;'>"
-            f"<div style='font-size:12px; font-weight:900; color:#0f172a;'>{label}</div>"
-            f"<div style='font-size:12px; font-weight:800; color:{hit_rate_color};'>HR {hit_rate_text}</div>"
-            f"<div style='font-size:11.5px; font-weight:700; color:#475569;'>Avg {avg_text}</div>"
-            "</div>"
-        )
-    return (
-        "<div style='display:flex; flex-wrap:wrap; gap:8px; align-items:stretch; margin:8px 0 10px 0;'>"
-        f"{''.join(rows)}"
-        "</div>"
-    )
+def prop_hit_rate_sample_summary(game_log_df, prop_column, selected_prop_line, sample_label):
+    if sample_label in {"L5", "L10", "L15"}:
+        sample_df = game_log_df.tail(int(sample_label[1:])).copy()
+    else:
+        sample_df = game_log_df.copy()
+
+    if sample_df.empty or prop_column not in sample_df.columns:
+        return {"hit_rate_text": "--", "avg_text": "--", "indicator": ""}
+
+    values = pd.to_numeric(sample_df[prop_column], errors="coerce").dropna()
+    if values.empty:
+        return {"hit_rate_text": "--", "avg_text": "--", "indicator": ""}
+
+    hit_rate = float((values >= selected_prop_line).mean() * 100.0)
+    avg_value = float(values.mean())
+    if hit_rate >= 60:
+        indicator = "🟢"
+    elif hit_rate >= 45:
+        indicator = "🟠"
+    else:
+        indicator = "🔴"
+
+    return {
+        "hit_rate_text": f"{hit_rate:.0f}%",
+        "avg_text": f"{avg_value:.2f}",
+        "indicator": indicator,
+    }
+
+
+def prop_hit_rate_sample_summaries(game_log_df, prop_column, selected_prop_line):
+    return {
+        sample_label: prop_hit_rate_sample_summary(game_log_df, prop_column, selected_prop_line, sample_label)
+        for sample_label in GAME_LOG_SAMPLE_RANGES
+    }
+
+
+def prop_hit_rate_sample_label(sample_label, summaries):
+    summary = summaries.get(sample_label, {})
+    indicator = summary.get("indicator", "")
+    hit_rate_text = summary.get("hit_rate_text", "--")
+    avg_text = summary.get("avg_text", "--")
+    hr_prefix = f"{indicator} HR" if indicator else "HR"
+    return f"{sample_label}\n{hr_prefix} {hit_rate_text}\nAvg {avg_text}"
 
 
 def normalize_hand_code(code):
@@ -1636,23 +1641,21 @@ if st.session_state.get("selected_batter"):
                         except (TypeError, ValueError):
                             pass
                         st.rerun()
+        selected_prop_line = float(st.session_state[line_key])
+        game_log_df = load_batter_prop_game_log(batter_id)
+        sample_summaries = prop_hit_rate_sample_summaries(game_log_df, prop_column, selected_prop_line)
         st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
         game_log_range = st.segmented_control(
             "Recent Range",
-            ["L5", "L10", "L15", "2026"],
+            GAME_LOG_SAMPLE_RANGES,
             default="L10",
             key=f"batter_game_log_range_{batter_id}",
             label_visibility="collapsed",
+            format_func=lambda sample_label: prop_hit_rate_sample_label(sample_label, sample_summaries),
         )
-        selected_prop_line = float(st.session_state[line_key])
-        game_log_df = load_batter_prop_game_log(batter_id)
         if game_log_df.empty:
             st.info("Game log data is unavailable for this batter right now.")
         else:
-            st.markdown(
-                prop_hit_rate_summary_cards_html(game_log_df, prop_column, selected_prop_line),
-                unsafe_allow_html=True,
-            )
             if game_log_range in {"L5", "L10", "L15"}:
                 display_log_df = game_log_df.tail(int(game_log_range[1:])).copy()
             else:
