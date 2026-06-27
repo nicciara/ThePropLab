@@ -128,10 +128,7 @@ st.markdown(
     .nav-name-link:hover{color:var(--dash-accent)!important;text-decoration:underline!important}
     div[data-testid="stSegmentedControl"] div[role="radiogroup"]{overflow-x:auto;flex-wrap:nowrap}
     div[data-testid="stSegmentedControl"] label{white-space:pre-line;line-height:1.2}
-    .prop-tab-row{
-        display:flex;
-        flex-wrap:nowrap;
-        gap:8px;
+    .st-key-prop_tab_row [data-testid="stHorizontalBlock"]{
         overflow-x:auto;
         overflow-y:hidden;
         padding:2px 6px 8px 6px;
@@ -140,23 +137,23 @@ st.markdown(
         -webkit-overflow-scrolling:touch;
         scrollbar-width:thin;
         scrollbar-color:var(--dash-control-border) transparent;
-        white-space:nowrap;
+        flex-wrap:nowrap;
+        gap:8px;
     }
-    .prop-tab-row::-webkit-scrollbar{
+    .st-key-prop_tab_row [data-testid="stHorizontalBlock"]::-webkit-scrollbar{
         height:6px;
     }
-    .prop-tab-row::-webkit-scrollbar-track{
+    .st-key-prop_tab_row [data-testid="stHorizontalBlock"]::-webkit-scrollbar-track{
         background:transparent;
     }
-    .prop-tab-row::-webkit-scrollbar-thumb{
+    .st-key-prop_tab_row [data-testid="stHorizontalBlock"]::-webkit-scrollbar-thumb{
         background:var(--dash-control-border);
         border-radius:999px;
     }
-    .prop-tab{
+    .st-key-prop_tab_row .stButton{
         flex:0 0 auto;
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
+    }
+    .st-key-prop_tab_row .stButton>button{
         min-height:34px;
         padding:7px 14px;
         border:1px solid var(--dash-control-border);
@@ -169,13 +166,17 @@ st.markdown(
         text-decoration:none!important;
         box-shadow:0 1px 2px rgba(15,23,42,0.05);
         cursor:pointer;
+        white-space:nowrap;
     }
-    .prop-tab:hover{
+    .st-key-prop_tab_row .stButton>button p{
+        margin:0;
+        white-space:nowrap;
+    }
+    .st-key-prop_tab_row .stButton>button:hover{
         border-color:var(--dash-accent);
         color:var(--dash-control-text)!important;
-        text-decoration:none!important;
     }
-    .prop-tab-active{
+    .st-key-prop_tab_row .stButton>button[kind="primary"]{
         border-color:var(--dash-accent);
         background:var(--dash-surface-2);
         color:var(--dash-title)!important;
@@ -1466,37 +1467,9 @@ def prop_h2h_tile_label(summary):
     return f"**H2H**\n{hr_prefix} {hit_rate_text}\nAvg {avg_text}"
 
 
-def current_query_params_dict():
-    try:
-        raw_params = st.query_params.to_dict()
-    except Exception:
-        raw_params = {}
-    params = {}
-    for key, value in raw_params.items():
-        if isinstance(value, list):
-            value = value[0] if value else ""
-        if value in {None, ""}:
-            continue
-        params[str(key)] = str(value)
-    return params
-
-
-def build_prop_tab_href(prop):
-    params = current_query_params_dict()
-    params["prop"] = str(prop)
-    return "?" + "&".join(f"{quote_plus(str(key))}={quote_plus(str(value))}" for key, value in params.items())
-
-
-def prop_selector_tabs_html(selected_prop):
-    tabs_html = []
-    for prop in GAME_LOG_PROPS:
-        active_class = " prop-tab-active" if prop == selected_prop else ""
-        href = html.escape(build_prop_tab_href(prop), quote=True)
-        label = html.escape(prop)
-        tabs_html.append(
-            f"<a class='prop-tab{active_class}' href='{href}' target='_self'>{label}</a>"
-        )
-    return f"<div class='prop-tab-row'>{''.join(tabs_html)}</div>"
+def set_selected_prop(prop):
+    if prop in GAME_LOG_PROPS:
+        st.session_state["selected_prop"] = prop
 
 
 def game_log_chart_axis_label(row, h2h_active=False, current_season=2026):
@@ -1618,7 +1591,6 @@ def toggle_game_log_h2h_selection(h2h_key, range_key):
         st.session_state[range_key] = None
 
 
-@st.fragment
 def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop, selected_prop_line, current_opponent_context):
     game_log_df = load_batter_prop_game_log(batter_id)
     range_key = f"batter_game_log_range_{batter_id}"
@@ -1770,6 +1742,86 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
     line = alt.Chart(line_df).mark_rule(strokeDash=[6, 4], color="#334155", opacity=0.8).encode(y="line:Q")
     chart = (bars + labels + line).properties(height=230, width=alt.Step(x_step)).configure_view(stroke=None)
     st.altair_chart(chart, use_container_width=True)
+
+
+@st.fragment
+def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent_context):
+    if st.session_state.get("selected_prop") not in GAME_LOG_PROPS:
+        st.session_state["selected_prop"] = "Hits"
+
+    selected_prop = st.session_state.get("selected_prop", "Hits")
+    with st.container(key="prop_tab_row", horizontal=True, gap="small"):
+        for prop in GAME_LOG_PROPS:
+            prop_key = GAME_LOG_PROP_COLUMNS[prop].replace("_", "-")
+            st.button(
+                prop,
+                key=f"batter_prop_tab_{batter_id}_{prop_key}",
+                type="primary" if prop == selected_prop else "secondary",
+                on_click=set_selected_prop,
+                args=(prop,),
+            )
+
+    selected_prop = st.session_state.get("selected_prop", "Hits")
+    if selected_prop not in GAME_LOG_PROPS:
+        selected_prop = "Hits"
+
+    prop_column = GAME_LOG_PROP_COLUMNS[selected_prop]
+    prop_slug = prop_column.replace("_", "-")
+    line_key = f"batter_{prop_column}_line_{batter_id}"
+    if line_key not in st.session_state:
+        st.session_state[line_key] = 0.5
+
+    st.session_state["prizepicks_projections"] = load_prizepicks_mlb_projections()
+    projection_lines = get_prop_projection_lines(batter_id, selected_prop, batter_name)
+    selected_line_value = float(st.session_state[line_key])
+    selected_projection_line = None
+    for projection_line in projection_lines:
+        projection_line_value = _projection_line_value(projection_line)
+        try:
+            if float(projection_line_value) == selected_line_value:
+                selected_projection_line = projection_line
+                break
+        except (TypeError, ValueError):
+            continue
+
+    st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
+    line_cols = st.columns([0.34, 1.65, 0.34, 4.2])
+    with line_cols[0]:
+        if st.button("-", key=f"batter_{prop_slug}_line_minus_{batter_id}"):
+            st.session_state[line_key] = max(0.5, float(st.session_state[line_key]) - 1.0)
+    with line_cols[1]:
+        selected_odds_type = _projection_value(selected_projection_line, "odds_type", "oddsType", default="") if isinstance(selected_projection_line, dict) else ""
+        st.markdown(
+            f"<div class='line-badge-wrap'>{render_line_badge(st.session_state[line_key], selected_odds_type)}</div>",
+            unsafe_allow_html=True,
+        )
+    with line_cols[2]:
+        if st.button("+", key=f"batter_{prop_slug}_line_plus_{batter_id}"):
+            st.session_state[line_key] = float(st.session_state[line_key]) + 1.0
+
+    if projection_lines:
+        with st.expander("Alt lines", expanded=False):
+            for idx, projection_line in enumerate(projection_lines):
+                projection_line_value = _projection_line_value(projection_line)
+                projection_odds_type = _projection_value(projection_line, "odds_type", "oddsType", default="")
+                st.markdown(
+                    f"<div class='alt-line-row'>{render_line_badge(projection_line_value, projection_odds_type)}</div>",
+                    unsafe_allow_html=True,
+                )
+                if st.button("Use", key=f"batter_{prop_slug}_alt_line_{batter_id}_{idx}"):
+                    try:
+                        st.session_state[line_key] = float(projection_line_value)
+                    except (TypeError, ValueError):
+                        pass
+
+    selected_prop_line = float(st.session_state[line_key])
+    render_batter_game_log_sample_section(
+        batter_id,
+        prop_column,
+        selected_prop,
+        selected_prop_line,
+        current_opponent_context,
+    )
 
 
 def normalize_hand_code(code):
@@ -2549,72 +2601,7 @@ if st.session_state.get("selected_batter"):
     current_opponent_context = selected_batter_opponent_context(sb, game_pk, lineup_context, lineup_side)
 
     with st.container(border=True):
-        requested_prop = _query_param_value("prop", "")
-        if requested_prop in GAME_LOG_PROPS:
-            st.session_state["selected_prop"] = requested_prop
-        elif st.session_state.get("selected_prop") not in GAME_LOG_PROPS:
-            st.session_state["selected_prop"] = "Hits"
-        selected_prop = st.session_state.get("selected_prop", "Hits")
-        st.markdown(prop_selector_tabs_html(selected_prop), unsafe_allow_html=True)
-        if selected_prop not in GAME_LOG_PROPS:
-            selected_prop = "Hits"
-
-        prop_column = GAME_LOG_PROP_COLUMNS[selected_prop]
-        prop_slug = prop_column.replace("_", "-")
-        line_key = f"batter_{prop_column}_line_{batter_id}"
-        if line_key not in st.session_state:
-            st.session_state[line_key] = 0.5
-        st.session_state["prizepicks_projections"] = load_prizepicks_mlb_projections()
-        projection_lines = get_prop_projection_lines(batter_id, selected_prop, batter_name)
-        selected_line_value = float(st.session_state[line_key])
-        selected_projection_line = None
-        for projection_line in projection_lines:
-            projection_line_value = _projection_line_value(projection_line)
-            try:
-                if float(projection_line_value) == selected_line_value:
-                    selected_projection_line = projection_line
-                    break
-            except (TypeError, ValueError):
-                continue
-        st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
-        line_cols = st.columns([0.34, 1.65, 0.34, 4.2])
-        with line_cols[0]:
-            if st.button("-", key=f"batter_{prop_slug}_line_minus_{batter_id}"):
-                st.session_state[line_key] = max(0.5, float(st.session_state[line_key]) - 1.0)
-                st.rerun()
-        with line_cols[1]:
-            selected_odds_type = _projection_value(selected_projection_line, "odds_type", "oddsType", default="") if isinstance(selected_projection_line, dict) else ""
-            st.markdown(
-                f"<div class='line-badge-wrap'>{render_line_badge(st.session_state[line_key], selected_odds_type)}</div>",
-                unsafe_allow_html=True,
-            )
-        with line_cols[2]:
-            if st.button("+", key=f"batter_{prop_slug}_line_plus_{batter_id}"):
-                st.session_state[line_key] = float(st.session_state[line_key]) + 1.0
-                st.rerun()
-        if projection_lines:
-            with st.expander("Alt lines", expanded=False):
-                for idx, projection_line in enumerate(projection_lines):
-                    projection_line_value = _projection_line_value(projection_line)
-                    projection_odds_type = _projection_value(projection_line, "odds_type", "oddsType", default="")
-                    st.markdown(
-                        f"<div class='alt-line-row'>{render_line_badge(projection_line_value, projection_odds_type)}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    if st.button("Use", key=f"batter_{prop_slug}_alt_line_{batter_id}_{idx}"):
-                        try:
-                            st.session_state[line_key] = float(projection_line_value)
-                        except (TypeError, ValueError):
-                            pass
-                        st.rerun()
-        selected_prop_line = float(st.session_state[line_key])
-        render_batter_game_log_sample_section(
-            batter_id,
-            prop_column,
-            selected_prop,
-            selected_prop_line,
-            current_opponent_context,
-        )
+        render_batter_prop_game_log_section(batter_id, batter_name, current_opponent_context)
 
     with st.container(border=True):
         st.markdown(
