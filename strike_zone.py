@@ -1,5 +1,6 @@
 import logging
 from datetime import date
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -20,6 +21,52 @@ ZONE_LAYOUT = [
     {"zone_id": 9, "x_min": 0.8, "x_max": 2.5, "y_min": 1.0, "y_max": 2.2},
 ]
 DISPLAY_ZONE_IDS = set(range(1, 10)) | {11, 12, 13, 14}
+OUTER_ZONE_TO_QUAD = {11: "tl", 12: "tr", 13: "bl", 14: "br"}
+OUTER_QUAD_TO_ZONE = {"tl": 11, "tr": 12, "bl": 13, "br": 14}
+PITCHER_STRIKE_ZONE_METRICS = ("Pitch %", "Whiff %", "PutAway %", "Hard Hit %", "xwOBA", "K %")
+PITCHER_BASELINE_CSVS = {
+    "Pitch %": "strike_zone_pitch_pct_qualified_pitcher_summary.csv",
+    "Whiff %": "strike_zone_whiff_pct_qualified_pitcher_summary.csv",
+    "PutAway %": "strike_zone_putaway_pct_qualified_pitcher_summary.csv",
+    "Hard Hit %": "strike_zone_hard_hit_pct_qualified_pitcher_summary.csv",
+    "xwOBA": "strike_zone_xwoba_qualified_pitcher_summary.csv",
+    "K %": "strike_zone_k_pct_qualified_pitcher_summary.csv",
+}
+
+
+def _load_zone_metric_baselines_from_csv(csv_map):
+    baselines = {}
+    base_dir = Path(__file__).resolve().parent
+    for metric, filename in csv_map.items():
+        path = base_dir / filename
+        if not path.exists():
+            continue
+        try:
+            df = pd.read_csv(path)
+        except Exception as exc:
+            logger.warning("Could not load pitcher strike-zone baseline CSV %s: %s", filename, exc)
+            continue
+
+        zone_col = "zone_id" if "zone_id" in df.columns else "zone" if "zone" in df.columns else None
+        if not zone_col or not {"mean", "std"}.issubset(df.columns):
+            logger.warning("Pitcher strike-zone baseline CSV %s is missing zone/mean/std columns.", filename)
+            continue
+
+        metric_baselines = {}
+        for _, row in df.iterrows():
+            zone_id = _normalize_zone_value(row.get(zone_col))
+            if zone_id not in DISPLAY_ZONE_IDS:
+                continue
+            try:
+                metric_baselines[int(zone_id)] = {
+                    "mean": float(row["mean"]),
+                    "std": float(row["std"]),
+                }
+            except (TypeError, ValueError):
+                continue
+        if metric_baselines:
+            baselines[metric] = metric_baselines
+    return baselines
 
 ZONE_METRIC_BASELINES = {
     "Pitch %": {
@@ -99,6 +146,8 @@ ZONE_METRIC_BASELINES = {
     },
 }
 
+PITCHER_ZONE_METRIC_BASELINES = {}
+
 ZONE_Z_SCORE_BACKGROUND_COLORS = {
     "red": "#e62727",
     "orange": "#FFD60A",
@@ -116,6 +165,9 @@ def _normalize_zone_value(zone_value):
         return int(zone_value)
     except (TypeError, ValueError):
         return None
+
+
+PITCHER_ZONE_METRIC_BASELINES = _load_zone_metric_baselines_from_csv(PITCHER_BASELINE_CSVS)
 
 
 @st.cache_data(ttl=300, show_spinner="Loading strike zone data...")
@@ -279,6 +331,151 @@ def _batter_metric_mask(df, metric):
 def _metric_label(metric):
     metric_name = (metric or "Pitch %").strip()
     return metric_name if metric_name in {"Pitch %", "Takes", "Batted Balls", "K%", "Home Runs"} else "Pitch %"
+
+
+def _pitcher_metric_label(metric):
+    normalized = str(metric or "Pitch %").strip().lower().replace("_", " ").replace("-", " ")
+    normalized = " ".join(normalized.split())
+    metric_map = {
+        "pitch %": "Pitch %",
+        "pitch%": "Pitch %",
+        "whiff %": "Whiff %",
+        "whiff%": "Whiff %",
+        "putaway %": "PutAway %",
+        "putaway%": "PutAway %",
+        "hard hit %": "Hard Hit %",
+        "hardhit %": "Hard Hit %",
+        "hardhit%": "Hard Hit %",
+        "xwoba": "xwOBA",
+        "k %": "K %",
+        "k%": "K %",
+    }
+    return metric_map.get(normalized, "Pitch %")
+
+
+def _clean_pitcher_metric_dataframe(filtered_df):
+    if filtered_df.empty or "zone" not in filtered_df.columns:
+        return pd.DataFrame()
+
+    working_df = filtered_df.copy()
+    pitch_col = "pitch_name" if "pitch_name" in working_df.columns else "pitch_type"
+    if pitch_col in working_df.columns:
+        working_df[pitch_col] = working_df[pitch_col].astype(str).str.strip()
+        working_df = working_df[(working_df[pitch_col] != "") & (working_df[pitch_col].str.lower() != "nan")].copy()
+
+    working_df["_zone_id"] = working_df["zone"].apply(_normalize_zone_value)
+    return working_df[working_df["_zone_id"].isin(DISPLAY_ZONE_IDS)].copy()
+
+
+def _events_series(df):
+    if "events" not in df.columns:
+        return pd.Series("", index=df.index)
+    return df["events"].fillna("").astype(str).str.strip().str.lower()
+
+
+def _description_series(df):
+    if "description" not in df.columns:
+        return pd.Series("", index=df.index)
+    return df["description"].fillna("").astype(str).str.strip().str.lower()
+
+
+def _pitcher_metric_unavailable_reason(df, metric):
+    metric = _pitcher_metric_label(metric)
+    required_columns = {
+        "Pitch %": {"zone"},
+        "Whiff %": {"zone", "description"},
+        "PutAway %": {"zone", "strikes", "events"},
+        "Hard Hit %": {"zone", "launch_speed"},
+        "xwOBA": {"zone", "estimated_woba_using_speedangle"},
+        "K %": {"zone", "events"},
+    }.get(metric, {"zone"})
+
+    missing = sorted(col for col in required_columns if col not in df.columns)
+    if missing:
+        return f"{metric} is unavailable because Statcast did not include: {', '.join(missing)}."
+    return ""
+
+
+def _safe_pct(numerator, denominator):
+    return (float(numerator) / float(denominator) * 100.0) if denominator else 0.0
+
+
+def _pitcher_metric_zone_value(metric, zone_df, total_display_pitches):
+    metric = _pitcher_metric_label(metric)
+    if zone_df.empty:
+        return 0, 0.0
+
+    if metric == "Pitch %":
+        count = len(zone_df)
+        return count, _safe_pct(count, total_display_pitches)
+
+    if metric == "Whiff %":
+        descriptions = _description_series(zone_df)
+        swing_mask = descriptions.apply(_is_swing_description)
+        whiff_mask = descriptions.isin({"swinging_strike", "swinging_strike_blocked", "missed_bunt"})
+        numerator = int(whiff_mask.sum())
+        denominator = int(swing_mask.sum())
+        return numerator, _safe_pct(numerator, denominator)
+
+    if metric == "PutAway %":
+        strikes = pd.to_numeric(zone_df["strikes"], errors="coerce") if "strikes" in zone_df.columns else pd.Series(dtype=float)
+        events = _events_series(zone_df)
+        denominator = int((strikes == 2).sum()) if not strikes.empty else 0
+        numerator = int(events.str.startswith("strikeout", na=False).sum())
+        return numerator, _safe_pct(numerator, denominator)
+
+    if metric == "Hard Hit %":
+        launch_speed = pd.to_numeric(zone_df["launch_speed"], errors="coerce") if "launch_speed" in zone_df.columns else pd.Series(dtype=float)
+        denominator = int(launch_speed.notna().sum()) if not launch_speed.empty else 0
+        numerator = int((launch_speed >= 95).sum()) if not launch_speed.empty else 0
+        return numerator, _safe_pct(numerator, denominator)
+
+    if metric == "xwOBA":
+        xwoba = (
+            pd.to_numeric(zone_df["estimated_woba_using_speedangle"], errors="coerce")
+            if "estimated_woba_using_speedangle" in zone_df.columns
+            else pd.Series(dtype=float)
+        )
+        values = xwoba.dropna()
+        return int(len(values)), float(values.mean()) if not values.empty else 0.0
+
+    if metric == "K %":
+        events = _events_series(zone_df)
+        terminal_events = events[(events != "") & (events != "nan")]
+        denominator = int(len(terminal_events))
+        numerator = int(events.str.startswith("strikeout", na=False).sum())
+        return numerator, _safe_pct(numerator, denominator)
+
+    return len(zone_df), 0.0
+
+
+def _build_pitcher_metric_zone_outputs(filtered_df, metric):
+    metric = _pitcher_metric_label(metric)
+    metric_df = _clean_pitcher_metric_dataframe(filtered_df)
+    pitch_denominator = len(filtered_df) if metric == "Pitch %" else len(metric_df)
+
+    zone_rows = []
+    for zone in ZONE_LAYOUT:
+        zone_subset = metric_df[metric_df["_zone_id"] == zone["zone_id"]] if not metric_df.empty else pd.DataFrame()
+        count, value = _pitcher_metric_zone_value(metric, zone_subset, pitch_denominator)
+        zone_rows.append(
+            {
+                **zone,
+                "pitch_count": int(count),
+                "pitch_pct": float(value),
+            }
+        )
+
+    outer_stats = {}
+    for key, zone_id in OUTER_QUAD_TO_ZONE.items():
+        zone_subset = metric_df[metric_df["_zone_id"] == zone_id] if not metric_df.empty else pd.DataFrame()
+        count, value = _pitcher_metric_zone_value(metric, zone_subset, pitch_denominator)
+        outer_stats[key] = {
+            "pitch_count": int(count),
+            "pitch_pct": float(value),
+        }
+
+    return pd.DataFrame(zone_rows), outer_stats, pitch_denominator
 
 
 def _clean_batter_metric_dataframe(filtered_df):
@@ -523,8 +720,9 @@ def aggregate_to_zones(statcast_df, total_pitches=None):
     return pd.DataFrame(zone_rows)
 
 
-def _zone_background_color(metric, zone_id, pct):
-    baseline = ZONE_METRIC_BASELINES.get(metric, {}).get(zone_id)
+def _zone_background_color(metric, zone_id, pct, baselines=None):
+    metric_baselines = ZONE_METRIC_BASELINES if baselines is None else baselines
+    baseline = metric_baselines.get(metric, {}).get(zone_id)
     if not baseline:
         return ""
 
@@ -542,7 +740,9 @@ def _zone_background_color(metric, zone_id, pct):
     return ZONE_Z_SCORE_BACKGROUND_COLORS["blue"]
 
 
-def _format_cell_text(count, pct):
+def _format_cell_text(count, pct, metric=None):
+    if _pitcher_metric_label(metric) == "xwOBA" or metric == "xwOBA":
+        return f"{int(count)}<br>{pct:.3f}"
     return f"{int(count)}<br>{pct:.1f}%"
 
 
@@ -569,11 +769,18 @@ def _build_self_heatmap_color_map(zone_df, outer_stats):
     return color_map
 
 
-def _zone_background_style(metric, zone_id, pct, heatmap_scale=HEATMAP_SCALE_LEAGUE, self_color_map=None):
+def _zone_background_style(
+    metric,
+    zone_id,
+    pct,
+    heatmap_scale=HEATMAP_SCALE_LEAGUE,
+    self_color_map=None,
+    baselines=None,
+):
     if heatmap_scale == HEATMAP_SCALE_SELF:
         color = (self_color_map or {}).get(zone_id, "")
     else:
-        color = _zone_background_color(metric, zone_id, pct)
+        color = _zone_background_color(metric, zone_id, pct, baselines=baselines)
     return f' style="--sz-bg:{color}; background-color:{color} !important;"' if color else ""
 
 
@@ -582,10 +789,9 @@ def _aggregate_outer_quadrants(statcast_df, total_pitches):
     counts = {"tl": 0, "tr": 0, "bl": 0, "br": 0}
 
     if total_pitches > 0:
-        zone_to_quad = {11: "tl", 12: "tr", 13: "bl", 14: "br"}
         zone_ids = statcast_df["zone"].apply(_normalize_zone_value)
         for zone_id in zone_ids.dropna().astype(int):
-            key = zone_to_quad.get(zone_id)
+            key = OUTER_ZONE_TO_QUAD.get(zone_id)
             if key is not None:
                 counts[key] += 1
 
@@ -598,7 +804,13 @@ def _aggregate_outer_quadrants(statcast_df, total_pitches):
     }
 
 
-def _build_strike_zone_html(zone_df, outer_stats, metric=None, heatmap_scale=HEATMAP_SCALE_LEAGUE):
+def _build_strike_zone_html(
+    zone_df,
+    outer_stats,
+    metric=None,
+    heatmap_scale=HEATMAP_SCALE_LEAGUE,
+    baselines=None,
+):
     zone_lookup = {int(row["zone_id"]): row for _, row in zone_df.iterrows()}
     self_color_map = _build_self_heatmap_color_map(zone_df, outer_stats) if heatmap_scale == HEATMAP_SCALE_SELF else None
 
@@ -606,37 +818,39 @@ def _build_strike_zone_html(zone_df, outer_stats, metric=None, heatmap_scale=HEA
     for zone_id in range(1, 10):
         row = zone_lookup.get(zone_id)
         if row is not None:
-            cell_text = _format_cell_text(row["pitch_count"], row["pitch_pct"])
+            cell_text = _format_cell_text(row["pitch_count"], row["pitch_pct"], metric=metric)
             cell_style = _zone_background_style(
                 metric,
                 zone_id,
                 row["pitch_pct"],
                 heatmap_scale=heatmap_scale,
                 self_color_map=self_color_map,
+                baselines=baselines,
             )
         else:
-            cell_text = _format_cell_text(0, 0.0)
+            cell_text = _format_cell_text(0, 0.0, metric=metric)
             cell_style = _zone_background_style(
                 metric,
                 zone_id,
                 0.0,
                 heatmap_scale=heatmap_scale,
                 self_color_map=self_color_map,
+                baselines=baselines,
             )
         inner_cells.append(f'<div class="sz-cell"{cell_style}>{cell_text}</div>')
 
     inner_html = "".join(inner_cells)
 
-    outer_zone_ids = {"tl": 11, "tr": 12, "bl": 13, "br": 14}
     outer_html = {
         key: {
-            "text": _format_cell_text(outer_stats[key]["pitch_count"], outer_stats[key]["pitch_pct"]),
+            "text": _format_cell_text(outer_stats[key]["pitch_count"], outer_stats[key]["pitch_pct"], metric=metric),
             "style": _zone_background_style(
                 metric,
-                outer_zone_ids[key],
+                OUTER_QUAD_TO_ZONE[key],
                 outer_stats[key]["pitch_pct"],
                 heatmap_scale=heatmap_scale,
                 self_color_map=self_color_map,
+                baselines=baselines,
             ),
         }
         for key in ("tl", "tr", "bl", "br")
@@ -766,10 +980,17 @@ def render_strike_zone_grid(zone_df, filtered_df, total_pitches=None):
     return _build_strike_zone_html(zone_df, outer_stats)
 
 
-def display_strike_zone(player_id, pitch_type, batter_stands="All Batters"):
+def display_strike_zone(
+    player_id,
+    pitch_type,
+    batter_stands="All Batters",
+    metric="Pitch %",
+    heatmap_scale=HEATMAP_SCALE_LEAGUE,
+):
     season_year = date.today().year
     start_date = f"{season_year}-03-01"
     end_date = date.today().isoformat()
+    metric = _pitcher_metric_label(metric)
 
     try:
         raw_df = load_pitch_location_data(player_id, start_date, end_date)
@@ -784,8 +1005,19 @@ def display_strike_zone(player_id, pitch_type, batter_stands="All Batters"):
         st.info("Strike zone data is unavailable for this pitcher right now.")
         return
 
-    zone_df = aggregate_to_zones(filtered_df)
-    html = render_strike_zone_grid(zone_df, filtered_df)
+    unavailable_reason = _pitcher_metric_unavailable_reason(filtered_df, metric)
+    if unavailable_reason:
+        st.info(unavailable_reason)
+        return
+
+    zone_df, outer_stats, _ = _build_pitcher_metric_zone_outputs(filtered_df, metric)
+    html = _build_strike_zone_html(
+        zone_df,
+        outer_stats,
+        metric=metric,
+        heatmap_scale=heatmap_scale,
+        baselines=PITCHER_ZONE_METRIC_BASELINES,
+    )
     st.markdown(html, unsafe_allow_html=True)
 
 

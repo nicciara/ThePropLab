@@ -1188,6 +1188,44 @@ def batter_heatmap_legend_html(heatmap_scale):
     )
 
 
+def pitcher_heatmap_legend_html(heatmap_scale):
+    colors = strike_zone.ZONE_Z_SCORE_BACKGROUND_COLORS
+    if heatmap_scale == strike_zone.HEATMAP_SCALE_SELF:
+        title = "HEATMAP KEY (Vs. Self)"
+        rows = [
+            ("blue", "Most frequent / highest zones for this pitcher"),
+            ("green", "Above this pitcher's normal zone value"),
+            ("orange", "Below this pitcher's normal zone value"),
+            ("red", "Lowest zones for this pitcher"),
+        ]
+        note = "Compared only to this pitcher's own 13-zone distribution."
+    else:
+        title = "HEATMAP KEY (Vs. League Average)"
+        rows = [
+            ("blue", "Elite / Much higher than pitcher league average"),
+            ("green", "Above average"),
+            ("orange", "Around average"),
+            ("red", "Below average"),
+        ]
+        note = "Compared to qualified MLB pitchers for the selected metric and zone."
+
+    row_html = "".join(
+        "<div style='display:flex; align-items:center; gap:7px; margin:3px 0;'>"
+        f"<span style='display:inline-block; width:11px; height:11px; border:1px solid #111; background:{colors[color_key]}; flex:0 0 auto;'></span>"
+        f"<span>{label}</span>"
+        "</div>"
+        for color_key, label in rows
+    )
+    return (
+        "<div style='border:1px solid #d1d5db; border-radius:6px; padding:7px 8px; margin:8px 0 8px 0; "
+        "font-size:11.5px; line-height:1.25; color:#111; background:#fff;'>"
+        f"<div style='font-weight:800; font-size:11px; letter-spacing:0.02em; margin-bottom:5px;'>{title}</div>"
+        f"{row_html}"
+        f"<div style='font-size:10.5px; color:#374151; margin-top:5px;'>{note}</div>"
+        "</div>"
+    )
+
+
 def game_log_sample_dataframe(game_log_df, sample_label):
     if sample_label in {"L5", "L10", "L15"}:
         return game_log_df.tail(int(sample_label[1:])).copy()
@@ -3020,8 +3058,30 @@ if st.session_state.get("selected_pitcher"):
                     index=0,
                     key=f"strike_zone_batter_stands_{pid}",
                 )
+                selected_pitcher_metric = st.selectbox(
+                    "Metric",
+                    list(strike_zone.PITCHER_STRIKE_ZONE_METRICS),
+                    index=0,
+                    key=f"strike_zone_metric_{pid}",
+                )
+                selected_pitcher_heatmap_scale = st.selectbox(
+                    "Heatmap Scale",
+                    [strike_zone.HEATMAP_SCALE_LEAGUE, strike_zone.HEATMAP_SCALE_SELF],
+                    index=0,
+                    key=f"strike_zone_heatmap_scale_{pid}",
+                )
+                st.markdown(
+                    pitcher_heatmap_legend_html(selected_pitcher_heatmap_scale),
+                    unsafe_allow_html=True,
+                )
             with strike_zone_cols[1]:
-                strike_zone.display_strike_zone(pid, selected_pitch_type, selected_batter_stands)
+                strike_zone.display_strike_zone(
+                    pid,
+                    selected_pitch_type,
+                    selected_batter_stands,
+                    selected_pitcher_metric,
+                    selected_pitcher_heatmap_scale,
+                )
 
         with st.container(border=True):
             st.markdown(
