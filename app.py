@@ -19,6 +19,12 @@ PLAYER_API_CALLS = 0
 LINEUP_MIN_HEIGHT = 220
 GAME_LOG_PROPS = ["Hits", "Runs", "RBI", "H+R+RBI", "Total Bases", "Home Runs", "Walks", "Strikeouts"]
 GAME_LOG_SAMPLE_RANGES = ("L5", "L10", "L15", "2026")
+GAME_LOG_HIT_EVENT_LABELS = {
+    "single": "Single",
+    "double": "Double",
+    "triple": "Triple",
+    "home_run": "Home Run",
+}
 GAME_LOG_PROP_COLUMNS = {
     "Hits": "hits",
     "Runs": "runs",
@@ -760,6 +766,157 @@ def load_batter_prop_all_game_logs(batter_id):
     return all_logs.reset_index(drop=True)
 
 
+def normalize_game_pk(value):
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except TypeError:
+        pass
+    if str(value).strip() == "":
+        return ""
+    try:
+        return str(int(float(value)))
+    except (TypeError, ValueError):
+        return str(value).strip()
+
+
+def savant_batter_detail_params(batter_id, start_date, end_date):
+    return {
+        "all": "true",
+        "hfPT": "",
+        "hfAB": "",
+        "hfBBT": "",
+        "hfPR": "",
+        "hfZ": "",
+        "stadium": "",
+        "hfBBL": "",
+        "hfNewZones": "",
+        "hfGT": "R|PO|S|",
+        "hfSea": "",
+        "hfSit": "",
+        "player_type": "batter",
+        "hfOuts": "",
+        "opponent": "",
+        "pitcher_throws": "",
+        "batter_stands": "",
+        "hfSA": "",
+        "game_date_gt": start_date,
+        "game_date_lt": end_date,
+        "batters_lookup[]": str(batter_id),
+        "team": "",
+        "position": "",
+        "hfRO": "",
+        "home_road": "",
+        "hfFlag": "",
+        "metric_1": "",
+        "hfInn": "",
+        "min_pitches": "0",
+        "min_results": "0",
+        "group_by": "name",
+        "sort_col": "pitches",
+        "player_event_sort": "h_launch_speed",
+        "sort_order": "desc",
+        "min_abs": "0",
+        "type": "details",
+    }
+
+
+@st.cache_data(ttl=86400)
+def load_batter_hit_details_by_game(batter_id, season_year):
+    if not batter_id or not season_year:
+        return {}
+
+    try:
+        season_year = int(season_year)
+    except (TypeError, ValueError):
+        return {}
+
+    start_date = f"{season_year}-03-01"
+    end_date = date.today().isoformat() if season_year == date.today().year else f"{season_year}-12-01"
+    url = "https://baseballsavant.mlb.com/statcast_search/csv"
+    params = savant_batter_detail_params(batter_id, start_date, end_date)
+
+    try:
+        response = requests.get(url, params=params, timeout=45)
+    except Exception as exc:
+        logger.warning("Batter hit detail fetch failed for batter_id=%s season=%s: %s", batter_id, season_year, exc)
+        return {}
+
+    if response.status_code != 200:
+        logger.warning("Batter hit detail request failed for batter_id=%s season=%s status=%s", batter_id, season_year, response.status_code)
+        return {}
+
+    try:
+        raw_df = pd.read_csv(io.StringIO(response.text), low_memory=False)
+    except Exception as exc:
+        logger.warning("Failed parsing batter hit detail CSV for batter_id=%s season=%s: %s", batter_id, season_year, exc)
+        return {}
+
+    required_columns = {"game_pk", "events", "pitcher"}
+    if raw_df.empty or not required_columns.issubset(raw_df.columns):
+        return {}
+
+    working_df = raw_df.copy()
+    if "game_year" in working_df.columns:
+        working_df = working_df[pd.to_numeric(working_df["game_year"], errors="coerce") == season_year].copy()
+    if working_df.empty:
+        return {}
+
+    working_df["_event_norm"] = working_df["events"].astype(str).str.lower().str.strip()
+    hit_df = working_df[working_df["_event_norm"].isin(GAME_LOG_HIT_EVENT_LABELS)].copy()
+    if hit_df.empty:
+        return {}
+
+    pitcher_ids = pd.to_numeric(hit_df["pitcher"], errors="coerce").dropna().astype(int).unique().tolist()
+    pitcher_info = get_players_info(tuple(pitcher_ids)) if pitcher_ids else {}
+
+    sort_columns = [column for column in ("game_date", "at_bat_number", "pitch_number") if column in hit_df.columns]
+    if sort_columns:
+        hit_df = hit_df.sort_values(sort_columns)
+
+    details_by_game = {}
+    for _, row in hit_df.iterrows():
+        game_key = normalize_game_pk(row.get("game_pk"))
+        if not game_key:
+            continue
+
+        event_label = GAME_LOG_HIT_EVENT_LABELS.get(str(row.get("_event_norm", "")).lower().strip())
+        if not event_label:
+            continue
+
+        pitcher_id = row.get("pitcher")
+        try:
+            pitcher_id_int = int(float(pitcher_id))
+        except (TypeError, ValueError):
+            pitcher_id_int = None
+
+        pitcher_record = pitcher_info.get(pitcher_id_int, {}) if pitcher_id_int is not None else {}
+        pitcher_name = pitcher_record.get("fullName")
+        if not pitcher_name and pitcher_id_int is not None:
+            pitcher_name = f"Pitcher ID {pitcher_id_int}"
+        if not pitcher_name:
+            pitcher_name = "Unknown Pitcher"
+
+        hand_code = normalize_hand_code(row.get("p_throws", "")) if "p_throws" in hit_df.columns else ""
+        if not hand_code:
+            hand_code = normalize_hand_code(pitcher_record.get("pitchHand", ""))
+        hand_label = format_pitcher_hand(hand_code) if hand_code else "N/A"
+        details_by_game.setdefault(game_key, []).append(f"{event_label} vs {pitcher_name} ({hand_label})")
+
+    return details_by_game
+
+
+def load_batter_hit_details_by_game_for_seasons(batter_id, seasons):
+    details_by_game = {}
+    for season in sorted({int(season) for season in seasons if season}):
+        season_details = load_batter_hit_details_by_game(batter_id, season)
+        for game_key, details in season_details.items():
+            details_by_game.setdefault(game_key, []).extend(details)
+    return details_by_game
+
+
 def display_batter_metric_strike_zone_fixed(
     batter_id,
     pitch_type,
@@ -1002,13 +1159,17 @@ def game_log_matchup_tooltip(row):
     return f"{prefix} {opponent_display}"
 
 
-def game_log_hit_details_tooltip(row):
+def game_log_hit_details_tooltip(row, hit_details_by_game=None):
     try:
         hits = int(row.get("hits", 0) or 0)
     except (TypeError, ValueError):
         hits = 0
     if hits <= 0:
         return "No hits recorded."
+    game_key = normalize_game_pk(row.get("game_pk"))
+    hit_details = (hit_details_by_game or {}).get(game_key, [])
+    if hit_details:
+        return "\n".join(hit_details)
     return "Hit event detail unavailable."
 
 
@@ -1183,7 +1344,19 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
         display_log_df["tooltip_hits"] = pd.to_numeric(display_log_df["hits"], errors="coerce").fillna(0).astype(int)
     else:
         display_log_df["tooltip_hits"] = 0
-    display_log_df["tooltip_hit_details"] = display_log_df.apply(game_log_hit_details_tooltip, axis=1)
+    rows_with_hits = display_log_df[display_log_df["tooltip_hits"] > 0]
+    if rows_with_hits.empty:
+        hit_details_by_game = {}
+    else:
+        if "season" in rows_with_hits.columns:
+            hit_detail_seasons = pd.to_numeric(rows_with_hits["season"], errors="coerce").dropna().astype(int).unique().tolist()
+        else:
+            hit_detail_seasons = rows_with_hits["game_date"].dt.year.dropna().astype(int).unique().tolist()
+        hit_details_by_game = load_batter_hit_details_by_game_for_seasons(batter_id, tuple(hit_detail_seasons))
+    display_log_df["tooltip_hit_details"] = display_log_df.apply(
+        lambda row: game_log_hit_details_tooltip(row, hit_details_by_game=hit_details_by_game),
+        axis=1,
+    )
     max_value = max(float(display_log_df["prop_value"].max()), selected_prop_line, 1.0)
     if game_log_range == "L5":
         bar_size = 128
@@ -1583,6 +1756,7 @@ def get_players_info(player_ids):
     for person in people:
         pid = person.get("id")
         result[pid] = {
+            "fullName": person.get("fullName", ""),
             "batSide": person.get("batSide", {}).get("code", ""),
             "pitchHand": person.get("pitchHand", {}).get("code", "")
         }
