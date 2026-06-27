@@ -331,7 +331,7 @@ def _projection_truthy(record, *keys):
     return str(value).strip().lower() in {"1", "true", "yes", "y", "goblin", "demon"}
 
 
-def render_line_badge(line_value, odds_type=""):
+def render_line_badge(line_value, odds_type="", show_book_badge=True):
     try:
         line_text = f"{float(line_value):.1f}"
     except (TypeError, ValueError):
@@ -343,11 +343,12 @@ def render_line_badge(line_value, odds_type=""):
         boost_html = '<span class="boost-badge goblin-badge">Goblin</span>'
     elif normalized_odds_type == "demon":
         boost_html = '<span class="boost-badge demon-badge">Demon</span>'
+    book_badge_html = '<span class="book-badge">PP</span>' if show_book_badge else ""
 
     return (
         '<div class="line-badge">'
         f'<span class="line-value">{html.escape(line_text)}</span>'
-        '<span class="book-badge">PP</span>'
+        f'{book_badge_html}'
         f'{boost_html}'
         '</div>'
     )
@@ -1792,7 +1793,7 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
     with line_cols[1]:
         selected_odds_type = _projection_value(selected_projection_line, "odds_type", "oddsType", default="") if isinstance(selected_projection_line, dict) else ""
         st.markdown(
-            f"<div class='line-badge-wrap'>{render_line_badge(st.session_state[line_key], selected_odds_type)}</div>",
+            f"<div class='line-badge-wrap'>{render_line_badge(st.session_state[line_key], selected_odds_type, show_book_badge=bool(projection_lines))}</div>",
             unsafe_allow_html=True,
         )
     with line_cols[2]:
