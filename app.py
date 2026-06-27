@@ -1013,13 +1013,23 @@ def game_log_starting_pitcher_tooltips(row):
     return _format_starter(player_side), _format_starter(opponent_side)
 
 
-def add_game_log_static_tooltip_columns(game_log_df, batter_id):
+def add_game_log_static_tooltip_columns(game_log_df, batter_id, enrich=False):
     if game_log_df.empty:
         return game_log_df.copy()
 
     enriched_df = game_log_df.copy()
     enriched_df["tooltip_date"] = enriched_df["game_date"].apply(game_log_full_date_label)
     enriched_df["tooltip_game"] = enriched_df.apply(game_log_matchup_tooltip, axis=1)
+    if "hits" in enriched_df.columns:
+        enriched_df["tooltip_hits"] = pd.to_numeric(enriched_df["hits"], errors="coerce").fillna(0).astype(int)
+    else:
+        enriched_df["tooltip_hits"] = 0
+
+    if not enrich:
+        enriched_df["tooltip_player_sp"] = "N/A"
+        enriched_df["tooltip_opponent_sp"] = "N/A"
+        enriched_df["tooltip_hit_details"] = enriched_df.apply(game_log_hit_details_tooltip, axis=1)
+        return enriched_df
 
     starter_map = {}
     if "game_pk" in enriched_df.columns:
@@ -1060,11 +1070,6 @@ def add_game_log_static_tooltip_columns(game_log_df, batter_id):
     enriched_df["tooltip_player_sp"] = starter_tooltips.apply(lambda value: value[0])
     enriched_df["tooltip_opponent_sp"] = starter_tooltips.apply(lambda value: value[1])
 
-    if "hits" in enriched_df.columns:
-        enriched_df["tooltip_hits"] = pd.to_numeric(enriched_df["hits"], errors="coerce").fillna(0).astype(int)
-    else:
-        enriched_df["tooltip_hits"] = 0
-
     rows_with_hits = enriched_df[enriched_df["tooltip_hits"] > 0]
     if rows_with_hits.empty:
         hit_details_by_game = {}
@@ -1080,24 +1085,6 @@ def add_game_log_static_tooltip_columns(game_log_df, batter_id):
         axis=1,
     )
     return enriched_df
-
-
-@st.cache_data(ttl=1800, show_spinner=False)
-def load_enriched_batter_prop_game_log(batter_id):
-    game_log_df = load_batter_prop_game_log(batter_id)
-    return add_game_log_static_tooltip_columns(game_log_df, batter_id)
-
-
-@st.cache_data(ttl=86400, show_spinner=False)
-def load_enriched_batter_h2h_game_log(batter_id, opponent_id, opponent_name, opponent_abbr):
-    game_log_df = load_batter_prop_all_game_logs(batter_id)
-    opponent_context = {
-        "id": str(opponent_id or "").strip(),
-        "name": str(opponent_name or "").strip(),
-        "abbr": str(opponent_abbr or "").strip(),
-    }
-    h2h_df = filter_game_logs_vs_opponent(game_log_df, opponent_context)
-    return add_game_log_static_tooltip_columns(h2h_df, batter_id)
 
 
 def display_batter_metric_strike_zone_fixed(
@@ -1439,9 +1426,10 @@ def toggle_game_log_h2h_selection(h2h_key, range_key):
 
 @st.fragment
 def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop, selected_prop_line, current_opponent_context):
-    game_log_df = load_enriched_batter_prop_game_log(batter_id)
+    game_log_df = load_batter_prop_game_log(batter_id)
     range_key = f"batter_game_log_range_{batter_id}"
     h2h_key = f"batter_game_log_h2h_{batter_id}"
+    tooltip_ready_key = f"batter_game_log_tooltip_ready_{batter_id}"
     h2h_enabled = bool(st.session_state.get(h2h_key, False))
     if st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES and not h2h_enabled:
         st.session_state[range_key] = "L10"
@@ -1449,8 +1437,6 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
         st.session_state[range_key] = None
 
     has_opponent_context = bool(current_opponent_context.get("id") or current_opponent_context.get("name"))
-    all_game_log_df = load_batter_prop_all_game_logs(batter_id) if has_opponent_context else pd.DataFrame()
-    all_h2h_game_log_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
     summary_opponent_context = current_opponent_context if h2h_enabled else None
     sample_summaries = prop_hit_rate_sample_summaries(
         game_log_df,
@@ -1464,8 +1450,11 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
             game_log_sample_dataframe(game_log_df, active_sample_label),
             current_opponent_context,
         )
+    elif h2h_enabled:
+        all_game_log_df = load_batter_prop_all_game_logs(batter_id) if has_opponent_context else pd.DataFrame()
+        h2h_tile_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
     else:
-        h2h_tile_df = all_h2h_game_log_df
+        h2h_tile_df = filter_game_logs_vs_opponent(game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
     h2h_summary = prop_hit_rate_summary_for_df(
         h2h_tile_df,
         prop_column,
@@ -1499,12 +1488,8 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
                 current_opponent_context,
             )
         else:
-            display_log_df = load_enriched_batter_h2h_game_log(
-                batter_id,
-                current_opponent_context.get("id", ""),
-                current_opponent_context.get("name", ""),
-                current_opponent_context.get("abbr", ""),
-            )
+            all_game_log_df = load_batter_prop_all_game_logs(batter_id) if has_opponent_context else pd.DataFrame()
+            display_log_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
     else:
         display_log_df = game_log_sample_dataframe(game_log_df, game_log_range)
 
@@ -1514,6 +1499,17 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
         else:
             st.info("Game log data is unavailable for this batter right now.")
         return
+
+    tooltip_enrichment_allowed = bool(st.session_state.get(tooltip_ready_key, False))
+    should_enrich_tooltips = tooltip_enrichment_allowed and (
+        h2h_enabled or game_log_range in {"L5", "L10", "L15"}
+    )
+    display_log_df = add_game_log_static_tooltip_columns(
+        display_log_df,
+        batter_id,
+        enrich=should_enrich_tooltips,
+    )
+    st.session_state[tooltip_ready_key] = True
 
     display_log_df["prop_value"] = pd.to_numeric(display_log_df[prop_column], errors="coerce").fillna(0)
     display_log_df["result_color"] = display_log_df["prop_value"].apply(
