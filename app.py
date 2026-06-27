@@ -95,6 +95,33 @@ st.markdown(
     .nav-name-link:hover{color:var(--dash-accent)!important;text-decoration:underline!important}
     div[data-testid="stSegmentedControl"] div[role="radiogroup"]{overflow-x:auto;flex-wrap:nowrap}
     div[data-testid="stSegmentedControl"] label{white-space:pre-line;line-height:1.2}
+    .st-key-game_log_range_tiles [data-testid="stHorizontalBlock"]{overflow-x:auto;flex-wrap:nowrap;gap:0.65rem}
+    .st-key-game_log_range_tiles .stButton>button{
+        min-width:132px;
+        min-height:88px;
+        padding:10px 14px;
+        border-radius:13px;
+        border:1px solid #273449;
+        background:#07111f;
+        color:#e5edf8;
+        box-shadow:0 8px 18px rgba(15,23,42,0.22);
+        white-space:pre-line;
+        line-height:1.22;
+        font-size:15px;
+        font-weight:800;
+    }
+    .st-key-game_log_range_tiles .stButton>button p{margin:0;white-space:pre-line;line-height:1.22}
+    .st-key-game_log_range_tiles .stButton>button:hover{
+        border-color:#7dd3fc;
+        background:#0b1b31;
+        color:#ffffff;
+    }
+    .st-key-game_log_range_tiles .stButton>button[kind="primary"]{
+        border:2px solid #38bdf8;
+        background:#102a47;
+        box-shadow:0 0 0 2px rgba(56,189,248,0.22),0 10px 20px rgba(15,23,42,0.28);
+        color:#ffffff;
+    }
     .line-badge{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:6px 12px;border:1px solid #ddd;border-radius:999px;min-width:120px;background:#f8fafc;box-shadow:0 1px 2px rgba(15,23,42,0.04);white-space:nowrap}
     .line-value{font-weight:700;font-size:22px;color:var(--dash-title);line-height:1}
     .book-badge,.boost-badge{display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;line-height:1;padding:4px 8px;border-radius:999px;white-space:nowrap}
@@ -818,7 +845,7 @@ def prop_hit_rate_sample_label(sample_label, summaries):
     hit_rate_text = summary.get("hit_rate_text", "--")
     avg_text = summary.get("avg_text", "--")
     hr_prefix = f"{indicator} HR" if indicator else "HR"
-    return f"{sample_label}\n{hr_prefix} {hit_rate_text}\nAvg {avg_text}"
+    return f"**{sample_label}**\n{hr_prefix} {hit_rate_text}\nAvg {avg_text}"
 
 
 def normalize_hand_code(code):
@@ -1644,15 +1671,21 @@ if st.session_state.get("selected_batter"):
         selected_prop_line = float(st.session_state[line_key])
         game_log_df = load_batter_prop_game_log(batter_id)
         sample_summaries = prop_hit_rate_sample_summaries(game_log_df, prop_column, selected_prop_line)
+        range_key = f"batter_game_log_range_{batter_id}"
+        if st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES:
+            st.session_state[range_key] = "L10"
         st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
-        game_log_range = st.segmented_control(
-            "Recent Range",
-            GAME_LOG_SAMPLE_RANGES,
-            default="L10",
-            key=f"batter_game_log_range_{batter_id}",
-            label_visibility="collapsed",
-            format_func=lambda sample_label: prop_hit_rate_sample_label(sample_label, sample_summaries),
-        )
+        with st.container(key="game_log_range_tiles", horizontal=True, gap="small"):
+            for sample_label in GAME_LOG_SAMPLE_RANGES:
+                is_selected_sample = sample_label == st.session_state[range_key]
+                if st.button(
+                    prop_hit_rate_sample_label(sample_label, sample_summaries),
+                    key=f"{range_key}_{sample_label}",
+                    type="primary" if is_selected_sample else "secondary",
+                ):
+                    st.session_state[range_key] = sample_label
+                    st.rerun()
+        game_log_range = st.session_state[range_key]
         if game_log_df.empty:
             st.info("Game log data is unavailable for this batter right now.")
         else:
