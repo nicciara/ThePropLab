@@ -1041,6 +1041,160 @@ def selected_batter_opponent_context(sb, game_pk, lineup_context, lineup_side):
     return context
 
 
+def set_game_log_range_selection(range_key, h2h_key, sample_label):
+    h2h_enabled = bool(st.session_state.get(h2h_key, False))
+    if h2h_enabled and st.session_state.get(range_key) == sample_label:
+        st.session_state[range_key] = None
+    else:
+        st.session_state[range_key] = sample_label
+
+
+def toggle_game_log_h2h_selection(h2h_key, range_key):
+    h2h_enabled = bool(st.session_state.get(h2h_key, False))
+    st.session_state[h2h_key] = not h2h_enabled
+    if h2h_enabled:
+        if st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES:
+            st.session_state[range_key] = "L10"
+    else:
+        st.session_state[range_key] = None
+
+
+@st.fragment
+def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop, selected_prop_line, current_opponent_context):
+    game_log_df = load_batter_prop_game_log(batter_id)
+    range_key = f"batter_game_log_range_{batter_id}"
+    h2h_key = f"batter_game_log_h2h_{batter_id}"
+    h2h_enabled = bool(st.session_state.get(h2h_key, False))
+    if st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES and not h2h_enabled:
+        st.session_state[range_key] = "L10"
+    elif st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES:
+        st.session_state[range_key] = None
+
+    has_opponent_context = bool(current_opponent_context.get("id") or current_opponent_context.get("name"))
+    all_game_log_df = load_batter_prop_all_game_logs(batter_id) if has_opponent_context else pd.DataFrame()
+    summary_opponent_context = current_opponent_context if h2h_enabled else None
+    sample_summaries = prop_hit_rate_sample_summaries(
+        game_log_df,
+        prop_column,
+        selected_prop_line,
+        opponent_context=summary_opponent_context,
+    )
+    active_sample_label = st.session_state.get(range_key)
+    if h2h_enabled and active_sample_label in GAME_LOG_SAMPLE_RANGES:
+        h2h_tile_df = filter_game_logs_vs_opponent(
+            game_log_sample_dataframe(game_log_df, active_sample_label),
+            current_opponent_context,
+        )
+    else:
+        h2h_tile_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context)
+    h2h_summary = prop_hit_rate_summary_for_df(
+        h2h_tile_df,
+        prop_column,
+        selected_prop_line,
+        empty_hit_rate_text="N/A",
+        empty_avg_text="—",
+    )
+    st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
+    with st.container(key="game_log_range_tiles", horizontal=True, gap="small"):
+        for sample_label in GAME_LOG_SAMPLE_RANGES:
+            is_selected_sample = sample_label == st.session_state[range_key]
+            st.button(
+                prop_hit_rate_sample_label(sample_label, sample_summaries),
+                key=f"{range_key}_{sample_label}",
+                type="primary" if is_selected_sample else "secondary",
+                on_click=set_game_log_range_selection,
+                args=(range_key, h2h_key, sample_label),
+            )
+        st.button(
+            prop_h2h_tile_label(h2h_summary),
+            key=f"{h2h_key}_tile",
+            type="primary" if h2h_enabled else "secondary",
+            on_click=toggle_game_log_h2h_selection,
+            args=(h2h_key, range_key),
+        )
+    game_log_range = st.session_state[range_key]
+    if h2h_enabled:
+        if game_log_range in GAME_LOG_SAMPLE_RANGES:
+            display_log_df = filter_game_logs_vs_opponent(
+                game_log_sample_dataframe(game_log_df, game_log_range),
+                current_opponent_context,
+            )
+        else:
+            display_log_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context)
+    else:
+        display_log_df = game_log_sample_dataframe(game_log_df, game_log_range)
+
+    if display_log_df.empty:
+        if h2h_enabled:
+            st.info("No previous games vs today's opponent.")
+        else:
+            st.info("Game log data is unavailable for this batter right now.")
+        return
+
+    display_log_df["prop_value"] = pd.to_numeric(display_log_df[prop_column], errors="coerce").fillna(0)
+    display_log_df["result_color"] = display_log_df["prop_value"].apply(
+        lambda value: "#16a34a" if value >= selected_prop_line else "#dc2626"
+    )
+    display_log_df["bar_value"] = display_log_df["prop_value"].apply(lambda value: 0.12 if value == 0 else value)
+    display_log_df["label_y"] = display_log_df["bar_value"].apply(lambda value: value + 0.22)
+    display_log_df["chart_label"] = display_log_df.apply(
+        lambda row: f"{row['game_date'].month}/{row['game_date'].day}\n{row['opponent'] if row['opponent'] else ''}",
+        axis=1,
+    )
+    max_value = max(float(display_log_df["prop_value"].max()), selected_prop_line, 1.0)
+    if game_log_range == "L5":
+        bar_size = 128
+        x_step = 130
+    elif game_log_range == "L10":
+        bar_size = 74
+        x_step = 76
+    elif game_log_range == "L15":
+        bar_size = 52
+        x_step = 54
+    else:
+        bar_size = 11
+        x_step = 12
+
+    bars = (
+        alt.Chart(display_log_df)
+        .mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5, size=bar_size)
+        .encode(
+            x=alt.X(
+                "chart_label:N",
+                sort=None,
+                title=None,
+                axis=alt.Axis(labelAngle=0, labelFontSize=11, labelColor="#475569", labelPadding=8, ticks=False, domain=False),
+                scale=alt.Scale(paddingInner=0.04, paddingOuter=0.03),
+            ),
+            y=alt.Y(
+                "bar_value:Q",
+                title=None,
+                scale=alt.Scale(domain=[0, max_value + 0.8], nice=False),
+                axis=alt.Axis(grid=True, gridColor="#e2e8f0", gridOpacity=0.7, tickColor="#e2e8f0", domain=False, titleColor="#475569", labelColor="#64748b"),
+            ),
+            color=alt.Color("result_color:N", scale=None, legend=None),
+            tooltip=[
+                alt.Tooltip("game_date:T", title="Date"),
+                alt.Tooltip("opponent:N", title="Opponent"),
+                alt.Tooltip("prop_value:Q", title=selected_prop, format=".0f"),
+            ],
+        )
+    )
+    labels = (
+        alt.Chart(display_log_df)
+        .mark_text(dy=-8, fontWeight=700, fontSize=12, color="#0f172a")
+        .encode(
+            x=alt.X("chart_label:N", sort=None),
+            y=alt.Y("label_y:Q"),
+            text=alt.Text("prop_value:Q", format=".0f"),
+        )
+    )
+    line_df = pd.DataFrame({"line": [selected_prop_line]})
+    line = alt.Chart(line_df).mark_rule(strokeDash=[6, 4], color="#334155", opacity=0.8).encode(y="line:Q")
+    chart = (bars + labels + line).properties(height=230, width=alt.Step(x_step)).configure_view(stroke=None)
+    st.altair_chart(chart, use_container_width=True)
+
+
 def normalize_hand_code(code):
     if code in {"L", "R"}:
         return code
@@ -1877,145 +2031,13 @@ if st.session_state.get("selected_batter"):
                             pass
                         st.rerun()
         selected_prop_line = float(st.session_state[line_key])
-        game_log_df = load_batter_prop_game_log(batter_id)
-        range_key = f"batter_game_log_range_{batter_id}"
-        h2h_key = f"batter_game_log_h2h_{batter_id}"
-        h2h_enabled = bool(st.session_state.get(h2h_key, False))
-        if st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES and not h2h_enabled:
-            st.session_state[range_key] = "L10"
-        elif st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES:
-            st.session_state[range_key] = None
-
-        has_opponent_context = bool(current_opponent_context.get("id") or current_opponent_context.get("name"))
-        all_game_log_df = load_batter_prop_all_game_logs(batter_id) if has_opponent_context else pd.DataFrame()
-        summary_opponent_context = current_opponent_context if h2h_enabled else None
-        sample_summaries = prop_hit_rate_sample_summaries(
-            game_log_df,
+        render_batter_game_log_sample_section(
+            batter_id,
             prop_column,
+            selected_prop,
             selected_prop_line,
-            opponent_context=summary_opponent_context,
+            current_opponent_context,
         )
-        active_sample_label = st.session_state.get(range_key)
-        if h2h_enabled and active_sample_label in GAME_LOG_SAMPLE_RANGES:
-            h2h_tile_df = filter_game_logs_vs_opponent(
-                game_log_sample_dataframe(game_log_df, active_sample_label),
-                current_opponent_context,
-            )
-        else:
-            h2h_tile_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context)
-        h2h_summary = prop_hit_rate_summary_for_df(
-            h2h_tile_df,
-            prop_column,
-            selected_prop_line,
-            empty_hit_rate_text="N/A",
-            empty_avg_text="—",
-        )
-        st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
-        with st.container(key="game_log_range_tiles", horizontal=True, gap="small"):
-            for sample_label in GAME_LOG_SAMPLE_RANGES:
-                is_selected_sample = sample_label == st.session_state[range_key]
-                if st.button(
-                    prop_hit_rate_sample_label(sample_label, sample_summaries),
-                    key=f"{range_key}_{sample_label}",
-                    type="primary" if is_selected_sample else "secondary",
-                ):
-                    if h2h_enabled and is_selected_sample:
-                        st.session_state[range_key] = None
-                    else:
-                        st.session_state[range_key] = sample_label
-                    st.rerun()
-            if st.button(
-                prop_h2h_tile_label(h2h_summary),
-                key=f"{h2h_key}_tile",
-                type="primary" if h2h_enabled else "secondary",
-            ):
-                st.session_state[h2h_key] = not h2h_enabled
-                if h2h_enabled:
-                    if st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES:
-                        st.session_state[range_key] = "L10"
-                else:
-                    st.session_state[range_key] = None
-                    st.rerun()
-        game_log_range = st.session_state[range_key]
-        if h2h_enabled:
-            if game_log_range in GAME_LOG_SAMPLE_RANGES:
-                display_log_df = filter_game_logs_vs_opponent(
-                    game_log_sample_dataframe(game_log_df, game_log_range),
-                    current_opponent_context,
-                )
-            else:
-                display_log_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context)
-        else:
-            display_log_df = game_log_sample_dataframe(game_log_df, game_log_range)
-
-        if display_log_df.empty:
-            if h2h_enabled:
-                st.info("No previous games vs today's opponent.")
-            else:
-                st.info("Game log data is unavailable for this batter right now.")
-        else:
-            display_log_df["prop_value"] = pd.to_numeric(display_log_df[prop_column], errors="coerce").fillna(0)
-            display_log_df["result_color"] = display_log_df["prop_value"].apply(
-                lambda value: "#16a34a" if value >= selected_prop_line else "#dc2626"
-            )
-            display_log_df["bar_value"] = display_log_df["prop_value"].apply(lambda value: 0.12 if value == 0 else value)
-            display_log_df["label_y"] = display_log_df["bar_value"].apply(lambda value: value + 0.22)
-            display_log_df["chart_label"] = display_log_df.apply(
-                lambda row: f"{row['game_date'].month}/{row['game_date'].day}\n{row['opponent'] if row['opponent'] else ''}",
-                axis=1,
-            )
-            max_value = max(float(display_log_df["prop_value"].max()), selected_prop_line, 1.0)
-            if game_log_range == "L5":
-                bar_size = 128
-                x_step = 130
-            elif game_log_range == "L10":
-                bar_size = 74
-                x_step = 76
-            elif game_log_range == "L15":
-                bar_size = 52
-                x_step = 54
-            else:
-                bar_size = 11
-                x_step = 12
-
-            bars = (
-                alt.Chart(display_log_df)
-                .mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5, size=bar_size)
-                .encode(
-                    x=alt.X(
-                        "chart_label:N",
-                        sort=None,
-                        title=None,
-                        axis=alt.Axis(labelAngle=0, labelFontSize=11, labelColor="#475569", labelPadding=8, ticks=False, domain=False),
-                        scale=alt.Scale(paddingInner=0.04, paddingOuter=0.03),
-                    ),
-                    y=alt.Y(
-                        "bar_value:Q",
-                        title=None,
-                        scale=alt.Scale(domain=[0, max_value + 0.8], nice=False),
-                        axis=alt.Axis(grid=True, gridColor="#e2e8f0", gridOpacity=0.7, tickColor="#e2e8f0", domain=False, titleColor="#475569", labelColor="#64748b"),
-                    ),
-                    color=alt.Color("result_color:N", scale=None, legend=None),
-                    tooltip=[
-                        alt.Tooltip("game_date:T", title="Date"),
-                        alt.Tooltip("opponent:N", title="Opponent"),
-                        alt.Tooltip("prop_value:Q", title=selected_prop, format=".0f"),
-                    ],
-                )
-            )
-            labels = (
-                alt.Chart(display_log_df)
-                .mark_text(dy=-8, fontWeight=700, fontSize=12, color="#0f172a")
-                .encode(
-                    x=alt.X("chart_label:N", sort=None),
-                    y=alt.Y("label_y:Q"),
-                    text=alt.Text("prop_value:Q", format=".0f"),
-                )
-            )
-            line_df = pd.DataFrame({"line": [selected_prop_line]})
-            line = alt.Chart(line_df).mark_rule(strokeDash=[6, 4], color="#334155", opacity=0.8).encode(y="line:Q")
-            chart = (bars + labels + line).properties(height=230, width=alt.Step(x_step)).configure_view(stroke=None)
-            st.altair_chart(chart, use_container_width=True)
 
     with st.container(border=True):
         st.markdown(
