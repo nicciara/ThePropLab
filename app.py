@@ -978,6 +978,16 @@ def prop_h2h_tile_label(summary):
     return f"**H2H**\n{hr_prefix} {hit_rate_text}\nAvg {avg_text}"
 
 
+def game_log_chart_axis_label(row, include_year=False):
+    game_date = row["game_date"]
+    if include_year:
+        date_label = game_date.strftime("%m/%d/%y")
+    else:
+        date_label = f"{game_date.month}/{game_date.day}"
+    opponent_label = row["opponent"] if row["opponent"] else ""
+    return f"{date_label}\n{opponent_label}"
+
+
 def selected_batter_opponent_context(sb, game_pk, lineup_context, lineup_side):
     context = {
         "id": str(sb.get("opponent_id") or "").strip(),
@@ -1137,8 +1147,9 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
     )
     display_log_df["bar_value"] = display_log_df["prop_value"].apply(lambda value: 0.12 if value == 0 else value)
     display_log_df["label_y"] = display_log_df["bar_value"].apply(lambda value: value + 0.22)
+    include_year_in_axis_label = h2h_enabled and game_log_range not in GAME_LOG_SAMPLE_RANGES
     display_log_df["chart_label"] = display_log_df.apply(
-        lambda row: f"{row['game_date'].month}/{row['game_date'].day}\n{row['opponent'] if row['opponent'] else ''}",
+        lambda row: game_log_chart_axis_label(row, include_year=include_year_in_axis_label),
         axis=1,
     )
     max_value = max(float(display_log_df["prop_value"].max()), selected_prop_line, 1.0)
