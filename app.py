@@ -978,14 +978,38 @@ def prop_h2h_tile_label(summary):
     return f"**H2H**\n{hr_prefix} {hit_rate_text}\nAvg {avg_text}"
 
 
-def game_log_chart_axis_label(row, include_year=False):
+def game_log_chart_axis_label(row, h2h_active=False, current_season=2026):
     game_date = row["game_date"]
-    if include_year:
+    if h2h_active and int(game_date.year) < int(current_season):
         date_label = game_date.strftime("%m/%d/%y")
+    elif h2h_active:
+        date_label = game_date.strftime("%m/%d")
     else:
         date_label = f"{game_date.month}/{game_date.day}"
     opponent_label = row["opponent"] if row["opponent"] else ""
     return f"{date_label}\n{opponent_label}"
+
+
+def game_log_full_date_label(game_date):
+    return f"{game_date.strftime('%B')} {game_date.day}, {game_date.year}"
+
+
+def game_log_matchup_tooltip(row):
+    opponent_display = row.get("opponent_name") or strip_game_log_opponent_prefix(row.get("opponent", ""))
+    if not opponent_display:
+        opponent_display = "N/A"
+    prefix = "@" if str(row.get("opponent", "")).strip().startswith("@") else "vs"
+    return f"{prefix} {opponent_display}"
+
+
+def game_log_hit_details_tooltip(row):
+    try:
+        hits = int(row.get("hits", 0) or 0)
+    except (TypeError, ValueError):
+        hits = 0
+    if hits <= 0:
+        return "No hits recorded."
+    return "Hit event detail unavailable."
 
 
 def selected_batter_opponent_context(sb, game_pk, lineup_context, lineup_side):
@@ -1147,11 +1171,19 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
     )
     display_log_df["bar_value"] = display_log_df["prop_value"].apply(lambda value: 0.12 if value == 0 else value)
     display_log_df["label_y"] = display_log_df["bar_value"].apply(lambda value: value + 0.22)
-    include_year_in_axis_label = h2h_enabled and game_log_range not in GAME_LOG_SAMPLE_RANGES
     display_log_df["chart_label"] = display_log_df.apply(
-        lambda row: game_log_chart_axis_label(row, include_year=include_year_in_axis_label),
+        lambda row: game_log_chart_axis_label(row, h2h_active=h2h_enabled),
         axis=1,
     )
+    display_log_df["tooltip_date"] = display_log_df["game_date"].apply(game_log_full_date_label)
+    display_log_df["tooltip_game"] = display_log_df.apply(game_log_matchup_tooltip, axis=1)
+    display_log_df["tooltip_player_sp"] = "N/A"
+    display_log_df["tooltip_opponent_sp"] = "N/A"
+    if "hits" in display_log_df.columns:
+        display_log_df["tooltip_hits"] = pd.to_numeric(display_log_df["hits"], errors="coerce").fillna(0).astype(int)
+    else:
+        display_log_df["tooltip_hits"] = 0
+    display_log_df["tooltip_hit_details"] = display_log_df.apply(game_log_hit_details_tooltip, axis=1)
     max_value = max(float(display_log_df["prop_value"].max()), selected_prop_line, 1.0)
     if game_log_range == "L5":
         bar_size = 128
@@ -1185,9 +1217,12 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
             ),
             color=alt.Color("result_color:N", scale=None, legend=None),
             tooltip=[
-                alt.Tooltip("game_date:T", title="Date"),
-                alt.Tooltip("opponent:N", title="Opponent"),
-                alt.Tooltip("prop_value:Q", title=selected_prop, format=".0f"),
+                alt.Tooltip("tooltip_date:N", title="Full Date"),
+                alt.Tooltip("tooltip_game:N", title="Game"),
+                alt.Tooltip("tooltip_player_sp:N", title="Player Team SP"),
+                alt.Tooltip("tooltip_opponent_sp:N", title="Opponent SP"),
+                alt.Tooltip("tooltip_hits:Q", title="Hits", format=".0f"),
+                alt.Tooltip("tooltip_hit_details:N", title="Hit Details"),
             ],
         )
     )
