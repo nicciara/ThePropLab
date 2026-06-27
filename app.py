@@ -775,6 +775,47 @@ def batter_heatmap_legend_html(heatmap_scale):
     )
 
 
+def prop_hit_rate_summary_cards_html(game_log_df, prop_column, selected_prop_line):
+    samples = [("L5", 5), ("L10", 10), ("L15", 15), ("2026", None)]
+    rows = []
+    for label, sample_size in samples:
+        sample_df = game_log_df.tail(sample_size).copy() if sample_size else game_log_df.copy()
+        if sample_df.empty or prop_column not in sample_df.columns:
+            hit_rate_text = "--"
+            avg_text = "--"
+            hit_rate_color = "#64748b"
+        else:
+            values = pd.to_numeric(sample_df[prop_column], errors="coerce").dropna()
+            if values.empty:
+                hit_rate_text = "--"
+                avg_text = "--"
+                hit_rate_color = "#64748b"
+            else:
+                hit_rate = float((values >= selected_prop_line).mean() * 100.0)
+                avg_value = float(values.mean())
+                hit_rate_text = f"{hit_rate:.0f}%"
+                avg_text = f"{avg_value:.2f}"
+                if hit_rate >= 60:
+                    hit_rate_color = "#16a34a"
+                elif hit_rate >= 45:
+                    hit_rate_color = "#d97706"
+                else:
+                    hit_rate_color = "#dc2626"
+        rows.append(
+            "<div style='border:1px solid #d1d5db; border-radius:7px; padding:7px 10px; min-width:92px; "
+            "background:#fff; display:flex; flex-direction:column; gap:3px;'>"
+            f"<div style='font-size:12px; font-weight:900; color:#0f172a;'>{label}</div>"
+            f"<div style='font-size:12px; font-weight:800; color:{hit_rate_color};'>HR {hit_rate_text}</div>"
+            f"<div style='font-size:11.5px; font-weight:700; color:#475569;'>Avg {avg_text}</div>"
+            "</div>"
+        )
+    return (
+        "<div style='display:flex; flex-wrap:wrap; gap:8px; align-items:stretch; margin:8px 0 10px 0;'>"
+        f"{''.join(rows)}"
+        "</div>"
+    )
+
+
 def normalize_hand_code(code):
     if code in {"L", "R"}:
         return code
@@ -1608,6 +1649,10 @@ if st.session_state.get("selected_batter"):
         if game_log_df.empty:
             st.info("Game log data is unavailable for this batter right now.")
         else:
+            st.markdown(
+                prop_hit_rate_summary_cards_html(game_log_df, prop_column, selected_prop_line),
+                unsafe_allow_html=True,
+            )
             if game_log_range in {"L5", "L10", "L15"}:
                 display_log_df = game_log_df.tail(int(game_log_range[1:])).copy()
             else:
