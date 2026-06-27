@@ -128,47 +128,58 @@ st.markdown(
     .nav-name-link:hover{color:var(--dash-accent)!important;text-decoration:underline!important}
     div[data-testid="stSegmentedControl"] div[role="radiogroup"]{overflow-x:auto;flex-wrap:nowrap}
     div[data-testid="stSegmentedControl"] label{white-space:pre-line;line-height:1.2}
-    .st-key-prop_selector_scroll,
-    .st-key-prop_selector_scroll > div,
-    .st-key-prop_selector_scroll [data-testid="stVerticalBlock"],
-    .st-key-prop_selector_scroll [data-testid="stElementContainer"],
-    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"]{
-        max-width:100%;
-    }
-    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"]{
-        display:block;
-        width:100%;
+    .prop-tab-row{
+        display:flex;
+        flex-wrap:nowrap;
+        gap:8px;
         overflow-x:auto;
         overflow-y:hidden;
-        padding:0 6px 6px 6px;
+        padding:2px 6px 8px 6px;
+        margin:0 0 4px 0;
         scroll-behavior:smooth;
         -webkit-overflow-scrolling:touch;
         scrollbar-width:thin;
         scrollbar-color:var(--dash-control-border) transparent;
+        white-space:nowrap;
     }
-    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"]::-webkit-scrollbar{
+    .prop-tab-row::-webkit-scrollbar{
         height:6px;
     }
-    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"]::-webkit-scrollbar-track{
+    .prop-tab-row::-webkit-scrollbar-track{
         background:transparent;
     }
-    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"]::-webkit-scrollbar-thumb{
+    .prop-tab-row::-webkit-scrollbar-thumb{
         background:var(--dash-control-border);
         border-radius:999px;
     }
-    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"] div[role="radiogroup"],
-    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"] [data-baseweb="radio-group"]{
-        display:flex;
-        flex-wrap:nowrap!important;
-        width:max-content!important;
-        min-width:max-content!important;
-    }
-    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"] label{
+    .prop-tab{
         flex:0 0 auto;
-        white-space:nowrap!important;
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-height:34px;
+        padding:7px 14px;
+        border:1px solid var(--dash-control-border);
+        border-radius:999px;
+        background:var(--dash-control-bg);
+        color:var(--dash-control-text)!important;
+        font-size:14px;
+        font-weight:700;
+        line-height:1;
+        text-decoration:none!important;
+        box-shadow:0 1px 2px rgba(15,23,42,0.05);
+        cursor:pointer;
     }
-    .st-key-prop_selector_scroll div[data-testid="stSegmentedControl"] label > div{
-        white-space:nowrap!important;
+    .prop-tab:hover{
+        border-color:var(--dash-accent);
+        color:var(--dash-control-text)!important;
+        text-decoration:none!important;
+    }
+    .prop-tab-active{
+        border-color:var(--dash-accent);
+        background:var(--dash-surface-2);
+        color:var(--dash-title)!important;
+        box-shadow:0 0 0 2px rgba(0,87,216,0.12);
     }
     .st-key-game_log_range_tiles [data-testid="stHorizontalBlock"]{overflow-x:auto;flex-wrap:nowrap;gap:0.65rem}
     .st-key-game_log_range_tiles .stButton>button{
@@ -1455,6 +1466,39 @@ def prop_h2h_tile_label(summary):
     return f"**H2H**\n{hr_prefix} {hit_rate_text}\nAvg {avg_text}"
 
 
+def current_query_params_dict():
+    try:
+        raw_params = st.query_params.to_dict()
+    except Exception:
+        raw_params = {}
+    params = {}
+    for key, value in raw_params.items():
+        if isinstance(value, list):
+            value = value[0] if value else ""
+        if value in {None, ""}:
+            continue
+        params[str(key)] = str(value)
+    return params
+
+
+def build_prop_tab_href(prop):
+    params = current_query_params_dict()
+    params["prop"] = str(prop)
+    return "?" + "&".join(f"{quote_plus(str(key))}={quote_plus(str(value))}" for key, value in params.items())
+
+
+def prop_selector_tabs_html(selected_prop):
+    tabs_html = []
+    for prop in GAME_LOG_PROPS:
+        active_class = " prop-tab-active" if prop == selected_prop else ""
+        href = html.escape(build_prop_tab_href(prop), quote=True)
+        label = html.escape(prop)
+        tabs_html.append(
+            f"<a class='prop-tab{active_class}' href='{href}' target='_self'>{label}</a>"
+        )
+    return f"<div class='prop-tab-row'>{''.join(tabs_html)}</div>"
+
+
 def game_log_chart_axis_label(row, h2h_active=False, current_season=2026):
     game_date = row["game_date"]
     if h2h_active and int(game_date.year) < int(current_season):
@@ -2505,15 +2549,13 @@ if st.session_state.get("selected_batter"):
     current_opponent_context = selected_batter_opponent_context(sb, game_pk, lineup_context, lineup_side)
 
     with st.container(border=True):
-        if st.session_state.get("selected_prop") not in GAME_LOG_PROPS:
+        requested_prop = _query_param_value("prop", "")
+        if requested_prop in GAME_LOG_PROPS:
+            st.session_state["selected_prop"] = requested_prop
+        elif st.session_state.get("selected_prop") not in GAME_LOG_PROPS:
             st.session_state["selected_prop"] = "Hits"
-        with st.container(key="prop_selector_scroll"):
-            selected_prop = st.segmented_control(
-                "Prop",
-                GAME_LOG_PROPS,
-                key="selected_prop",
-                label_visibility="collapsed",
-            )
+        selected_prop = st.session_state.get("selected_prop", "Hits")
+        st.markdown(prop_selector_tabs_html(selected_prop), unsafe_allow_html=True)
         if selected_prop not in GAME_LOG_PROPS:
             selected_prop = "Hits"
 
