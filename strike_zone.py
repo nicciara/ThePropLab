@@ -45,6 +45,8 @@ ZONE_Z_SCORE_BACKGROUND_COLORS = {
     "green": "#73e31e",
     "blue": "#1cb8e8",
 }
+HEATMAP_SCALE_LEAGUE = "Vs. League Average"
+HEATMAP_SCALE_SELF = "Vs. Self"
 
 
 def _normalize_zone_value(zone_value):
@@ -391,11 +393,23 @@ def _build_metric_zone_dataframe(filtered_df, metric):
     return pd.DataFrame()
 
 
-def _build_batter_metric_strike_zone_html(zone_df, outer_stats, metric=None, **_kwargs):
-    return _build_strike_zone_html(zone_df, outer_stats, metric=metric)
+def _build_batter_metric_strike_zone_html(
+    zone_df,
+    outer_stats,
+    metric=None,
+    heatmap_scale=HEATMAP_SCALE_LEAGUE,
+    **_kwargs,
+):
+    return _build_strike_zone_html(zone_df, outer_stats, metric=metric, heatmap_scale=heatmap_scale)
 
 
-def display_batter_metric_strike_zone(batter_id, pitch_type, pitcher_throws="All", metric="Pitch %"):
+def display_batter_metric_strike_zone(
+    batter_id,
+    pitch_type,
+    pitcher_throws="All",
+    metric="Pitch %",
+    heatmap_scale=HEATMAP_SCALE_LEAGUE,
+):
     season_year = date.today().year
     start_date = f"{season_year}-03-01"
     end_date = date.today().isoformat()
@@ -420,7 +434,7 @@ def display_batter_metric_strike_zone(batter_id, pitch_type, pitcher_throws="All
             return
     else:
         zone_df, outer_stats, _ = _build_distribution_zone_outputs(filtered_df, metric)
-    html = _build_batter_metric_strike_zone_html(zone_df, outer_stats, metric=metric)
+    html = _build_batter_metric_strike_zone_html(zone_df, outer_stats, metric=metric, heatmap_scale=heatmap_scale)
     st.markdown(html, unsafe_allow_html=True)
 
 
@@ -472,8 +486,34 @@ def _format_cell_text(count, pct):
     return f"{int(count)}<br>{pct:.1f}%"
 
 
-def _zone_background_style(metric, zone_id, pct):
-    color = _zone_background_color(metric, zone_id, pct)
+def _build_self_heatmap_color_map(zone_df, outer_stats):
+    values = []
+    zone_lookup = {int(row["zone_id"]): row for _, row in zone_df.iterrows()}
+    for zone_id in range(1, 10):
+        row = zone_lookup.get(zone_id)
+        pct = float(row["pitch_pct"]) if row is not None else 0.0
+        values.append((zone_id, pct))
+
+    outer_zone_ids = {"tl": 11, "tr": 12, "bl": 13, "br": 14}
+    for key, zone_id in outer_zone_ids.items():
+        values.append((zone_id, float(outer_stats[key]["pitch_pct"])))
+
+    if not values:
+        return {}
+
+    color_keys = ("red", "orange", "green", "blue")
+    color_map = {}
+    for rank, (zone_id, _) in enumerate(sorted(values, key=lambda item: (item[1], item[0]))):
+        bucket = min(int(rank * len(color_keys) / len(values)), len(color_keys) - 1)
+        color_map[zone_id] = ZONE_Z_SCORE_BACKGROUND_COLORS[color_keys[bucket]]
+    return color_map
+
+
+def _zone_background_style(metric, zone_id, pct, heatmap_scale=HEATMAP_SCALE_LEAGUE, self_color_map=None):
+    if heatmap_scale == HEATMAP_SCALE_SELF:
+        color = (self_color_map or {}).get(zone_id, "")
+    else:
+        color = _zone_background_color(metric, zone_id, pct)
     return f' style="--sz-bg:{color}; background-color:{color} !important;"' if color else ""
 
 
@@ -498,18 +538,31 @@ def _aggregate_outer_quadrants(statcast_df, total_pitches):
     }
 
 
-def _build_strike_zone_html(zone_df, outer_stats, metric=None):
+def _build_strike_zone_html(zone_df, outer_stats, metric=None, heatmap_scale=HEATMAP_SCALE_LEAGUE):
     zone_lookup = {int(row["zone_id"]): row for _, row in zone_df.iterrows()}
+    self_color_map = _build_self_heatmap_color_map(zone_df, outer_stats) if heatmap_scale == HEATMAP_SCALE_SELF else None
 
     inner_cells = []
     for zone_id in range(1, 10):
         row = zone_lookup.get(zone_id)
         if row is not None:
             cell_text = _format_cell_text(row["pitch_count"], row["pitch_pct"])
-            cell_style = _zone_background_style(metric, zone_id, row["pitch_pct"])
+            cell_style = _zone_background_style(
+                metric,
+                zone_id,
+                row["pitch_pct"],
+                heatmap_scale=heatmap_scale,
+                self_color_map=self_color_map,
+            )
         else:
             cell_text = _format_cell_text(0, 0.0)
-            cell_style = _zone_background_style(metric, zone_id, 0.0)
+            cell_style = _zone_background_style(
+                metric,
+                zone_id,
+                0.0,
+                heatmap_scale=heatmap_scale,
+                self_color_map=self_color_map,
+            )
         inner_cells.append(f'<div class="sz-cell"{cell_style}>{cell_text}</div>')
 
     inner_html = "".join(inner_cells)
@@ -518,7 +571,13 @@ def _build_strike_zone_html(zone_df, outer_stats, metric=None):
     outer_html = {
         key: {
             "text": _format_cell_text(outer_stats[key]["pitch_count"], outer_stats[key]["pitch_pct"]),
-            "style": _zone_background_style(metric, outer_zone_ids[key], outer_stats[key]["pitch_pct"]),
+            "style": _zone_background_style(
+                metric,
+                outer_zone_ids[key],
+                outer_stats[key]["pitch_pct"],
+                heatmap_scale=heatmap_scale,
+                self_color_map=self_color_map,
+            ),
         }
         for key in ("tl", "tr", "bl", "br")
     }
