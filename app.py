@@ -477,6 +477,37 @@ RUN_VALUE_STYLE_COLORS = {
 }
 
 
+def run_value_style_color_hex(level):
+    style = RUN_VALUE_STYLE_COLORS.get(level, "")
+    for part in style.split(";"):
+        key, _, value = part.partition(":")
+        if key.strip() == "color":
+            return value.strip()
+    return "#111"
+
+
+def run_value_title_with_legend_html():
+    legend_rows = [
+        ("elite", "Elite"),
+        ("good", "Good"),
+        ("average", "Average"),
+        ("bad", "Poor"),
+    ]
+    legend_html = "".join(
+        "<span style='display:inline-flex; align-items:center; gap:5px; white-space:nowrap;'>"
+        f"<span style='display:inline-block; width:10px; height:10px; border-radius:2px; background:{run_value_style_color_hex(level)};'></span>"
+        f"<span>{label}</span>"
+        "</span>"
+        for level, label in legend_rows
+    )
+    return (
+        "<div style='display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:10px;'>"
+        "<div class='section-title-strong' style='margin-bottom:0;'>Run Value by Pitch Type</div>"
+        f"<div style='display:flex; align-items:center; gap:14px; flex-wrap:wrap; color:#111; font-size:12px; font-weight:700;'>{legend_html}</div>"
+        "</div>"
+    )
+
+
 def canonical_run_value_metric(metric):
     normalized = str(metric or "").strip().lower().replace(" ", "").replace("_", "")
     metric_map = {
@@ -1646,7 +1677,7 @@ if st.session_state.get("selected_batter"):
 
     with st.container(border=True):
         st.markdown(
-            "<div class='section-title-strong'>Run Value by Pitch Type</div>",
+            run_value_title_with_legend_html(),
             unsafe_allow_html=True,
         )
         run_value_df = load_batter_run_value_pitch_type_table(batter_id)
