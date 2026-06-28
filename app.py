@@ -217,10 +217,10 @@ st.markdown(
         color:#ffffff;
     }
     .line-badge{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:6px 12px;border:1px solid var(--dash-control-border);border-radius:999px;min-width:120px;background:var(--dash-card-bg);box-shadow:0 1px 2px rgba(15,23,42,0.04);white-space:nowrap}
-    .line-value{font-weight:700;font-size:22px;color:var(--dash-title);line-height:1}
+    .line-value{display:inline-flex;align-items:center;font-weight:700;font-size:22px;color:var(--dash-title);line-height:1}
     .book-badge,.boost-badge{display:inline-flex;align-items:center;justify-content:center;line-height:1;white-space:nowrap}
-    .badge-img{display:block;object-fit:contain;flex:0 0 auto}
-    .book-badge-img{height:26px;width:auto;max-width:34px;position:relative;top:-4px}
+    .badge-img{display:block;object-fit:contain;flex:0 0 auto;vertical-align:middle}
+    .book-badge-img{height:26px;width:auto;max-width:34px}
     .modifier-badge-img{height:26px;width:auto;max-width:30px}
     .line-badge-wrap{display:flex;align-items:center;justify-content:center}
     .alt-line-row{display:flex;align-items:center;gap:8px;margin:4px 0}
