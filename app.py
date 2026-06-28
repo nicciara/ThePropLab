@@ -1538,6 +1538,22 @@ def set_selected_prop(prop):
         st.session_state["selected_prop"] = prop
 
 
+def adjust_game_log_line_value(line_key, delta):
+    current_value = st.session_state.get(line_key, 0.5)
+    try:
+        current_value = float(current_value)
+    except (TypeError, ValueError):
+        current_value = 0.5
+    st.session_state[line_key] = max(0.5, current_value + float(delta))
+
+
+def set_game_log_line_value(line_key, value):
+    try:
+        st.session_state[line_key] = float(value)
+    except (TypeError, ValueError):
+        pass
+
+
 def game_log_chart_axis_label(row, h2h_active=False, current_season=2026):
     game_date = row["game_date"]
     if h2h_active and int(game_date.year) < int(current_season):
@@ -1858,8 +1874,12 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
     st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
     line_cols = st.columns([0.34, 1.65, 0.34, 4.2])
     with line_cols[0]:
-        if st.button("-", key=f"batter_{prop_slug}_line_minus_{batter_id}"):
-            st.session_state[line_key] = max(0.5, float(st.session_state[line_key]) - 1.0)
+        st.button(
+            "-",
+            key=f"batter_{prop_slug}_line_minus_{batter_id}",
+            on_click=adjust_game_log_line_value,
+            args=(line_key, -1.0),
+        )
     with line_cols[1]:
         selected_odds_type = _projection_value(selected_projection_line, "odds_type", "oddsType", default="") if isinstance(selected_projection_line, dict) else ""
         st.markdown(
@@ -1867,8 +1887,12 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
             unsafe_allow_html=True,
         )
     with line_cols[2]:
-        if st.button("+", key=f"batter_{prop_slug}_line_plus_{batter_id}"):
-            st.session_state[line_key] = float(st.session_state[line_key]) + 1.0
+        st.button(
+            "+",
+            key=f"batter_{prop_slug}_line_plus_{batter_id}",
+            on_click=adjust_game_log_line_value,
+            args=(line_key, 1.0),
+        )
 
     if projection_lines:
         with st.expander("Alt lines", expanded=False):
@@ -1879,11 +1903,12 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
                     f"<div class='alt-line-row'>{render_line_badge(projection_line_value, projection_odds_type)}</div>",
                     unsafe_allow_html=True,
                 )
-                if st.button("Use", key=f"batter_{prop_slug}_alt_line_{batter_id}_{idx}"):
-                    try:
-                        st.session_state[line_key] = float(projection_line_value)
-                    except (TypeError, ValueError):
-                        pass
+                st.button(
+                    "Use",
+                    key=f"batter_{prop_slug}_alt_line_{batter_id}_{idx}",
+                    on_click=set_game_log_line_value,
+                    args=(line_key, projection_line_value),
+                )
 
     selected_prop_line = float(st.session_state[line_key])
     render_batter_game_log_sample_section(
