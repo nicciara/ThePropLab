@@ -156,7 +156,15 @@ st.markdown(
     .nav-name-link:hover{color:var(--dash-accent)!important;text-decoration:underline!important}
     div[data-testid="stSegmentedControl"] div[role="radiogroup"]{overflow-x:auto;flex-wrap:nowrap}
     div[data-testid="stSegmentedControl"] label{white-space:pre-line;line-height:1.2}
+    .st-key-prop_tab_row{
+        max-width:100%;
+        overflow-x:auto;
+        overflow-y:hidden;
+    }
     .st-key-prop_tab_row [data-testid="stHorizontalBlock"]{
+        width:max-content;
+        min-width:100%;
+        max-width:none;
         overflow-x:auto;
         overflow-y:hidden;
         padding:2px 6px 8px 6px;
@@ -165,8 +173,13 @@ st.markdown(
         -webkit-overflow-scrolling:touch;
         scrollbar-width:thin;
         scrollbar-color:var(--dash-control-border) transparent;
-        flex-wrap:nowrap;
+        flex-wrap:nowrap!important;
         gap:8px;
+    }
+    .st-key-prop_tab_row [data-testid="stHorizontalBlock"]>div{
+        flex:0 0 auto!important;
+        width:auto!important;
+        min-width:max-content!important;
     }
     .st-key-prop_tab_row [data-testid="stHorizontalBlock"]::-webkit-scrollbar{
         height:6px;
