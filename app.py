@@ -2698,6 +2698,11 @@ if requested_view == "pitcher_detail" and requested_pitcher_id and requested_gam
 
 requested_date_value = _query_param_value("date", "")
 requested_date = pd.to_datetime(requested_date_value, errors="coerce") if requested_date_value else pd.NaT
+requested_home_tab = str(_query_param_value("home_tab", "slate")).strip().lower()
+if requested_home_tab not in {"slate", "lineups"}:
+    requested_home_tab = "slate"
+if st.session_state.get("home_tab") != requested_home_tab:
+    st.session_state["home_tab"] = requested_home_tab
 if "selected_date" not in st.session_state:
     st.session_state["selected_date"] = requested_date.date() if pd.notna(requested_date) else eastern_today()
 elif pd.notna(requested_date) and st.session_state.get("selected_date") != requested_date.date():
@@ -3906,7 +3911,7 @@ def set_homepage_date(new_date):
     st.session_state["selected_date"] = new_date
     st.session_state["calendar_date"] = new_date
     st.session_state["games"] = load_schedule(new_date)
-    _set_query_params({"date": new_date.isoformat()})
+    _set_query_params({"date": new_date.isoformat(), "home_tab": st.session_state.get("home_tab", "slate")})
 
 
 def shift_homepage_date(days):
@@ -3921,8 +3926,43 @@ def set_homepage_calendar_date():
     set_homepage_date(st.session_state["calendar_date"])
 
 
+def set_homepage_tab():
+    selected_label = st.session_state.get("homepage_tab_switch", "Slate")
+    selected_tab = "lineups" if selected_label == "Lineups" else "slate"
+    st.session_state["home_tab"] = selected_tab
+    _set_query_params({
+        "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
+        "home_tab": selected_tab,
+    })
+
+
 if st.session_state["calendar_date"] != st.session_state["selected_date"]:
     st.session_state["calendar_date"] = st.session_state["selected_date"]
+
+homepage_tab_label = "Lineups" if st.session_state.get("home_tab") == "lineups" else "Slate"
+if st.session_state.get("homepage_tab_switch") != homepage_tab_label:
+    st.session_state["homepage_tab_switch"] = homepage_tab_label
+
+st.segmented_control(
+    "Homepage View",
+    ["Slate", "Lineups"],
+    key="homepage_tab_switch",
+    on_change=set_homepage_tab,
+    label_visibility="collapsed",
+)
+
+if st.session_state.get("home_tab") == "lineups":
+    _ensure_query_params({
+        "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
+        "home_tab": "lineups",
+    })
+    st.info("Lineups coming soon")
+    st.stop()
+
+_ensure_query_params({
+    "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
+    "home_tab": "slate",
+})
 
 col1, col2, col3, col4 = st.columns([1, 4, 1, 1])
 with col1:
