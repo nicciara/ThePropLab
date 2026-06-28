@@ -3070,6 +3070,11 @@ def render_lineup_table(lineup, current_batter_id="", current_batter_name="", li
         except (TypeError, ValueError):
             return "—"
 
+    def _lineup_stat_cell(value, metric, formatter):
+        display_value = formatter(value)
+        metric_style = run_value_threshold_style(value, metric) if display_value != "—" else ""
+        return f"<div style='padding:6px 8px; text-align:right; {metric_style}'>{display_value}</div>"
+
     grid_columns = "44px minmax(170px,1fr) 54px 54px 58px 58px 62px 68px 58px"
     current_name_key = normalize_name(current_batter_name)
     stats_by_player = {}
@@ -3124,11 +3129,11 @@ def render_lineup_table(lineup, current_batter_id="", current_batter_name="", li
             f"<div style='padding:6px 10px;'>{batter_cell_html}</div>"
             f"<div style='padding:6px 10px;'>{html.escape(str(player.get('handedness', '')))}</div>"
             f"<div style='padding:6px 10px;'>{html.escape(str(player.get('position', '')))}</div>"
-            f"<div style='padding:6px 8px; text-align:right;'>{_format_lineup_decimal(lineup_stats.get('BA'))}</div>"
-            f"<div style='padding:6px 8px; text-align:right;'>{_format_lineup_decimal(lineup_stats.get('SLG'))}</div>"
-            f"<div style='padding:6px 8px; text-align:right;'>{_format_lineup_decimal(lineup_stats.get('wOBA'))}</div>"
-            f"<div style='padding:6px 8px; text-align:right;'>{_format_lineup_pct(lineup_stats.get('Whiff%'))}</div>"
-            f"<div style='padding:6px 8px; text-align:right;'>{_format_lineup_pct(lineup_stats.get('K%'))}</div>"
+            f"{_lineup_stat_cell(lineup_stats.get('BA'), 'BA', _format_lineup_decimal)}"
+            f"{_lineup_stat_cell(lineup_stats.get('SLG'), 'SLG', _format_lineup_decimal)}"
+            f"{_lineup_stat_cell(lineup_stats.get('wOBA'), 'wOBA', _format_lineup_decimal)}"
+            f"{_lineup_stat_cell(lineup_stats.get('Whiff%'), 'Whiff%', _format_lineup_pct)}"
+            f"{_lineup_stat_cell(lineup_stats.get('K%'), 'K%', _format_lineup_pct)}"
             "</div>"
         )
 
