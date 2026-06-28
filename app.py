@@ -3999,6 +3999,7 @@ def homepage_slate_batter_map(games):
                     "name": player_name,
                     "hand": player.get("handedness", ""),
                     "game_pk": game.get("game_pk", ""),
+                    "game_time": game.get("game_time_et", ""),
                 }
     return batter_map
 
@@ -4057,6 +4058,8 @@ def render_homepage_props_tab():
         team = slate_info.get("team") or _projection_value(record, "team", default="")
         opponent = slate_info.get("opponent") or _projection_value(record, "description", default="")
         hand = slate_info.get("hand", "")
+        image_url = _projection_value(record, "image_url", "imageUrl", default="")
+        game_time = slate_info.get("game_time", "")
         batter_href = ""
         if slate_info.get("player_id"):
             batter_href = _build_batter_detail_href(
@@ -4085,6 +4088,8 @@ def render_homepage_props_tab():
             "line": line_value,
             "odds_type": odds_type,
             "status": f"PrizePicks • {modifier}",
+            "image_url": image_url,
+            "game_time": game_time,
         })
 
     def _props_sort_line(value):
@@ -4117,12 +4122,20 @@ def render_homepage_props_tab():
         except (TypeError, ValueError):
             pass
         return (
-            "<div style='min-width:70px; padding:7px 9px; border:1px solid var(--dash-border); border-radius:8px; "
+            "<div style='min-width:88px; padding:10px 12px; border:1px solid var(--dash-border); border-radius:10px; "
             f"background:{tile_bg}; color:{tile_color}; text-align:center;'>"
-            f"<div style='font-size:11px; font-weight:800; letter-spacing:.02em;'>{html.escape(str(label))}</div>"
-            f"<div style='font-size:14px; font-weight:900; margin-top:2px;'>{html.escape(value_text)}</div>"
+            f"<div style='font-size:11px; font-weight:900; letter-spacing:.04em;'>{html.escape(str(label))}</div>"
+            f"<div style='font-size:17px; font-weight:950; margin-top:4px;'>{html.escape(value_text)}</div>"
             "</div>"
         )
+
+    def _player_initials(name):
+        parts = [part for part in str(name or "").replace(".", "").split() if part]
+        if not parts:
+            return "?"
+        if len(parts) == 1:
+            return parts[0][:2].upper()
+        return f"{parts[0][0]}{parts[-1][0]}".upper()
 
     cards = []
     for row in rows:
@@ -4133,7 +4146,15 @@ def render_homepage_props_tab():
         except (TypeError, ValueError):
             line_text = str(row.get("line") or "—")
         matchup = f"{row.get('team') or '—'} vs {row.get('opponent') or '—'}"
+        if row.get("game_time"):
+            matchup = f"{matchup} - {row.get('game_time')}"
         hand_text = f" • {row.get('hand')}" if row.get("hand") else ""
+        avatar_html = (
+            f"<img src='{html.escape(str(row.get('image_url')), quote=True)}' alt='{html.escape(row['player'], quote=True)}' "
+            "style='display:block; width:100%; height:100%; object-fit:cover;' loading='lazy' decoding='async' />"
+            if row.get("image_url")
+            else f"<span style='font-size:20px; font-weight:950; color:var(--dash-accent);'>{html.escape(_player_initials(row['player']))}</span>"
+        )
         stat_tiles = "".join(
             _prop_card_tile(label, "—")
             for label in ("L5", "L10", "L15", "H2H", "AVG", "SZN")
@@ -4147,21 +4168,36 @@ def render_homepage_props_tab():
             else "<span style='font-size:12px; color:var(--dash-muted); font-weight:700;'>Player detail unavailable</span>"
         )
         cards.append(
-            "<div style='border:1px solid var(--dash-border); border-radius:10px; background:var(--dash-card-bg); "
-            "box-shadow:0 1px 4px rgba(15,23,42,.08); padding:14px 16px; margin:12px 0; color:var(--dash-text);'>"
-            "<div style='display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap;'>"
-            "<div>"
-            f"<div style='font-size:18px; font-weight:900; line-height:1.15;'>{player_text}</div>"
-            f"<div style='font-size:12px; color:var(--dash-muted); font-weight:800; margin-top:4px;'>{html.escape(matchup)}{html.escape(hand_text)}</div>"
+            "<div style='border:1px solid var(--dash-border); border-radius:14px; background:var(--dash-card-bg); "
+            "box-shadow:0 2px 9px rgba(15,23,42,.10); padding:18px; margin:14px 0; color:var(--dash-text);'>"
+            "<div style='display:grid; grid-template-columns:auto minmax(220px,1fr) auto; align-items:center; gap:16px;'>"
+            "<div style='position:relative; width:68px; height:68px; flex:0 0 auto;'>"
+            "<div style='width:68px; height:68px; border-radius:999px; overflow:hidden; border:1px solid var(--dash-border); "
+            "background:var(--dash-surface-2); display:flex; align-items:center; justify-content:center;'>"
+            f"{avatar_html}"
             "</div>"
-            f"<div>{open_link}</div>"
+            "<div style='position:absolute; right:-3px; top:-4px; width:22px; height:22px; border-radius:999px; "
+            "background:var(--dash-card-bg); border:1px solid var(--dash-border); display:flex; align-items:center; "
+            "justify-content:center; color:#f59e0b; font-size:13px; font-weight:900;'>☆</div>"
             "</div>"
-            "<div style='display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:12px;'>"
-            f"<div style='font-size:15px; font-weight:900;'>O/U {html.escape(line_text)} {html.escape(str(row.get('prop') or ''))}</div>"
+            "<div style='min-width:0;'>"
+            f"<div style='font-size:21px; font-weight:950; line-height:1.1;'>{player_text}</div>"
+            f"<div style='font-size:16px; font-weight:950; margin-top:6px;'>O/U {html.escape(line_text)} {html.escape(str(row.get('prop') or ''))}</div>"
+            f"<div style='font-size:12px; color:var(--dash-muted); font-weight:800; margin-top:5px;'>{html.escape(matchup)}{html.escape(hand_text)}</div>"
+            "<div style='display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px;'>"
             f"{line_html}"
             f"<div style='font-size:12px; color:var(--dash-muted); font-weight:800;'>{html.escape(str(row.get('status', '') or 'PrizePicks'))}</div>"
+            f"{open_link}"
             "</div>"
-            f"<div style='display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;'>{stat_tiles}</div>"
+            "</div>"
+            "<div style='width:86px; height:86px; border-radius:999px; border:2px solid var(--dash-border); "
+            "background:var(--dash-surface-2); display:flex; flex-direction:column; align-items:center; justify-content:center; "
+            "font-weight:950; line-height:1.35; color:var(--dash-text);'>"
+            "<div style='font-size:15px;'>O —</div>"
+            "<div style='font-size:15px;'>U —</div>"
+            "</div>"
+            "</div>"
+            f"<div style='display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;'>{stat_tiles}</div>"
             "</div>"
         )
 
