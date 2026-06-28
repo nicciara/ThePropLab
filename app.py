@@ -35,6 +35,13 @@ GAME_LOG_PROP_COLUMNS = {
     "Walks": "walks",
     "Strikeouts": "strikeouts",
 }
+SPORTSBOOK_BADGE_ASSETS = {
+    "prizepicks": "app/static/badges/prizepicks.png",
+}
+MODIFIER_BADGE_ASSETS = {
+    "goblin": "app/static/badges/goblin.png",
+    "demon": "app/static/badges/demon.png",
+}
 PRIZEPICKS_MLB_LEAGUE_ID = 2
 PRIZEPICKS_PROJECTIONS_URL = "https://api.prizepicks.com/projections"
 PROJECTION_STATE_KEYS = (
@@ -211,10 +218,10 @@ st.markdown(
     }
     .line-badge{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:6px 12px;border:1px solid var(--dash-control-border);border-radius:999px;min-width:120px;background:var(--dash-card-bg);box-shadow:0 1px 2px rgba(15,23,42,0.04);white-space:nowrap}
     .line-value{font-weight:700;font-size:22px;color:var(--dash-title);line-height:1}
-    .book-badge,.boost-badge{display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;line-height:1;padding:4px 8px;border-radius:999px;white-space:nowrap}
-    .book-badge{background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd}
-    .goblin-badge{background:#dcfce7;color:#166534;border:1px solid #86efac}
-    .demon-badge{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
+    .book-badge,.boost-badge{display:inline-flex;align-items:center;justify-content:center;line-height:1;white-space:nowrap}
+    .badge-img{display:block;object-fit:contain;flex:0 0 auto}
+    .book-badge-img{height:24px;width:auto;max-width:28px}
+    .modifier-badge-img{height:26px;width:auto;max-width:30px}
     .line-badge-wrap{display:flex;align-items:center;justify-content:center}
     .alt-line-row{display:flex;align-items:center;gap:8px;margin:4px 0}
     .prop-control-spacer{height:4px}
@@ -331,6 +338,18 @@ def _projection_truthy(record, *keys):
     return str(value).strip().lower() in {"1", "true", "yes", "y", "goblin", "demon"}
 
 
+def badge_image_html(asset_path, alt_text, wrapper_class, image_class):
+    if not asset_path:
+        return ""
+    return (
+        f'<span class="{html.escape(wrapper_class)}">'
+        f'<img class="badge-img {html.escape(image_class)}" '
+        f'src="{html.escape(asset_path, quote=True)}" '
+        f'alt="{html.escape(alt_text, quote=True)}" loading="lazy" decoding="async" />'
+        '</span>'
+    )
+
+
 def render_line_badge(line_value, odds_type="", show_book_badge=True):
     try:
         line_text = f"{float(line_value):.1f}"
@@ -340,10 +359,14 @@ def render_line_badge(line_value, odds_type="", show_book_badge=True):
     normalized_odds_type = normalize_name(odds_type)
     boost_html = ""
     if normalized_odds_type == "goblin":
-        boost_html = '<span class="boost-badge goblin-badge">Goblin</span>'
+        boost_html = badge_image_html(MODIFIER_BADGE_ASSETS.get("goblin"), "Goblin", "boost-badge", "modifier-badge-img")
     elif normalized_odds_type == "demon":
-        boost_html = '<span class="boost-badge demon-badge">Demon</span>'
-    book_badge_html = '<span class="book-badge">PP</span>' if show_book_badge else ""
+        boost_html = badge_image_html(MODIFIER_BADGE_ASSETS.get("demon"), "Demon", "boost-badge", "modifier-badge-img")
+    book_badge_html = (
+        badge_image_html(SPORTSBOOK_BADGE_ASSETS.get("prizepicks"), "PrizePicks", "book-badge", "book-badge-img")
+        if show_book_badge
+        else ""
+    )
 
     return (
         '<div class="line-badge">'
