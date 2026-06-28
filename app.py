@@ -64,6 +64,11 @@ MODIFIER_BADGE_ASSETS = {
     "demon": "app/static/badges/demon.png",
 }
 PRIZEPICKS_MLB_LEAGUE_ID = 2
+PRIZEPICKS_MLBLIVE_LEAGUE_ID = 231
+PRIZEPICKS_MLB_LEAGUES = (
+    ("MLB", PRIZEPICKS_MLB_LEAGUE_ID),
+    ("MLBLIVE", PRIZEPICKS_MLBLIVE_LEAGUE_ID),
+)
 PRIZEPICKS_PROJECTIONS_URL = "https://api.prizepicks.com/projections"
 PROJECTION_STATE_KEYS = (
     "selected_projection",
@@ -456,11 +461,16 @@ def _prop_match_key(value):
         "hrrrbi": "hrrrbi",
         "hitsrunsrbis": "hrrrbi",
         "hitsrunsrbi": "hrrrbi",
+        "1stinnhrr": "firstinninghrrrbi",
+        "1stinninghrr": "firstinninghrrrbi",
         "1stinninghrrbi": "firstinninghrrrbi",
         "1stinninghrrbis": "firstinninghrrrbi",
         "1stinninghrrrbi": "firstinninghrrrbi",
+        "1stinnhitsrunsrbis": "firstinninghrrrbi",
+        "1stinnhitsrunsrbi": "firstinninghrrrbi",
         "1stinninghitsrunsrbis": "firstinninghrrrbi",
         "1stinninghitsrunsrbi": "firstinninghrrrbi",
+        "firstinninghrr": "firstinninghrrrbi",
         "firstinninghrrbi": "firstinninghrrrbi",
         "firstinninghrrbis": "firstinninghrrrbi",
         "firstinninghrrrbi": "firstinninghrrrbi",
@@ -557,91 +567,115 @@ def load_prizepicks_mlb_projections(debug_version=2):
         "Referer": "https://app.prizepicks.com/",
         "User-Agent": "Mozilla/5.0",
     }
-    params = {
-        "league_id": PRIZEPICKS_MLB_LEAGUE_ID,
-        "per_page": 1000,
-    }
-    try:
-        response = requests.get(PRIZEPICKS_PROJECTIONS_URL, params=params, headers=headers, timeout=20)
-        print("PrizePicks request URL:", response.url)
-        print("PrizePicks HTTP status:", response.status_code)
-        logger.warning("PrizePicks request URL: %s", response.url)
-        logger.warning("PrizePicks HTTP status: %s", response.status_code)
-        response.raise_for_status()
-        payload = response.json()
-        data_len = len(payload.get("data", [])) if isinstance(payload, dict) else 0
-        print("PrizePicks response data length:", data_len)
-        logger.warning("PrizePicks response data length: %s", data_len)
-    except Exception as exc:
-        print("PrizePicks projections request failed:", repr(exc))
-        logger.warning("PrizePicks projections request failed: %s", exc)
-        return []
-
-    included_by_type_id = {}
-    for item in payload.get("included", []):
-        if not isinstance(item, dict):
-            continue
-        item_type = item.get("type", "")
-        item_id = str(item.get("id", ""))
-        if item_type and item_id:
-            included_by_type_id[(item_type, item_id)] = item
-
-    def related_object(projection, relationship_name):
-        rel_data = projection.get("relationships", {}).get(relationship_name, {}).get("data")
-        if isinstance(rel_data, list):
-            return [
-                included_by_type_id.get((item.get("type", ""), str(item.get("id", ""))))
-                for item in rel_data
-                if isinstance(item, dict)
-            ]
-        if isinstance(rel_data, dict):
-            return included_by_type_id.get((rel_data.get("type", ""), str(rel_data.get("id", ""))))
-        return None
-
     parsed = []
-    for projection in payload.get("data", []):
-        if not isinstance(projection, dict):
-            continue
-        attributes = projection.get("attributes", {}) if isinstance(projection.get("attributes"), dict) else {}
-        relationships = projection.get("relationships", {}) if isinstance(projection.get("relationships"), dict) else {}
-        player = related_object(projection, "new_player") or related_object(projection, "player")
-        score = related_object(projection, "score")
-        player_attributes = player.get("attributes", {}) if isinstance(player, dict) and isinstance(player.get("attributes"), dict) else {}
+    seen_projection_ids = set()
+    league_counts = {}
+    first_inning_counts = {}
 
-        player_name = (
-            player_attributes.get("display_name")
-            or player_attributes.get("name")
-            or player_attributes.get("full_name")
-            or attributes.get("name")
-        )
-
-        parsed_projection = {
-            "id": projection.get("id"),
-            "type": projection.get("type"),
-            "source": "PrizePicks",
-            "attributes": attributes,
-            "relationships": relationships,
-            "new_player": player,
-            "score": score,
-            "raw_projection": projection,
-            "stat_display_name": attributes.get("stat_display_name"),
-            "description": attributes.get("description"),
-            "line_score": attributes.get("line_score"),
-            "flash_sale_line_score": attributes.get("flash_sale_line_score"),
-            "adjusted_odds": attributes.get("adjusted_odds"),
-            "projection_type": attributes.get("projection_type"),
-            "odds_type": attributes.get("odds_type"),
-            "payout": attributes.get("payout") or attributes.get("payout_multiplier"),
-            "rank": attributes.get("rank"),
-            "player": player_name,
-            "player_name": player_name,
-            "league": player_attributes.get("league"),
-            "team": player_attributes.get("team"),
+    for league_label, league_id in PRIZEPICKS_MLB_LEAGUES:
+        params = {
+            "league_id": league_id,
+            "per_page": 10000,
         }
-        parsed.append(parsed_projection)
+        try:
+            response = requests.get(PRIZEPICKS_PROJECTIONS_URL, params=params, headers=headers, timeout=20)
+            print(f"PrizePicks {league_label} request URL:", response.url)
+            print(f"PrizePicks {league_label} HTTP status:", response.status_code)
+            logger.warning("PrizePicks %s request URL: %s", league_label, response.url)
+            logger.warning("PrizePicks %s HTTP status: %s", league_label, response.status_code)
+            response.raise_for_status()
+            payload = response.json()
+            data_len = len(payload.get("data", [])) if isinstance(payload, dict) else 0
+            print(f"PrizePicks {league_label} response data length:", data_len)
+            logger.warning("PrizePicks %s response data length: %s", league_label, data_len)
+        except Exception as exc:
+            print(f"PrizePicks {league_label} projections request failed:", repr(exc))
+            logger.warning("PrizePicks %s projections request failed: %s", league_label, exc)
+            continue
+
+        included_by_type_id = {}
+        for item in payload.get("included", []):
+            if not isinstance(item, dict):
+                continue
+            item_type = item.get("type", "")
+            item_id = str(item.get("id", ""))
+            if item_type and item_id:
+                included_by_type_id[(item_type, item_id)] = item
+
+        def related_object(projection, relationship_name):
+            rel_data = projection.get("relationships", {}).get(relationship_name, {}).get("data")
+            if isinstance(rel_data, list):
+                return [
+                    included_by_type_id.get((item.get("type", ""), str(item.get("id", ""))))
+                    for item in rel_data
+                    if isinstance(item, dict)
+                ]
+            if isinstance(rel_data, dict):
+                return included_by_type_id.get((rel_data.get("type", ""), str(rel_data.get("id", ""))))
+            return None
+
+        league_counts[league_label] = 0
+        first_inning_counts[league_label] = 0
+        for projection in payload.get("data", []):
+            if not isinstance(projection, dict):
+                continue
+            projection_id = str(projection.get("id") or "")
+            if projection_id and projection_id in seen_projection_ids:
+                continue
+            if projection_id:
+                seen_projection_ids.add(projection_id)
+
+            attributes = projection.get("attributes", {}) if isinstance(projection.get("attributes"), dict) else {}
+            relationships = projection.get("relationships", {}) if isinstance(projection.get("relationships"), dict) else {}
+            player = related_object(projection, "new_player") or related_object(projection, "player")
+            score = related_object(projection, "score")
+            player_attributes = player.get("attributes", {}) if isinstance(player, dict) and isinstance(player.get("attributes"), dict) else {}
+
+            player_name = (
+                player_attributes.get("display_name")
+                or player_attributes.get("name")
+                or player_attributes.get("full_name")
+                or attributes.get("name")
+            )
+
+            stat_display_name = attributes.get("stat_display_name")
+            if _prop_match_key(stat_display_name) == "firstinninghrrrbi":
+                first_inning_counts[league_label] += 1
+
+            parsed_projection = {
+                "id": projection.get("id"),
+                "type": projection.get("type"),
+                "source": "PrizePicks",
+                "source_league": league_label,
+                "source_league_id": league_id,
+                "attributes": attributes,
+                "relationships": relationships,
+                "new_player": player,
+                "score": score,
+                "raw_projection": projection,
+                "stat_display_name": stat_display_name,
+                "description": attributes.get("description"),
+                "line_score": attributes.get("line_score"),
+                "flash_sale_line_score": attributes.get("flash_sale_line_score"),
+                "adjusted_odds": attributes.get("adjusted_odds"),
+                "projection_type": attributes.get("projection_type"),
+                "odds_type": attributes.get("odds_type"),
+                "payout": attributes.get("payout") or attributes.get("payout_multiplier"),
+                "rank": attributes.get("rank"),
+                "player": player_name,
+                "player_name": player_name,
+                "league": player_attributes.get("league"),
+                "team": player_attributes.get("team"),
+            }
+            parsed.append(parsed_projection)
+            league_counts[league_label] += 1
 
     print("PrizePicks parsed projection count:", len(parsed))
+    print("PrizePicks parsed projection counts by league:", league_counts)
+    print("PrizePicks first-inning HRR counts by league:", first_inning_counts)
     logger.warning("PrizePicks parsed projection count: %s", len(parsed))
+    logger.warning("PrizePicks parsed projection counts by league: %s", league_counts)
+    logger.warning("PrizePicks first-inning HRR counts by league: %s", first_inning_counts)
     return parsed
 
 # (Pitcher view rendering via query params moved below helper function definitions)
