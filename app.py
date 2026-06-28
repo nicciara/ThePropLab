@@ -3967,6 +3967,15 @@ def set_homepage_props_prop(prop):
     })
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def mlb_player_headshot_url(player_id):
+    try:
+        player_id = int(float(player_id))
+    except (TypeError, ValueError):
+        return ""
+    return f"https://img.mlbstatic.com/mlb-photos/image/upload/w_160,q_auto:best/v1/people/{player_id}/headshot/67/current"
+
+
 def homepage_slate_batter_map(games):
     batter_map = {}
     if games is None or (isinstance(games, pd.DataFrame) and games.empty):
@@ -4058,12 +4067,13 @@ def render_homepage_props_tab():
         team = slate_info.get("team") or _projection_value(record, "team", default="")
         opponent = slate_info.get("opponent") or _projection_value(record, "description", default="")
         hand = slate_info.get("hand", "")
-        image_url = _projection_value(record, "image_url", "imageUrl", default="")
+        player_id = slate_info.get("player_id", "")
+        image_url = mlb_player_headshot_url(player_id) or _projection_value(record, "image_url", "imageUrl", default="")
         game_time = slate_info.get("game_time", "")
         batter_href = ""
-        if slate_info.get("player_id"):
+        if player_id:
             batter_href = _build_batter_detail_href(
-                slate_info.get("player_id"),
+                player_id,
                 batter_name=player_name,
                 batter_hand=hand,
                 team=team,
@@ -4084,6 +4094,7 @@ def render_homepage_props_tab():
             "team": team,
             "opponent": opponent,
             "hand": hand,
+            "player_id": player_id,
             "prop": selected_prop,
             "line": line_value,
             "odds_type": odds_type,
@@ -4149,11 +4160,17 @@ def render_homepage_props_tab():
         if row.get("game_time"):
             matchup = f"{matchup} - {row.get('game_time')}"
         hand_text = f" • {row.get('hand')}" if row.get("hand") else ""
+        initials_html = (
+            f"<span style='font-size:20px; font-weight:950; color:var(--dash-accent);'>"
+            f"{html.escape(_player_initials(row['player']))}</span>"
+        )
         avatar_html = (
             f"<img src='{html.escape(str(row.get('image_url')), quote=True)}' alt='{html.escape(row['player'], quote=True)}' "
-            "style='display:block; width:100%; height:100%; object-fit:cover;' loading='lazy' decoding='async' />"
+            "style='position:absolute; inset:0; display:block; width:100%; height:100%; object-fit:cover;' "
+            "loading='lazy' decoding='async' onerror=\"this.style.display='none';\" />"
+            f"{initials_html}"
             if row.get("image_url")
-            else f"<span style='font-size:20px; font-weight:950; color:var(--dash-accent);'>{html.escape(_player_initials(row['player']))}</span>"
+            else initials_html
         )
         stat_tiles = "".join(
             _prop_card_tile(label, "—")
