@@ -17,7 +17,22 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 PLAYER_API_CALLS = 0
 LINEUP_MIN_HEIGHT = 220
-GAME_LOG_PROPS = ["Hits", "Runs", "RBI", "H+R+RBI", "Total Bases", "Home Runs", "Walks", "Strikeouts"]
+GAME_LOG_PROPS = [
+    "Hits",
+    "Runs",
+    "RBI",
+    "H+R+RBI",
+    "Total Bases",
+    "Home Runs",
+    "Walks",
+    "Strikeouts",
+    "Plate Appearances",
+    "Stolen Bases",
+    "Singles",
+    "Doubles",
+    "Triples",
+    "1st Inning Hits + Runs + RBIs",
+]
 GAME_LOG_SAMPLE_RANGES = ("L5", "L10", "L15", "2026")
 GAME_LOG_HIT_EVENT_LABELS = {
     "single": "Single",
@@ -34,6 +49,12 @@ GAME_LOG_PROP_COLUMNS = {
     "Home Runs": "home_runs",
     "Walks": "walks",
     "Strikeouts": "strikeouts",
+    "Plate Appearances": "plate_appearances",
+    "Stolen Bases": "stolen_bases",
+    "Singles": "singles",
+    "Doubles": "doubles",
+    "Triples": "triples",
+    "1st Inning Hits + Runs + RBIs": "first_inning_hrrrbi",
 }
 SPORTSBOOK_BADGE_ASSETS = {
     "prizepicks": "app/static/badges/prizepicks.png",
@@ -831,6 +852,9 @@ def load_batter_prop_game_log(batter_id, season_year=2026):
         hits = _int_stat(stat, "hits")
         runs = _int_stat(stat, "runs")
         rbi = _int_stat(stat, "rbi")
+        doubles = _int_stat(stat, "doubles")
+        triples = _int_stat(stat, "triples")
+        home_runs = _int_stat(stat, "homeRuns")
         rows.append(
             {
                 "game_pk": game.get("gamePk") or game.get("id") or "",
@@ -845,9 +869,14 @@ def load_batter_prop_game_log(batter_id, season_year=2026):
                 "rbi": rbi,
                 "hrrrbi": hits + runs + rbi,
                 "total_bases": _int_stat(stat, "totalBases"),
-                "home_runs": _int_stat(stat, "homeRuns"),
+                "home_runs": home_runs,
                 "walks": _int_stat(stat, "baseOnBalls"),
                 "strikeouts": _int_stat(stat, "strikeOuts"),
+                "plate_appearances": _int_stat(stat, "plateAppearances"),
+                "stolen_bases": _int_stat(stat, "stolenBases"),
+                "singles": max(hits - doubles - triples - home_runs, 0),
+                "doubles": doubles,
+                "triples": triples,
             }
         )
 
@@ -1791,6 +1820,11 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
 
     prop_column = GAME_LOG_PROP_COLUMNS[selected_prop]
     prop_slug = prop_column.replace("_", "-")
+    game_log_df = load_batter_prop_game_log(batter_id)
+    if prop_column not in game_log_df.columns:
+        st.info("Data unavailable for this prop.")
+        return
+
     line_key = f"batter_{prop_column}_line_{batter_id}"
     if line_key not in st.session_state:
         st.session_state[line_key] = 0.5
