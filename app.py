@@ -392,9 +392,9 @@ def render_line_badge(line_value, odds_type="", show_book_badge=True):
 
     normalized_odds_type = normalize_name(odds_type)
     boost_html = ""
-    if normalized_odds_type == "goblin":
+    if show_book_badge and normalized_odds_type == "goblin":
         boost_html = badge_image_html(MODIFIER_BADGE_ASSETS.get("goblin"), "Goblin", "boost-badge", "modifier-badge-img")
-    elif normalized_odds_type == "demon":
+    elif show_book_badge and normalized_odds_type == "demon":
         boost_html = badge_image_html(MODIFIER_BADGE_ASSETS.get("demon"), "Demon", "boost-badge", "modifier-badge-img")
     book_badge_html = (
         badge_image_html(SPORTSBOOK_BADGE_ASSETS.get("prizepicks"), "PrizePicks", "book-badge", "book-badge-img")
@@ -529,6 +529,10 @@ def get_prop_projection_lines(batter_id, selected_prop, batter_name=""):
             continue
         lines.append(record)
     return lines
+
+
+def has_valid_projection_line(projection_lines):
+    return any(_projection_line_value(projection_line) is not None for projection_line in projection_lines)
 
 
 @st.cache_data(ttl=300)
@@ -1860,6 +1864,7 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
 
     st.session_state["prizepicks_projections"] = load_prizepicks_mlb_projections()
     projection_lines = get_prop_projection_lines(batter_id, selected_prop, batter_name)
+    has_prizepicks_line = has_valid_projection_line(projection_lines)
     selected_line_value = float(st.session_state[line_key])
     selected_projection_line = None
     for projection_line in projection_lines:
@@ -1881,9 +1886,13 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
             args=(line_key, -1.0),
         )
     with line_cols[1]:
-        selected_odds_type = _projection_value(selected_projection_line, "odds_type", "oddsType", default="") if isinstance(selected_projection_line, dict) else ""
+        selected_odds_type = (
+            _projection_value(selected_projection_line, "odds_type", "oddsType", default="")
+            if has_prizepicks_line and isinstance(selected_projection_line, dict)
+            else ""
+        )
         st.markdown(
-            f"<div class='line-badge-wrap'>{render_line_badge(st.session_state[line_key], selected_odds_type, show_book_badge=bool(projection_lines))}</div>",
+            f"<div class='line-badge-wrap'>{render_line_badge(st.session_state[line_key], selected_odds_type, show_book_badge=has_prizepicks_line)}</div>",
             unsafe_allow_html=True,
         )
     with line_cols[2]:
