@@ -531,10 +531,6 @@ def get_prop_projection_lines(batter_id, selected_prop, batter_name=""):
     return lines
 
 
-def has_valid_projection_line(projection_lines):
-    return any(_projection_line_value(projection_line) is not None for projection_line in projection_lines)
-
-
 @st.cache_data(ttl=300)
 def load_prizepicks_mlb_projections(debug_version=2):
     headers = {
@@ -1864,7 +1860,6 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
 
     st.session_state["prizepicks_projections"] = load_prizepicks_mlb_projections()
     projection_lines = get_prop_projection_lines(batter_id, selected_prop, batter_name)
-    has_prizepicks_line = has_valid_projection_line(projection_lines)
     selected_line_value = float(st.session_state[line_key])
     selected_projection_line = None
     for projection_line in projection_lines:
@@ -1875,6 +1870,7 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
                 break
         except (TypeError, ValueError):
             continue
+    has_exact_prizepicks_line = isinstance(selected_projection_line, dict)
 
     st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
     line_cols = st.columns([0.34, 1.65, 0.34, 4.2])
@@ -1888,11 +1884,11 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
     with line_cols[1]:
         selected_odds_type = (
             _projection_value(selected_projection_line, "odds_type", "oddsType", default="")
-            if has_prizepicks_line and isinstance(selected_projection_line, dict)
+            if has_exact_prizepicks_line
             else ""
         )
         st.markdown(
-            f"<div class='line-badge-wrap'>{render_line_badge(st.session_state[line_key], selected_odds_type, show_book_badge=has_prizepicks_line)}</div>",
+            f"<div class='line-badge-wrap'>{render_line_badge(st.session_state[line_key], selected_odds_type, show_book_badge=has_exact_prizepicks_line)}</div>",
             unsafe_allow_html=True,
         )
     with line_cols[2]:
