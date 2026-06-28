@@ -451,13 +451,20 @@ def _prop_match_key(value):
         "runs": "runs",
         "rbi": "rbi",
         "rbis": "rbi",
+        "hrrbi": "hrrrbi",
+        "hrrbis": "hrrrbi",
         "hrrrbi": "hrrrbi",
         "hitsrunsrbis": "hrrrbi",
         "hitsrunsrbi": "hrrrbi",
         "totalbases": "totalbases",
+        "tb": "totalbases",
         "homeruns": "homeruns",
         "walks": "walks",
         "strikeouts": "strikeouts",
+        "hitterks": "strikeouts",
+        "sb": "stolenbases",
+        "stolenbase": "stolenbases",
+        "stolenbases": "stolenbases",
     }
     return aliases.get(compact, compact)
 
