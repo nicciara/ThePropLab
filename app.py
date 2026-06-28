@@ -2033,6 +2033,10 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
             st.session_state[line_key] = float(requested_line_value)
         except (TypeError, ValueError):
             pass
+    _ensure_query_params(_selected_batter_query_params({
+        "prop": selected_prop,
+        "line": st.session_state[line_key],
+    }))
 
     st.session_state["prizepicks_projections"] = load_prizepicks_mlb_projections()
     projection_lines = get_prop_projection_lines(batter_id, selected_prop, batter_name)
@@ -2163,6 +2167,27 @@ def _set_query_params(params):
             st.query_params[key] = value
     except Exception as exc:
         logger.debug("Unable to update query params: %s", exc)
+
+
+def _query_params_need_update(params):
+    try:
+        current = st.query_params
+        for key, value in params.items():
+            if value in {None, ""}:
+                continue
+            current_value = current.get(str(key), "")
+            if isinstance(current_value, list):
+                current_value = current_value[0] if current_value else ""
+            if str(current_value) != str(value):
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def _ensure_query_params(params):
+    if _query_params_need_update(params):
+        _set_query_params(params)
 
 
 def _selected_batter_query_params(extra=None):
@@ -2931,16 +2956,15 @@ if st.session_state.get("selected_batter"):
     if st.button(back_label):
         st.session_state.pop("selected_batter", None)
         if has_return_pitcher:
-            st.query_params.clear()
-            st.query_params["view"] = "pitcher_detail"
-            st.query_params["pitcher_id"] = str(sb.get("return_pitcher_id", ""))
-            st.query_params["game_pk"] = str(sb.get("return_game_pk", ""))
-            if sb.get("return_pitcher_side"):
-                st.query_params["pitcher_side"] = str(sb.get("return_pitcher_side"))
-            if sb.get("return_pitcher_name"):
-                st.query_params["pitcher_name"] = str(sb.get("return_pitcher_name"))
-            if sb.get("return_pitcher_hand"):
-                st.query_params["pitcher_hand"] = str(sb.get("return_pitcher_hand"))
+            _set_query_params({
+                "view": "pitcher_detail",
+                "pitcher_id": sb.get("return_pitcher_id", ""),
+                "game_pk": sb.get("return_game_pk", ""),
+                "pitcher_side": sb.get("return_pitcher_side", ""),
+                "pitcher_name": sb.get("return_pitcher_name", ""),
+                "pitcher_hand": sb.get("return_pitcher_hand", ""),
+                "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
+            })
         else:
             try:
                 _set_query_params({"date": st.session_state.get("selected_date", eastern_today()).isoformat()})
@@ -3343,6 +3367,15 @@ def load_regular_season_pitch_mix(player_id):
 if st.session_state.get("selected_pitcher"):
     sp = st.session_state.get("selected_pitcher")
     gp = st.session_state.get("selected_game")
+    _ensure_query_params({
+        "view": "pitcher_detail",
+        "pitcher_id": sp.get("id", ""),
+        "pitcher_name": sp.get("name", ""),
+        "pitcher_hand": sp.get("hand", ""),
+        "pitcher_side": sp.get("side", ""),
+        "game_pk": gp,
+        "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
+    })
     games_df = st.session_state.get("games")
     if games_df is None or (isinstance(games_df, pd.DataFrame) and games_df.empty):
         games_df = load_schedule(st.session_state.get("selected_date", eastern_today()))
@@ -3650,14 +3683,6 @@ if st.session_state.get("selected_pitcher"):
 
 
 # Pitcher view removed: query-param based navigation disabled to support older Streamlit versions
-
-
-requested_date_value = _query_param_value("date", "")
-requested_date = pd.to_datetime(requested_date_value, errors="coerce") if requested_date_value else pd.NaT
-if "selected_date" not in st.session_state:
-    st.session_state["selected_date"] = requested_date.date() if pd.notna(requested_date) else eastern_today()
-if "calendar_date" not in st.session_state:
-    st.session_state["calendar_date"] = st.session_state["selected_date"]
 
 
 def set_homepage_date(new_date):
