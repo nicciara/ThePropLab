@@ -558,6 +558,14 @@ def get_prop_projection_lines(batter_id, selected_prop, batter_name=""):
     return lines
 
 
+def prop_label_from_query(value, default="Hits"):
+    target_key = _prop_match_key(value)
+    for prop in GAME_LOG_PROPS:
+        if _prop_match_key(prop) == target_key:
+            return prop
+    return default
+
+
 @st.cache_data(ttl=300)
 def load_prizepicks_mlb_projections(debug_version=2):
     headers = {
@@ -2698,11 +2706,18 @@ if requested_view == "pitcher_detail" and requested_pitcher_id and requested_gam
 
 requested_date_value = _query_param_value("date", "")
 requested_date = pd.to_datetime(requested_date_value, errors="coerce") if requested_date_value else pd.NaT
-requested_home_tab = str(_query_param_value("home_tab", "slate")).strip().lower()
-if requested_home_tab not in {"slate", "lineups"}:
-    requested_home_tab = "slate"
+requested_home_tab = str(_query_param_value("home_tab", "lineups")).strip().lower()
+if requested_home_tab == "slate":
+    requested_home_tab = "lineups"
+if requested_home_tab not in {"lineups", "props"}:
+    requested_home_tab = "lineups"
 if st.session_state.get("home_tab") != requested_home_tab:
     st.session_state["home_tab"] = requested_home_tab
+requested_home_prop = prop_label_from_query(_query_param_value("prop", "Hits"))
+if st.session_state.get("homepage_selected_prop") not in GAME_LOG_PROPS:
+    st.session_state["homepage_selected_prop"] = requested_home_prop
+elif requested_home_prop != st.session_state.get("homepage_selected_prop") and requested_home_tab == "props":
+    st.session_state["homepage_selected_prop"] = requested_home_prop
 if "selected_date" not in st.session_state:
     st.session_state["selected_date"] = requested_date.date() if pd.notna(requested_date) else eastern_today()
 elif pd.notna(requested_date) and st.session_state.get("selected_date") != requested_date.date():
@@ -3911,7 +3926,11 @@ def set_homepage_date(new_date):
     st.session_state["selected_date"] = new_date
     st.session_state["calendar_date"] = new_date
     st.session_state["games"] = load_schedule(new_date)
-    _set_query_params({"date": new_date.isoformat(), "home_tab": st.session_state.get("home_tab", "slate")})
+    _set_query_params({
+        "date": new_date.isoformat(),
+        "home_tab": st.session_state.get("home_tab", "lineups"),
+        "prop": st.session_state.get("homepage_selected_prop", "Hits") if st.session_state.get("home_tab") == "props" else "",
+    })
 
 
 def shift_homepage_date(days):
@@ -3928,18 +3947,194 @@ def set_homepage_calendar_date():
 
 def set_homepage_tab():
     selected_label = st.session_state.get("homepage_tab_switch", "Lineups")
-    selected_tab = "lineups" if selected_label == "Props" else "slate"
+    selected_tab = "props" if selected_label == "Props" else "lineups"
     st.session_state["home_tab"] = selected_tab
     _set_query_params({
         "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
         "home_tab": selected_tab,
+        "prop": st.session_state.get("homepage_selected_prop", "Hits") if selected_tab == "props" else "",
     })
+
+
+def set_homepage_props_prop(prop):
+    if prop not in GAME_LOG_PROPS:
+        return
+    st.session_state["homepage_selected_prop"] = prop
+    _set_query_params({
+        "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
+        "home_tab": "props",
+        "prop": prop,
+    })
+
+
+def homepage_slate_batter_map(games):
+    batter_map = {}
+    if games is None or (isinstance(games, pd.DataFrame) and games.empty):
+        return batter_map
+    for _, game in games.iterrows():
+        lineup_context = get_game_lineups(game.get("game_pk"), game)
+        side_meta = {
+            "away": {
+                "team": game.get("away_team", ""),
+                "team_id": game.get("away_team_id", ""),
+                "opponent": game.get("home_team", ""),
+                "opponent_id": game.get("home_team_id", ""),
+            },
+            "home": {
+                "team": game.get("home_team", ""),
+                "team_id": game.get("home_team_id", ""),
+                "opponent": game.get("away_team", ""),
+                "opponent_id": game.get("away_team_id", ""),
+            },
+        }
+        for side in ("away", "home"):
+            for player in lineup_context.get(side, []) or []:
+                player_name = player.get("name", "")
+                player_key = normalize_name(player_name)
+                if not player_key:
+                    continue
+                batter_map[player_key] = {
+                    **side_meta[side],
+                    "player_id": player.get("player_id", ""),
+                    "name": player_name,
+                    "hand": player.get("handedness", ""),
+                    "game_pk": game.get("game_pk", ""),
+                }
+    return batter_map
+
+
+def render_homepage_props_tab():
+    st.markdown("## Props")
+    if "games" not in st.session_state:
+        st.session_state["games"] = load_schedule(st.session_state["selected_date"])
+    games = st.session_state.get("games", pd.DataFrame())
+
+    selected_prop = st.session_state.get("homepage_selected_prop", "Hits")
+    if selected_prop not in GAME_LOG_PROPS:
+        selected_prop = "Hits"
+        st.session_state["homepage_selected_prop"] = selected_prop
+
+    with st.container(key="homepage_prop_tab_row", horizontal=True, gap="small"):
+        for prop in GAME_LOG_PROPS:
+            prop_key = GAME_LOG_PROP_COLUMNS[prop].replace("_", "-")
+            st.button(
+                prop,
+                key=f"homepage_prop_tab_{prop_key}",
+                type="primary" if prop == selected_prop else "secondary",
+                on_click=set_homepage_props_prop,
+                args=(prop,),
+            )
+
+    try:
+        st.session_state["prizepicks_projections"] = load_prizepicks_mlb_projections()
+    except Exception as exc:
+        logger.warning("Unable to load PrizePicks projections for Props tab: %s", exc)
+        st.info("Prop data is unavailable right now.")
+        return
+
+    selected_prop_key = _prop_match_key(selected_prop)
+    slate_batters = homepage_slate_batter_map(games)
+    rows = []
+    seen = set()
+    for record in st.session_state.get("prizepicks_projections", []):
+        if not isinstance(record, dict):
+            continue
+        stat_type = record.get("stat_display_name") or _projection_stat_type(record)
+        if _prop_match_key(stat_type) != selected_prop_key:
+            continue
+
+        player_name = str(record.get("player") or _projection_player_name(record) or "").strip()
+        if not player_name:
+            continue
+        line_value = _projection_line_value(record)
+        odds_type = _projection_value(record, "odds_type", "oddsType", default="")
+        unique_key = (normalize_name(player_name), selected_prop_key, str(line_value), normalize_name(odds_type))
+        if unique_key in seen:
+            continue
+        seen.add(unique_key)
+
+        slate_info = slate_batters.get(normalize_name(player_name), {})
+        team = slate_info.get("team") or _projection_value(record, "team", default="")
+        opponent = slate_info.get("opponent") or _projection_value(record, "description", default="")
+        hand = slate_info.get("hand", "")
+        batter_href = ""
+        if slate_info.get("player_id"):
+            batter_href = _build_batter_detail_href(
+                slate_info.get("player_id"),
+                batter_name=player_name,
+                batter_hand=hand,
+                team=team,
+                team_id=slate_info.get("team_id", ""),
+                opponent=opponent,
+                opponent_id=slate_info.get("opponent_id", ""),
+                return_game_pk=slate_info.get("game_pk", ""),
+                prop=selected_prop,
+                line=line_value,
+            )
+
+        modifier = str(odds_type or "").strip().title()
+        if modifier not in {"Goblin", "Demon"}:
+            modifier = "Standard"
+        rows.append({
+            "player": player_name,
+            "href": batter_href,
+            "team": team,
+            "opponent": opponent,
+            "hand": hand,
+            "prop": selected_prop,
+            "line": line_value,
+            "odds_type": odds_type,
+            "status": f"PrizePicks • {modifier}",
+        })
+
+    def _props_sort_line(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    rows.sort(key=lambda row: (str(row.get("team", "")), str(row.get("player", "")), _props_sort_line(row.get("line"))))
+    if not rows:
+        st.info(f"No available PrizePicks players found for {selected_prop} on the current slate.")
+        return
+
+    header = (
+        "<div style='min-width:920px; display:grid; grid-template-columns:minmax(180px,1.3fr) 76px 120px 54px 180px 132px 150px; "
+        "align-items:center; gap:8px; padding:0 10px 8px 10px; color:#6b7280; font-size:12px; font-weight:800;'>"
+        "<div>Player</div><div>Team</div><div>Opponent</div><div>Hand</div><div>Prop</div><div>Line</div><div>Status</div></div>"
+    )
+    body = []
+    for row in rows:
+        player_text = html.escape(row["player"])
+        line_html = render_line_badge(row.get("line"), row.get("odds_type", ""), show_book_badge=True)
+        row_tag = "a" if row.get("href") else "div"
+        href_attr = f" href='{html.escape(row['href'], quote=True)}' target='_self'" if row.get("href") else ""
+        body.append(
+            f"<{row_tag}{href_attr} style='min-width:920px; display:grid; grid-template-columns:minmax(180px,1.3fr) 76px 120px 54px 180px 132px 150px; "
+            "align-items:center; gap:8px; padding:8px 10px; border-top:1px solid var(--dash-border); color:var(--dash-text); "
+            "font-size:13px; text-decoration:none;'>"
+            f"<div style='font-weight:800; color:var(--dash-accent);'>{player_text}</div>"
+            f"<div>{html.escape(str(row.get('team', '') or '—'))}</div>"
+            f"<div>{html.escape(str(row.get('opponent', '') or '—'))}</div>"
+            f"<div>{html.escape(str(row.get('hand', '') or '—'))}</div>"
+            f"<div>{html.escape(str(row.get('prop', '') or '—'))}</div>"
+            f"<div>{line_html}</div>"
+            f"<div style='font-weight:700;'>{html.escape(str(row.get('status', '') or 'PrizePicks'))}</div>"
+            f"</{row_tag}>"
+        )
+
+    st.markdown(
+        "<div style='overflow-x:auto; width:100%; margin-top:14px;'>"
+        f"{header}{''.join(body)}"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
 
 if st.session_state["calendar_date"] != st.session_state["selected_date"]:
     st.session_state["calendar_date"] = st.session_state["selected_date"]
 
-homepage_tab_label = "Props" if st.session_state.get("home_tab") == "lineups" else "Lineups"
+homepage_tab_label = "Props" if st.session_state.get("home_tab") == "props" else "Lineups"
 if st.session_state.get("homepage_tab_switch") != homepage_tab_label:
     st.session_state["homepage_tab_switch"] = homepage_tab_label
 
@@ -3951,17 +4146,18 @@ st.segmented_control(
     label_visibility="collapsed",
 )
 
-if st.session_state.get("home_tab") == "lineups":
+if st.session_state.get("home_tab") == "props":
     _ensure_query_params({
         "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
-        "home_tab": "lineups",
+        "home_tab": "props",
+        "prop": st.session_state.get("homepage_selected_prop", "Hits"),
     })
-    st.info("Lineups coming soon")
+    render_homepage_props_tab()
     st.stop()
 
 _ensure_query_params({
     "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
-    "home_tab": "slate",
+    "home_tab": "lineups",
 })
 
 col1, col2, col3, col4 = st.columns([1, 4, 1, 1])
