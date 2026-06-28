@@ -3927,8 +3927,8 @@ def set_homepage_calendar_date():
 
 
 def set_homepage_tab():
-    selected_label = st.session_state.get("homepage_tab_switch", "Slate")
-    selected_tab = "lineups" if selected_label == "Lineups" else "slate"
+    selected_label = st.session_state.get("homepage_tab_switch", "Lineups")
+    selected_tab = "lineups" if selected_label == "Props" else "slate"
     st.session_state["home_tab"] = selected_tab
     _set_query_params({
         "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
@@ -3939,13 +3939,13 @@ def set_homepage_tab():
 if st.session_state["calendar_date"] != st.session_state["selected_date"]:
     st.session_state["calendar_date"] = st.session_state["selected_date"]
 
-homepage_tab_label = "Lineups" if st.session_state.get("home_tab") == "lineups" else "Slate"
+homepage_tab_label = "Props" if st.session_state.get("home_tab") == "lineups" else "Lineups"
 if st.session_state.get("homepage_tab_switch") != homepage_tab_label:
     st.session_state["homepage_tab_switch"] = homepage_tab_label
 
 st.segmented_control(
     "Homepage View",
-    ["Slate", "Lineups"],
+    ["Lineups", "Props"],
     key="homepage_tab_switch",
     on_change=set_homepage_tab,
     label_visibility="collapsed",
