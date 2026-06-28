@@ -220,7 +220,7 @@ st.markdown(
     .line-value{font-weight:700;font-size:22px;color:var(--dash-title);line-height:1}
     .book-badge,.boost-badge{display:inline-flex;align-items:center;justify-content:center;line-height:1;white-space:nowrap}
     .badge-img{display:block;object-fit:contain;flex:0 0 auto}
-    .book-badge-img{height:26px;width:auto;max-width:34px;transform:translateY(-3px)}
+    .book-badge-img{height:23px;width:auto;max-width:34px;transform:translateY(-2px)}
     .modifier-badge-img{height:26px;width:auto;max-width:30px}
     .line-badge-wrap{display:flex;align-items:center;justify-content:center}
     .alt-line-row{display:flex;align-items:center;gap:8px;margin:4px 0}
