@@ -1671,6 +1671,15 @@ def prop_h2h_tile_label(summary):
 def set_selected_prop(prop):
     if prop in GAME_LOG_PROPS:
         st.session_state["selected_prop"] = prop
+        sb = st.session_state.get("selected_batter", {}) or {}
+        prop_column = GAME_LOG_PROP_COLUMNS.get(prop)
+        line_value = ""
+        if prop_column and sb.get("id"):
+            line_key = f"batter_{prop_column}_line_{sb.get('id')}"
+            if line_key not in st.session_state:
+                st.session_state[line_key] = 0.5
+            line_value = st.session_state.get(line_key, 0.5)
+        _sync_batter_detail_query({"prop": prop, "line": line_value})
 
 
 def adjust_game_log_line_value(line_key, delta):
@@ -1680,11 +1689,19 @@ def adjust_game_log_line_value(line_key, delta):
     except (TypeError, ValueError):
         current_value = 0.5
     st.session_state[line_key] = max(0.5, current_value + float(delta))
+    _sync_batter_detail_query({
+        "prop": st.session_state.get("selected_prop", "Hits"),
+        "line": st.session_state[line_key],
+    })
 
 
 def set_game_log_line_value(line_key, value):
     try:
         st.session_state[line_key] = float(value)
+        _sync_batter_detail_query({
+            "prop": st.session_state.get("selected_prop", "Hits"),
+            "line": st.session_state[line_key],
+        })
     except (TypeError, ValueError):
         pass
 
@@ -1796,6 +1813,11 @@ def set_game_log_range_selection(range_key, h2h_key, sample_label):
         st.session_state[range_key] = None
     else:
         st.session_state[range_key] = sample_label
+    _sync_batter_detail_query({
+        "prop": st.session_state.get("selected_prop", "Hits"),
+        "sample": st.session_state.get(range_key, "") or "",
+        "h2h": "1" if st.session_state.get(h2h_key, False) else "",
+    })
 
 
 def toggle_game_log_h2h_selection(h2h_key, range_key):
@@ -1806,6 +1828,11 @@ def toggle_game_log_h2h_selection(h2h_key, range_key):
             st.session_state[range_key] = "L10"
     else:
         st.session_state[range_key] = None
+    _sync_batter_detail_query({
+        "prop": st.session_state.get("selected_prop", "Hits"),
+        "sample": st.session_state.get(range_key, "") or "",
+        "h2h": "1" if st.session_state.get(h2h_key, False) else "",
+    })
 
 
 def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop, selected_prop_line, current_opponent_context):
@@ -1814,6 +1841,12 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
     range_key = f"batter_game_log_range_{batter_id}"
     h2h_key = f"batter_game_log_h2h_{batter_id}"
     tooltip_ready_key = f"batter_game_log_tooltip_ready_{batter_id}"
+    requested_sample = _query_param_value("sample", "")
+    if requested_sample in GAME_LOG_SAMPLE_RANGES:
+        st.session_state[range_key] = requested_sample
+    requested_h2h = _query_param_value("h2h", "")
+    if str(requested_h2h).lower() in {"1", "true", "yes", "on"}:
+        st.session_state[h2h_key] = True
     h2h_enabled = bool(st.session_state.get(h2h_key, False))
     if st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES and not h2h_enabled:
         st.session_state[range_key] = "L10"
@@ -1994,6 +2027,12 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
     line_key = f"batter_{prop_column}_line_{batter_id}"
     if line_key not in st.session_state:
         st.session_state[line_key] = 0.5
+    requested_line_value = _query_param_value("line", "")
+    if requested_line_value not in {"", None}:
+        try:
+            st.session_state[line_key] = float(requested_line_value)
+        except (TypeError, ValueError):
+            pass
 
     st.session_state["prizepicks_projections"] = load_prizepicks_mlb_projections()
     projection_lines = get_prop_projection_lines(batter_id, selected_prop, batter_name)
@@ -2116,6 +2155,75 @@ def _query_param_value(name, default=""):
     return value
 
 
+def _set_query_params(params):
+    cleaned = {str(key): str(value) for key, value in params.items() if value not in {None, ""}}
+    try:
+        st.query_params.clear()
+        for key, value in cleaned.items():
+            st.query_params[key] = value
+    except Exception as exc:
+        logger.debug("Unable to update query params: %s", exc)
+
+
+def _selected_batter_query_params(extra=None):
+    sb = st.session_state.get("selected_batter", {}) or {}
+    if not sb.get("id"):
+        return {}
+    params = {
+        "view": "batter_detail",
+        "batter_id": sb.get("id", ""),
+        "batter_name": sb.get("name", ""),
+        "batter_hand": sb.get("hand", ""),
+        "team": sb.get("team", ""),
+        "team_id": sb.get("team_id", ""),
+        "opponent": sb.get("opponent", ""),
+        "opponent_id": sb.get("opponent_id", ""),
+        "return_pitcher_id": sb.get("return_pitcher_id", ""),
+        "return_game_pk": sb.get("return_game_pk", ""),
+        "return_pitcher_side": sb.get("return_pitcher_side", ""),
+        "return_pitcher_name": sb.get("return_pitcher_name", ""),
+        "return_pitcher_hand": sb.get("return_pitcher_hand", ""),
+        "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
+    }
+    selected_prop = st.session_state.get("selected_prop", "")
+    if selected_prop in GAME_LOG_PROPS:
+        params["prop"] = selected_prop
+        prop_column = GAME_LOG_PROP_COLUMNS.get(selected_prop)
+        if prop_column:
+            line_key = f"batter_{prop_column}_line_{sb.get('id')}"
+            if line_key in st.session_state:
+                params["line"] = st.session_state.get(line_key)
+    range_key = f"batter_game_log_range_{sb.get('id')}"
+    h2h_key = f"batter_game_log_h2h_{sb.get('id')}"
+    if st.session_state.get(range_key):
+        params["sample"] = st.session_state.get(range_key)
+    if st.session_state.get(h2h_key):
+        params["h2h"] = "1"
+    if extra:
+        params.update(extra)
+    return params
+
+
+def _sync_batter_detail_query(extra=None):
+    params = _selected_batter_query_params(extra=extra)
+    if params:
+        _set_query_params(params)
+
+
+def _set_pitcher_detail_query(pitcher, game_pk):
+    if not pitcher or not game_pk:
+        return
+    _set_query_params({
+        "view": "pitcher_detail",
+        "pitcher_id": pitcher.get("id", ""),
+        "pitcher_name": pitcher.get("name", ""),
+        "pitcher_hand": pitcher.get("hand", ""),
+        "pitcher_side": pitcher.get("side", ""),
+        "game_pk": game_pk,
+        "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
+    })
+
+
 def _build_batter_detail_href(
     batter_id,
     batter_name="",
@@ -2129,6 +2237,10 @@ def _build_batter_detail_href(
     return_pitcher_side="",
     return_pitcher_name="",
     return_pitcher_hand="",
+    prop="",
+    line="",
+    sample="",
+    h2h="",
 ):
     params = [("view", "batter_detail"), ("batter_id", str(batter_id))]
     if batter_name:
@@ -2153,6 +2265,17 @@ def _build_batter_detail_href(
         params.append(("return_pitcher_name", str(return_pitcher_name)))
     if return_pitcher_hand:
         params.append(("return_pitcher_hand", str(return_pitcher_hand)))
+    selected_date_value = st.session_state.get("selected_date")
+    if selected_date_value:
+        params.append(("date", selected_date_value.isoformat()))
+    if prop:
+        params.append(("prop", str(prop)))
+    if line not in {None, ""}:
+        params.append(("line", str(line)))
+    if sample:
+        params.append(("sample", str(sample)))
+    if h2h:
+        params.append(("h2h", str(h2h)))
     return "?" + "&".join(f"{key}={quote_plus(value)}" for key, value in params)
 
 
@@ -2372,6 +2495,9 @@ if requested_view == "batter_detail" and requested_batter_id:
         "return_pitcher_name": _query_param_value("return_pitcher_name", ""),
         "return_pitcher_hand": _query_param_value("return_pitcher_hand", ""),
     }
+    requested_prop = _query_param_value("prop", "")
+    if requested_prop in GAME_LOG_PROPS:
+        st.session_state["selected_prop"] = requested_prop
 
 requested_pitcher_id = _query_param_value("pitcher_id")
 requested_game_pk = _query_param_value("game_pk")
@@ -2386,6 +2512,18 @@ if requested_view == "pitcher_detail" and requested_pitcher_id and requested_gam
         st.session_state["selected_game"] = int(str(requested_game_pk))
     except Exception:
         st.session_state["selected_game"] = requested_game_pk
+
+requested_date_value = _query_param_value("date", "")
+requested_date = pd.to_datetime(requested_date_value, errors="coerce") if requested_date_value else pd.NaT
+if "selected_date" not in st.session_state:
+    st.session_state["selected_date"] = requested_date.date() if pd.notna(requested_date) else eastern_today()
+elif pd.notna(requested_date) and st.session_state.get("selected_date") != requested_date.date():
+    st.session_state["selected_date"] = requested_date.date()
+    st.session_state.pop("games", None)
+if "calendar_date" not in st.session_state:
+    st.session_state["calendar_date"] = st.session_state["selected_date"]
+elif pd.notna(requested_date) and st.session_state.get("calendar_date") != requested_date.date():
+    st.session_state["calendar_date"] = requested_date.date()
 
 
 @st.cache_data(ttl=43200)
@@ -2805,7 +2943,7 @@ if st.session_state.get("selected_batter"):
                 st.query_params["pitcher_hand"] = str(sb.get("return_pitcher_hand"))
         else:
             try:
-                st.query_params.clear()
+                _set_query_params({"date": st.session_state.get("selected_date", eastern_today()).isoformat()})
             except Exception:
                 pass
         st.rerun()
@@ -3239,7 +3377,7 @@ if st.session_state.get("selected_pitcher"):
             st.session_state.pop("selected_pitcher", None)
             st.session_state.pop("selected_game", None)
             try:
-                st.query_params.clear()
+                _set_query_params({"date": st.session_state.get("selected_date", eastern_today()).isoformat()})
             except Exception:
                 pass
             st.rerun()
@@ -3514,8 +3652,10 @@ if st.session_state.get("selected_pitcher"):
 # Pitcher view removed: query-param based navigation disabled to support older Streamlit versions
 
 
+requested_date_value = _query_param_value("date", "")
+requested_date = pd.to_datetime(requested_date_value, errors="coerce") if requested_date_value else pd.NaT
 if "selected_date" not in st.session_state:
-    st.session_state["selected_date"] = eastern_today()
+    st.session_state["selected_date"] = requested_date.date() if pd.notna(requested_date) else eastern_today()
 if "calendar_date" not in st.session_state:
     st.session_state["calendar_date"] = st.session_state["selected_date"]
 
@@ -3526,6 +3666,7 @@ def set_homepage_date(new_date):
     st.session_state["selected_date"] = new_date
     st.session_state["calendar_date"] = new_date
     st.session_state["games"] = load_schedule(new_date)
+    _set_query_params({"date": new_date.isoformat()})
 
 
 def shift_homepage_date(days):
@@ -3621,13 +3762,15 @@ if "games" in st.session_state:
                         c_label.markdown(away_pitcher_label)
                         # Render pitcher name as a link-styled button that opens pitcher detail
                         if c_button.button(game['away_pitcher'], key=away_btn_key):
-                            st.session_state['selected_pitcher'] = {
+                            selected_pitcher = {
                                 'name': game.get('away_pitcher'),
                                 'id': game.get('away_pitcher_id'),
                                 'hand': game.get('away_pitcher_hand'),
                                 'side': 'away'
                             }
+                            st.session_state['selected_pitcher'] = selected_pitcher
                             st.session_state['selected_game'] = game['game_pk']
+                            _set_pitcher_detail_query(selected_pitcher, game['game_pk'])
                             st.rerun()
                         away_hand_text = game.get('away_pitcher_hand')
                         c_hand.markdown(f"({away_hand_text})" if away_hand_text else "")
@@ -3685,13 +3828,15 @@ if "games" in st.session_state:
                         c_label_h.markdown(home_pitcher_label)
                         # Render pitcher name as a link-styled button that opens pitcher detail
                         if c_button_h.button(game['home_pitcher'], key=home_btn_key):
-                            st.session_state['selected_pitcher'] = {
+                            selected_pitcher = {
                                 'name': game.get('home_pitcher'),
                                 'id': game.get('home_pitcher_id'),
                                 'hand': game.get('home_pitcher_hand'),
                                 'side': 'home'
                             }
+                            st.session_state['selected_pitcher'] = selected_pitcher
                             st.session_state['selected_game'] = game['game_pk']
+                            _set_pitcher_detail_query(selected_pitcher, game['game_pk'])
                             st.rerun()
                         home_hand_text = game.get('home_pitcher_hand')
                         c_hand_h.markdown(f"({home_hand_text})" if home_hand_text else "")
