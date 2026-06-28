@@ -4098,35 +4098,75 @@ def render_homepage_props_tab():
         st.info(f"No available PrizePicks players found for {selected_prop} on the current slate.")
         return
 
-    header = (
-        "<div style='min-width:920px; display:grid; grid-template-columns:minmax(180px,1.3fr) 76px 120px 54px 180px 132px 150px; "
-        "align-items:center; gap:8px; padding:0 10px 8px 10px; color:#6b7280; font-size:12px; font-weight:800;'>"
-        "<div>Player</div><div>Team</div><div>Opponent</div><div>Hand</div><div>Prop</div><div>Line</div><div>Status</div></div>"
-    )
-    body = []
+    def _prop_card_tile(label, value):
+        value_text = str(value or "—")
+        tile_bg = "var(--dash-surface-2)"
+        tile_color = "var(--dash-text)"
+        try:
+            pct_value = float(value_text.replace("%", ""))
+            if value_text.endswith("%"):
+                if pct_value >= 60:
+                    tile_bg = "#dcfce7"
+                    tile_color = "#166534"
+                elif pct_value >= 45:
+                    tile_bg = "#fef3c7"
+                    tile_color = "#92400e"
+                else:
+                    tile_bg = "#fee2e2"
+                    tile_color = "#991b1b"
+        except (TypeError, ValueError):
+            pass
+        return (
+            "<div style='min-width:70px; padding:7px 9px; border:1px solid var(--dash-border); border-radius:8px; "
+            f"background:{tile_bg}; color:{tile_color}; text-align:center;'>"
+            f"<div style='font-size:11px; font-weight:800; letter-spacing:.02em;'>{html.escape(str(label))}</div>"
+            f"<div style='font-size:14px; font-weight:900; margin-top:2px;'>{html.escape(value_text)}</div>"
+            "</div>"
+        )
+
+    cards = []
     for row in rows:
         player_text = html.escape(row["player"])
         line_html = render_line_badge(row.get("line"), row.get("odds_type", ""), show_book_badge=True)
-        row_tag = "a" if row.get("href") else "div"
-        href_attr = f" href='{html.escape(row['href'], quote=True)}' target='_self'" if row.get("href") else ""
-        body.append(
-            f"<{row_tag}{href_attr} style='min-width:920px; display:grid; grid-template-columns:minmax(180px,1.3fr) 76px 120px 54px 180px 132px 150px; "
-            "align-items:center; gap:8px; padding:8px 10px; border-top:1px solid var(--dash-border); color:var(--dash-text); "
-            "font-size:13px; text-decoration:none;'>"
-            f"<div style='font-weight:800; color:var(--dash-accent);'>{player_text}</div>"
-            f"<div>{html.escape(str(row.get('team', '') or '—'))}</div>"
-            f"<div>{html.escape(str(row.get('opponent', '') or '—'))}</div>"
-            f"<div>{html.escape(str(row.get('hand', '') or '—'))}</div>"
-            f"<div>{html.escape(str(row.get('prop', '') or '—'))}</div>"
-            f"<div>{line_html}</div>"
-            f"<div style='font-weight:700;'>{html.escape(str(row.get('status', '') or 'PrizePicks'))}</div>"
-            f"</{row_tag}>"
+        try:
+            line_text = f"{float(row.get('line')):.1f}"
+        except (TypeError, ValueError):
+            line_text = str(row.get("line") or "—")
+        matchup = f"{row.get('team') or '—'} vs {row.get('opponent') or '—'}"
+        hand_text = f" • {row.get('hand')}" if row.get("hand") else ""
+        stat_tiles = "".join(
+            _prop_card_tile(label, "—")
+            for label in ("L5", "L10", "L15", "H2H", "AVG", "SZN")
+        )
+        open_link = (
+            f"<a href='{html.escape(row['href'], quote=True)}' target='_self' "
+            "style='display:inline-flex; align-items:center; justify-content:center; padding:8px 12px; "
+            "border-radius:999px; background:var(--dash-accent); color:white; font-size:12px; font-weight:900; "
+            "text-decoration:none; white-space:nowrap;'>Open Player</a>"
+            if row.get("href")
+            else "<span style='font-size:12px; color:var(--dash-muted); font-weight:700;'>Player detail unavailable</span>"
+        )
+        cards.append(
+            "<div style='border:1px solid var(--dash-border); border-radius:10px; background:var(--dash-card-bg); "
+            "box-shadow:0 1px 4px rgba(15,23,42,.08); padding:14px 16px; margin:12px 0; color:var(--dash-text);'>"
+            "<div style='display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap;'>"
+            "<div>"
+            f"<div style='font-size:18px; font-weight:900; line-height:1.15;'>{player_text}</div>"
+            f"<div style='font-size:12px; color:var(--dash-muted); font-weight:800; margin-top:4px;'>{html.escape(matchup)}{html.escape(hand_text)}</div>"
+            "</div>"
+            f"<div>{open_link}</div>"
+            "</div>"
+            "<div style='display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:12px;'>"
+            f"<div style='font-size:15px; font-weight:900;'>O/U {html.escape(line_text)} {html.escape(str(row.get('prop') or ''))}</div>"
+            f"{line_html}"
+            f"<div style='font-size:12px; color:var(--dash-muted); font-weight:800;'>{html.escape(str(row.get('status', '') or 'PrizePicks'))}</div>"
+            "</div>"
+            f"<div style='display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;'>{stat_tiles}</div>"
+            "</div>"
         )
 
     st.markdown(
-        "<div style='overflow-x:auto; width:100%; margin-top:14px;'>"
-        f"{header}{''.join(body)}"
-        "</div>",
+        f"<div style='width:100%; margin-top:14px;'>{''.join(cards)}</div>",
         unsafe_allow_html=True,
     )
 
