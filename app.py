@@ -3073,9 +3073,9 @@ def render_lineup_table(lineup, current_batter_id="", current_batter_name="", li
     def _lineup_stat_cell(value, metric, formatter):
         display_value = formatter(value)
         metric_style = run_value_threshold_style(value, metric) if display_value != "—" else ""
-        return f"<div style='padding:6px 8px; text-align:right; {metric_style}'>{display_value}</div>"
+        return f"<div style='padding:6px 6px; text-align:center; white-space:nowrap; {metric_style}'>{display_value}</div>"
 
-    grid_columns = "44px minmax(170px,1fr) 54px 54px 58px 58px 62px 68px 58px"
+    grid_columns = "34px minmax(160px,1fr) 42px 42px 62px 62px 66px 78px 70px"
     current_name_key = normalize_name(current_batter_name)
     stats_by_player = {}
     if load_stats:
@@ -3125,10 +3125,10 @@ def render_lineup_table(lineup, current_batter_id="", current_batter_name="", li
         rows.append(
             f"<div style='min-width:690px; display:grid; grid-template-columns:{grid_columns}; align-items:center; border-top:1px solid #e5e7eb; "
             f"{row_style}'>"
-            f"<div style='padding:6px 10px;'>{player.get('number', '')}</div>"
+            f"<div style='padding:6px 8px;'>{player.get('number', '')}</div>"
             f"<div style='padding:6px 10px;'>{batter_cell_html}</div>"
-            f"<div style='padding:6px 10px;'>{html.escape(str(player.get('handedness', '')))}</div>"
-            f"<div style='padding:6px 10px;'>{html.escape(str(player.get('position', '')))}</div>"
+            f"<div style='padding:6px 6px; text-align:center; white-space:nowrap;'>{html.escape(str(player.get('handedness', '')))}</div>"
+            f"<div style='padding:6px 6px; text-align:center; white-space:nowrap;'>{html.escape(str(player.get('position', '')))}</div>"
             f"{_lineup_stat_cell(lineup_stats.get('BA'), 'BA', _format_lineup_decimal)}"
             f"{_lineup_stat_cell(lineup_stats.get('SLG'), 'SLG', _format_lineup_decimal)}"
             f"{_lineup_stat_cell(lineup_stats.get('wOBA'), 'wOBA', _format_lineup_decimal)}"
@@ -3141,15 +3141,15 @@ def render_lineup_table(lineup, current_batter_id="", current_batter_name="", li
         f"{lineup_status_html(lineup)}"
         "<div style='overflow-x:auto; width:100%;'>"
         f"<div style='min-width:690px; display:grid; grid-template-columns:{grid_columns}; align-items:end; font-size:12px; color:#6b7280; font-weight:700;'>"
-        "<div style='padding:0 10px 6px 10px;'>#</div>"
+        "<div style='padding:0 8px 6px 8px;'>#</div>"
         "<div style='padding:0 10px 6px 10px;'>Batter</div>"
-        "<div style='padding:0 10px 6px 10px;'>Hand</div>"
-        "<div style='padding:0 10px 6px 10px;'>Pos</div>"
-        "<div style='padding:0 8px 6px 8px; text-align:right;'>BA</div>"
-        "<div style='padding:0 8px 6px 8px; text-align:right;'>SLG</div>"
-        "<div style='padding:0 8px 6px 8px; text-align:right;'>wOBA</div>"
-        "<div style='padding:0 8px 6px 8px; text-align:right;'>Whiff%</div>"
-        "<div style='padding:0 8px 6px 8px; text-align:right;'>K%</div>"
+        "<div style='padding:0 6px 6px 6px; text-align:center; white-space:nowrap;'>Hand</div>"
+        "<div style='padding:0 6px 6px 6px; text-align:center; white-space:nowrap;'>Pos</div>"
+        "<div style='padding:0 6px 6px 6px; text-align:center; white-space:nowrap;'>BA</div>"
+        "<div style='padding:0 6px 6px 6px; text-align:center; white-space:nowrap;'>SLG</div>"
+        "<div style='padding:0 6px 6px 6px; text-align:center; white-space:nowrap;'>wOBA</div>"
+        "<div style='padding:0 6px 6px 6px; text-align:center; white-space:nowrap;'>Whiff%</div>"
+        "<div style='padding:0 6px 6px 6px; text-align:center; white-space:nowrap;'>K%</div>"
         "</div>"
         f"{''.join(rows)}"
         "</div>"
