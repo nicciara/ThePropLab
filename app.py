@@ -346,6 +346,10 @@ st.markdown(
 )
 
 
+def normalize_name(name):
+    return " ".join(str(name).lower().replace(".", "").split())
+
+
 def _projection_value(record, *keys, default=""):
     if not isinstance(record, dict):
         return default
@@ -2835,10 +2839,6 @@ def load_active_roster(team_id):
     url = f"https://statsapi.mlb.com/api/v1/teams/{team_id}/roster"
     data = requests.get(url, params={"rosterType": "active"}, timeout=15).json()
     return data.get("roster", [])
-
-
-def normalize_name(name):
-    return " ".join(str(name).lower().replace(".", "").split())
 
 
 def build_roster_name_id_map(team_id):
