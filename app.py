@@ -456,6 +456,16 @@ def _prop_match_key(value):
         "hrrrbi": "hrrrbi",
         "hitsrunsrbis": "hrrrbi",
         "hitsrunsrbi": "hrrrbi",
+        "1stinninghrrbi": "firstinninghrrrbi",
+        "1stinninghrrbis": "firstinninghrrrbi",
+        "1stinninghrrrbi": "firstinninghrrrbi",
+        "1stinninghitsrunsrbis": "firstinninghrrrbi",
+        "1stinninghitsrunsrbi": "firstinninghrrrbi",
+        "firstinninghrrbi": "firstinninghrrrbi",
+        "firstinninghrrbis": "firstinninghrrrbi",
+        "firstinninghrrrbi": "firstinninghrrrbi",
+        "firstinninghitsrunsrbis": "firstinninghrrrbi",
+        "firstinninghitsrunsrbi": "firstinninghrrrbi",
         "totalbases": "totalbases",
         "tb": "totalbases",
         "homeruns": "homeruns",
@@ -835,8 +845,87 @@ def style_run_value_table(df):
     return styled
 
 
+def _int_like(value, default=0):
+    try:
+        if pd.isna(value):
+            return default
+    except TypeError:
+        pass
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_batter_first_inning_hrrrbi_by_game(batter_id, season_year):
+    if not batter_id or not season_year:
+        return {}
+
+    try:
+        season_year = int(season_year)
+    except (TypeError, ValueError):
+        return {}
+
+    try:
+        selected_batter_id = int(float(batter_id))
+    except (TypeError, ValueError):
+        return {}
+
+    season_log = load_batter_prop_game_log(batter_id, season_year=season_year, include_first_inning=False)
+    if season_log.empty or "game_pk" not in season_log.columns:
+        return {}
+
+    hit_events = {"single", "double", "triple", "home_run"}
+    first_inning_by_game = {}
+    game_pks = [
+        normalize_game_pk(game_pk)
+        for game_pk in season_log["game_pk"].tolist()
+        if normalize_game_pk(game_pk)
+    ]
+
+    for game_key in sorted(set(game_pks)):
+        url = f"https://statsapi.mlb.com/api/v1.1/game/{game_key}/feed/live"
+        try:
+            feed = requests.get(url, timeout=20).json()
+        except Exception as exc:
+            logger.warning("First-inning game feed fetch failed for game_pk=%s batter_id=%s: %s", game_key, batter_id, exc)
+            first_inning_by_game[game_key] = 0
+            continue
+
+        plays = feed.get("liveData", {}).get("plays", {}).get("allPlays", [])
+        hits = 0
+        runs = 0
+        rbis = 0
+        for play in plays:
+            about = play.get("about", {}) if isinstance(play, dict) else {}
+            if _int_like(about.get("inning")) != 1:
+                continue
+
+            matchup = play.get("matchup", {}) if isinstance(play.get("matchup"), dict) else {}
+            batter = matchup.get("batter", {}) if isinstance(matchup.get("batter"), dict) else {}
+            result = play.get("result", {}) if isinstance(play.get("result"), dict) else {}
+            batter_matches = _int_like(batter.get("id"), default=-1) == selected_batter_id
+            event_type = str(result.get("eventType") or "").lower().strip()
+            if batter_matches:
+                if event_type in hit_events:
+                    hits += 1
+                rbis += _int_like(result.get("rbi"), default=0)
+
+            for runner in play.get("runners", []) or []:
+                details = runner.get("details", {}) if isinstance(runner, dict) else {}
+                runner_record = details.get("runner", {}) if isinstance(details.get("runner"), dict) else {}
+                movement = runner.get("movement", {}) if isinstance(runner, dict) else {}
+                if _int_like(runner_record.get("id"), default=-1) == selected_batter_id and str(movement.get("end") or "").lower() == "score":
+                    runs += 1
+
+        first_inning_by_game[game_key] = hits + runs + rbis
+
+    return first_inning_by_game
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
-def load_batter_prop_game_log(batter_id, season_year=2026):
+def load_batter_prop_game_log(batter_id, season_year=2026, include_first_inning=False):
     if not batter_id:
         return pd.DataFrame()
 
@@ -904,6 +993,11 @@ def load_batter_prop_game_log(batter_id, season_year=2026):
         return pd.DataFrame()
 
     game_log = pd.DataFrame(rows).sort_values("game_date").reset_index(drop=True)
+    if include_first_inning:
+        first_inning_values = load_batter_first_inning_hrrrbi_by_game(batter_id, season_year)
+        game_log["first_inning_hrrrbi"] = game_log["game_pk"].apply(
+            lambda game_pk: int(first_inning_values.get(normalize_game_pk(game_pk), 0))
+        )
     game_log["label"] = game_log.apply(
         lambda row: f"{row['game_date'].strftime('%m/%d')} {row['opponent']}".strip(),
         axis=1,
@@ -939,14 +1033,14 @@ def load_batter_prop_game_log_seasons(batter_id):
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def load_batter_prop_all_game_logs(batter_id):
+def load_batter_prop_all_game_logs(batter_id, include_first_inning=False):
     seasons = load_batter_prop_game_log_seasons(batter_id)
     if not seasons:
         seasons = [date.today().year]
 
     frames = []
     for season in seasons:
-        season_df = load_batter_prop_game_log(batter_id, season_year=season)
+        season_df = load_batter_prop_game_log(batter_id, season_year=season, include_first_inning=include_first_inning)
         if not season_df.empty:
             frames.append(season_df)
 
@@ -1681,7 +1775,8 @@ def toggle_game_log_h2h_selection(h2h_key, range_key):
 
 
 def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop, selected_prop_line, current_opponent_context):
-    game_log_df = load_batter_prop_game_log(batter_id)
+    include_first_inning = prop_column == "first_inning_hrrrbi"
+    game_log_df = load_batter_prop_game_log(batter_id, include_first_inning=include_first_inning)
     range_key = f"batter_game_log_range_{batter_id}"
     h2h_key = f"batter_game_log_h2h_{batter_id}"
     tooltip_ready_key = f"batter_game_log_tooltip_ready_{batter_id}"
@@ -1706,7 +1801,7 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
             current_opponent_context,
         )
     elif h2h_enabled:
-        all_game_log_df = load_batter_prop_all_game_logs(batter_id) if has_opponent_context else pd.DataFrame()
+        all_game_log_df = load_batter_prop_all_game_logs(batter_id, include_first_inning=include_first_inning) if has_opponent_context else pd.DataFrame()
         h2h_tile_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
     else:
         h2h_tile_df = filter_game_logs_vs_opponent(game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
@@ -1743,7 +1838,7 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
                 current_opponent_context,
             )
         else:
-            all_game_log_df = load_batter_prop_all_game_logs(batter_id) if has_opponent_context else pd.DataFrame()
+            all_game_log_df = load_batter_prop_all_game_logs(batter_id, include_first_inning=include_first_inning) if has_opponent_context else pd.DataFrame()
             display_log_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
     else:
         display_log_df = game_log_sample_dataframe(game_log_df, game_log_range)
@@ -1856,7 +1951,8 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
 
     prop_column = GAME_LOG_PROP_COLUMNS[selected_prop]
     prop_slug = prop_column.replace("_", "-")
-    game_log_df = load_batter_prop_game_log(batter_id)
+    include_first_inning = prop_column == "first_inning_hrrrbi"
+    game_log_df = load_batter_prop_game_log(batter_id, include_first_inning=include_first_inning)
     if prop_column not in game_log_df.columns:
         st.info("Data unavailable for this prop.")
         return
