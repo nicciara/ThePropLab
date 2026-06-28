@@ -2503,43 +2503,9 @@ def load_batter_run_value_pitch_type_table(batter_id):
     ]
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
-def load_batter_overall_contact_stats(batter_id):
-    if not batter_id:
-        return {}
-
-    season_year = 2026
-    start_date = f"{season_year}-03-01"
-    end_date = date.today().isoformat()
-    url = "https://baseballsavant.mlb.com/statcast_search/csv"
-    params = savant_batter_detail_params(batter_id, start_date, end_date)
-
-    try:
-        response = requests.get(url, params=params, timeout=45)
-    except Exception as exc:
-        logger.warning("Batter lineup stat fetch failed for batter_id=%s: %s", batter_id, exc)
-        return {}
-
-    if response.status_code != 200:
-        logger.warning("Batter lineup stat request failed for batter_id=%s status=%s", batter_id, response.status_code)
-        return {}
-
-    try:
-        raw_df = pd.read_csv(io.StringIO(response.text), low_memory=False)
-    except Exception as exc:
-        logger.warning("Failed parsing batter lineup stat CSV for batter_id=%s: %s", batter_id, exc)
-        return {}
-
-    if raw_df.empty:
-        return {}
-
-    if "game_year" in raw_df.columns:
-        working_df = raw_df[pd.to_numeric(raw_df["game_year"], errors="coerce") == season_year].copy()
-    else:
-        working_df = raw_df.copy()
+def calculate_batter_overall_contact_stats(working_df):
     if working_df.empty:
         return {}
-
     if {"game_pk", "at_bat_number"}.issubset(working_df.columns):
         working_df["_pa_key"] = (
             working_df["game_pk"].astype(str)
@@ -2583,6 +2549,76 @@ def load_batter_overall_contact_stats(batter_id):
         "Whiff%": (float(whiffs) / float(swings) * 100.0) if swings else None,
         "K%": (float(strikeouts) / float(pa) * 100.0) if pa else None,
     }
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_batter_overall_contact_stats_for_lineup(batter_ids):
+    sanitized_ids = []
+    for batter_id in batter_ids or ():
+        try:
+            sanitized_ids.append(int(float(batter_id)))
+        except (TypeError, ValueError):
+            continue
+    sanitized_ids = tuple(sorted(set(sanitized_ids)))
+    if not sanitized_ids:
+        return {}
+
+    season_year = 2026
+    start_date = f"{season_year}-03-01"
+    end_date = date.today().isoformat()
+    url = "https://baseballsavant.mlb.com/statcast_search/csv"
+    params = savant_batter_detail_params("", start_date, end_date)
+    params["batters_lookup[]"] = [str(batter_id) for batter_id in sanitized_ids]
+
+    fetch_start = time.perf_counter()
+    try:
+        response = requests.get(url, params=params, timeout=45)
+    except Exception as exc:
+        logger.warning("Lineup stat batch fetch failed for batter_ids=%s: %s", sanitized_ids, exc)
+        return {}
+
+    if response.status_code != 200:
+        logger.warning("Lineup stat batch request failed for batter_ids=%s status=%s", sanitized_ids, response.status_code)
+        return {}
+
+    try:
+        raw_df = pd.read_csv(io.StringIO(response.text), low_memory=False)
+    except Exception as exc:
+        logger.warning("Failed parsing lineup stat batch CSV for batter_ids=%s: %s", sanitized_ids, exc)
+        return {}
+
+    if raw_df.empty or "batter" not in raw_df.columns:
+        return {}
+
+    if "game_year" in raw_df.columns:
+        working_df = raw_df[pd.to_numeric(raw_df["game_year"], errors="coerce") == season_year].copy()
+    else:
+        working_df = raw_df.copy()
+    if working_df.empty:
+        return {}
+
+    stats_by_batter = {}
+    batter_series = pd.to_numeric(working_df["batter"], errors="coerce")
+    working_df = working_df[batter_series.notna()].copy()
+    working_df["_batter_id"] = pd.to_numeric(working_df["batter"], errors="coerce").astype(int)
+    for batter_id, batter_df in working_df.groupby("_batter_id"):
+        stats_by_batter[str(int(batter_id))] = calculate_batter_overall_contact_stats(batter_df.copy())
+
+    logger.debug(
+        "Lineup stat batch loaded %s batters, %s rows in %.2fs",
+        len(stats_by_batter),
+        len(working_df),
+        time.perf_counter() - fetch_start,
+    )
+    return stats_by_batter
+
+
+def load_batter_overall_contact_stats(batter_id):
+    try:
+        batter_key = str(int(float(batter_id)))
+    except (TypeError, ValueError):
+        return {}
+    return load_batter_overall_contact_stats_for_lineup((batter_key,)).get(batter_key, {})
 
 
 requested_view = _query_param_value("view")
@@ -2996,6 +3032,13 @@ def render_lineup_table(lineup, current_batter_id="", current_batter_name="", li
 
     grid_columns = "44px minmax(170px,1fr) 54px 54px 58px 58px 62px 68px 58px"
     current_name_key = normalize_name(current_batter_name)
+    lineup_player_ids = []
+    for player in lineup:
+        try:
+            lineup_player_ids.append(int(float(player.get("player_id"))))
+        except (TypeError, ValueError):
+            continue
+    stats_by_player = load_batter_overall_contact_stats_for_lineup(tuple(lineup_player_ids))
     rows = []
     for player in lineup:
         player_name = player.get("name", "")
@@ -3026,7 +3069,11 @@ def render_lineup_table(lineup, current_batter_id="", current_batter_name="", li
                 f"{html.escape(str(player_name))}</a>"
             )
 
-        lineup_stats = load_batter_overall_contact_stats(player_id) if player_id else {}
+        try:
+            player_stats_key = str(int(float(player_id)))
+        except (TypeError, ValueError):
+            player_stats_key = ""
+        lineup_stats = stats_by_player.get(player_stats_key, {})
         rows.append(
             f"<div style='min-width:690px; display:grid; grid-template-columns:{grid_columns}; align-items:center; border-top:1px solid #e5e7eb; "
             f"{row_style}'>"
