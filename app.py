@@ -2503,6 +2503,88 @@ def load_batter_run_value_pitch_type_table(batter_id):
     ]
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_batter_overall_contact_stats(batter_id):
+    if not batter_id:
+        return {}
+
+    season_year = 2026
+    start_date = f"{season_year}-03-01"
+    end_date = date.today().isoformat()
+    url = "https://baseballsavant.mlb.com/statcast_search/csv"
+    params = savant_batter_detail_params(batter_id, start_date, end_date)
+
+    try:
+        response = requests.get(url, params=params, timeout=45)
+    except Exception as exc:
+        logger.warning("Batter lineup stat fetch failed for batter_id=%s: %s", batter_id, exc)
+        return {}
+
+    if response.status_code != 200:
+        logger.warning("Batter lineup stat request failed for batter_id=%s status=%s", batter_id, response.status_code)
+        return {}
+
+    try:
+        raw_df = pd.read_csv(io.StringIO(response.text), low_memory=False)
+    except Exception as exc:
+        logger.warning("Failed parsing batter lineup stat CSV for batter_id=%s: %s", batter_id, exc)
+        return {}
+
+    if raw_df.empty:
+        return {}
+
+    if "game_year" in raw_df.columns:
+        working_df = raw_df[pd.to_numeric(raw_df["game_year"], errors="coerce") == season_year].copy()
+    else:
+        working_df = raw_df.copy()
+    if working_df.empty:
+        return {}
+
+    if {"game_pk", "at_bat_number"}.issubset(working_df.columns):
+        working_df["_pa_key"] = (
+            working_df["game_pk"].astype(str)
+            + "_"
+            + pd.to_numeric(working_df["at_bat_number"], errors="coerce").fillna(-1).astype(int).astype(str)
+        )
+    else:
+        working_df["_pa_key"] = working_df.index.astype(str)
+
+    event_series = working_df["events"].astype(str).str.lower() if "events" in working_df.columns else pd.Series("", index=working_df.index)
+    desc_series = working_df["description"].astype(str).str.lower() if "description" in working_df.columns else pd.Series("", index=working_df.index)
+
+    ab_events = {
+        "single", "double", "triple", "home_run", "strikeout", "field_out", "grounded_into_double_play",
+        "force_out", "fielders_choice_out", "double_play", "triple_play", "field_error", "other_out",
+        "sac_fly_double_play", "fielders_choice", "strikeout_double_play", "sac_bunt_double_play",
+    }
+    hit_values = {"single": 1, "double": 2, "triple": 3, "home_run": 4}
+    whiff_descriptions = {"swinging_strike", "swinging_strike_blocked", "missed_bunt"}
+    swing_descriptions = {
+        "swinging_strike", "swinging_strike_blocked", "foul", "foul_tip", "hit_into_play", "hit_into_play_no_out",
+        "hit_into_play_score", "foul_bunt", "missed_bunt", "swinging_pitchout",
+    }
+
+    pa = int(working_df["_pa_key"].nunique())
+    ab = int(event_series.isin(ab_events).sum())
+    hits = int(event_series.isin(hit_values.keys()).sum())
+    total_bases = int(event_series.map(hit_values).fillna(0).sum())
+    swings = int(desc_series.isin(swing_descriptions).sum())
+    whiffs = int(desc_series.isin(whiff_descriptions).sum())
+    strikeouts = int((event_series == "strikeout").sum())
+
+    woba_values = pd.to_numeric(working_df.get("woba_value"), errors="coerce") if "woba_value" in working_df.columns else pd.Series(dtype=float)
+    woba_denom = pd.to_numeric(working_df.get("woba_denom"), errors="coerce") if "woba_denom" in working_df.columns else pd.Series(dtype=float)
+    denom_sum = float(woba_denom.fillna(0).sum()) if not woba_denom.empty else 0.0
+
+    return {
+        "BA": (hits / ab) if ab else None,
+        "SLG": (total_bases / ab) if ab else None,
+        "wOBA": (float(woba_values.fillna(0).sum()) / denom_sum) if denom_sum > 0 else None,
+        "Whiff%": (float(whiffs) / float(swings) * 100.0) if swings else None,
+        "K%": (float(strikeouts) / float(pa) * 100.0) if pa else None,
+    }
+
+
 requested_view = _query_param_value("view")
 requested_batter_id = _query_param_value("batter_id")
 if requested_view == "batter_detail" and requested_batter_id:
@@ -2896,6 +2978,23 @@ def render_lineup_table(lineup, current_batter_id="", current_batter_name="", li
     if not lineup:
         return "<div style='font-size:13px; color:#92400e; font-weight:700;'>Lineup not available.</div>"
 
+    def _format_lineup_decimal(value):
+        try:
+            if value is None or pd.isna(value):
+                return "—"
+            return f"{float(value):.3f}"
+        except (TypeError, ValueError):
+            return "—"
+
+    def _format_lineup_pct(value):
+        try:
+            if value is None or pd.isna(value):
+                return "—"
+            return f"{float(value):.1f}%"
+        except (TypeError, ValueError):
+            return "—"
+
+    grid_columns = "44px minmax(170px,1fr) 54px 54px 58px 58px 62px 68px 58px"
     current_name_key = normalize_name(current_batter_name)
     rows = []
     for player in lineup:
@@ -2927,25 +3026,38 @@ def render_lineup_table(lineup, current_batter_id="", current_batter_name="", li
                 f"{html.escape(str(player_name))}</a>"
             )
 
+        lineup_stats = load_batter_overall_contact_stats(player_id) if player_id else {}
         rows.append(
-            "<div style='display:grid; grid-template-columns:44px 1fr 64px 64px; align-items:center; border-top:1px solid #e5e7eb; "
+            f"<div style='min-width:690px; display:grid; grid-template-columns:{grid_columns}; align-items:center; border-top:1px solid #e5e7eb; "
             f"{row_style}'>"
             f"<div style='padding:6px 10px;'>{player.get('number', '')}</div>"
             f"<div style='padding:6px 10px;'>{batter_cell_html}</div>"
             f"<div style='padding:6px 10px;'>{html.escape(str(player.get('handedness', '')))}</div>"
             f"<div style='padding:6px 10px;'>{html.escape(str(player.get('position', '')))}</div>"
+            f"<div style='padding:6px 8px; text-align:right;'>{_format_lineup_decimal(lineup_stats.get('BA'))}</div>"
+            f"<div style='padding:6px 8px; text-align:right;'>{_format_lineup_decimal(lineup_stats.get('SLG'))}</div>"
+            f"<div style='padding:6px 8px; text-align:right;'>{_format_lineup_decimal(lineup_stats.get('wOBA'))}</div>"
+            f"<div style='padding:6px 8px; text-align:right;'>{_format_lineup_pct(lineup_stats.get('Whiff%'))}</div>"
+            f"<div style='padding:6px 8px; text-align:right;'>{_format_lineup_pct(lineup_stats.get('K%'))}</div>"
             "</div>"
         )
 
     return (
         f"{lineup_status_html(lineup)}"
-        "<div style='display:grid; grid-template-columns:44px 1fr 64px 64px; align-items:end; font-size:12px; color:#6b7280; font-weight:700;'>"
+        "<div style='overflow-x:auto; width:100%;'>"
+        f"<div style='min-width:690px; display:grid; grid-template-columns:{grid_columns}; align-items:end; font-size:12px; color:#6b7280; font-weight:700;'>"
         "<div style='padding:0 10px 6px 10px;'>#</div>"
         "<div style='padding:0 10px 6px 10px;'>Batter</div>"
         "<div style='padding:0 10px 6px 10px;'>Hand</div>"
         "<div style='padding:0 10px 6px 10px;'>Pos</div>"
+        "<div style='padding:0 8px 6px 8px; text-align:right;'>BA</div>"
+        "<div style='padding:0 8px 6px 8px; text-align:right;'>SLG</div>"
+        "<div style='padding:0 8px 6px 8px; text-align:right;'>wOBA</div>"
+        "<div style='padding:0 8px 6px 8px; text-align:right;'>Whiff%</div>"
+        "<div style='padding:0 8px 6px 8px; text-align:right;'>K%</div>"
         "</div>"
         f"{''.join(rows)}"
+        "</div>"
     )
 
 
