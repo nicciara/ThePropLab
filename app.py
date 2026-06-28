@@ -5,6 +5,7 @@ import io
 import html
 import altair as alt
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import requests
 from datetime import date, datetime, timedelta
@@ -344,6 +345,109 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+
+def install_scroll_position_persistence():
+    components.html(
+        """
+        <script>
+        (function () {
+            const parentWindow = window.parent;
+            if (!parentWindow || parentWindow.__dashScrollPersistenceInstalled) {
+                return;
+            }
+            parentWindow.__dashScrollPersistenceInstalled = true;
+
+            function storageKey() {
+                const location = parentWindow.location;
+                const params = new URLSearchParams(location.search);
+                const parts = [
+                    "dash-scroll",
+                    location.pathname || "/",
+                    params.get("view") || "home",
+                    params.get("batter_id") || "",
+                    params.get("pitcher_id") || "",
+                    params.get("game_pk") || "",
+                    params.get("date") || ""
+                ];
+                return parts.join(":");
+            }
+
+            function currentScrollY() {
+                const doc = parentWindow.document;
+                return parentWindow.scrollY ||
+                    doc.documentElement.scrollTop ||
+                    doc.body.scrollTop ||
+                    0;
+            }
+
+            let activeKey = storageKey();
+            let pending = false;
+            function saveScroll() {
+                try {
+                    activeKey = storageKey();
+                    parentWindow.sessionStorage.setItem(activeKey, String(Math.round(currentScrollY())));
+                } catch (err) {}
+            }
+
+            function scheduleSave() {
+                if (pending) {
+                    return;
+                }
+                pending = true;
+                parentWindow.setTimeout(function () {
+                    pending = false;
+                    saveScroll();
+                }, 150);
+            }
+
+            function restoreScroll() {
+                let rawValue = null;
+                try {
+                    rawValue = parentWindow.sessionStorage.getItem(storageKey());
+                } catch (err) {}
+                const targetY = parseInt(rawValue || "0", 10);
+                if (!Number.isFinite(targetY) || targetY <= 0) {
+                    return;
+                }
+                [50, 200, 500, 1000, 1600].forEach(function (delay) {
+                    parentWindow.setTimeout(function () {
+                        parentWindow.scrollTo(0, targetY);
+                    }, delay);
+                });
+            }
+
+            parentWindow.addEventListener("scroll", scheduleSave, { passive: true });
+            parentWindow.addEventListener("beforeunload", saveScroll);
+            parentWindow.addEventListener("pagehide", saveScroll);
+
+            const originalPushState = parentWindow.history.pushState;
+            const originalReplaceState = parentWindow.history.replaceState;
+            parentWindow.history.pushState = function () {
+                saveScroll();
+                const result = originalPushState.apply(this, arguments);
+                activeKey = storageKey();
+                restoreScroll();
+                return result;
+            };
+            parentWindow.history.replaceState = function () {
+                saveScroll();
+                const result = originalReplaceState.apply(this, arguments);
+                activeKey = storageKey();
+                restoreScroll();
+                return result;
+            };
+            parentWindow.addEventListener("popstate", restoreScroll);
+            restoreScroll();
+        })();
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
+
+
+install_scroll_position_persistence()
 
 
 def _projection_value(record, *keys, default=""):
