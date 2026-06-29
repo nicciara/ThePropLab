@@ -2854,6 +2854,7 @@ def load_active_roster(team_id):
     return data.get("roster", [])
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
 def build_roster_name_id_map(team_id):
     roster = load_active_roster(team_id)
     out = {}
@@ -4067,7 +4068,6 @@ def render_homepage_props_tab():
         return
 
     selected_prop_key = _prop_match_key(selected_prop)
-    slate_batters = homepage_slate_batter_map(games)
 
     def _team_lookup_keys(value):
         normalized = normalize_name(value)
@@ -4089,7 +4089,7 @@ def render_homepage_props_tab():
         }
         return {normalized, *aliases.get(normalized, set())}
 
-    def _homepage_team_id_lookup(games_df):
+    def _homepage_team_context_lookup(games_df):
         team_lookup = {}
         if games_df is None or (isinstance(games_df, pd.DataFrame) and games_df.empty):
             return team_lookup
@@ -4098,12 +4098,50 @@ def render_homepage_props_tab():
                 team_id = game.get(f"{side}_team_id", "")
                 if not team_id:
                     continue
+                opponent_side = "home" if side == "away" else "away"
+                context = {
+                    "team": game.get(f"{side}_team", ""),
+                    "team_id": team_id,
+                    "opponent": game.get(f"{opponent_side}_team", ""),
+                    "opponent_id": game.get(f"{opponent_side}_team_id", ""),
+                    "game_pk": game.get("game_pk", ""),
+                    "game_time": game.get("game_time_et", ""),
+                    "side": side,
+                    "game": game,
+                }
                 for value in (game.get(f"{side}_team", ""), game.get(f"{side}_abbrev", "")):
                     for key in _team_lookup_keys(value):
-                        team_lookup[key] = team_id
+                        team_lookup[key] = context
         return team_lookup
 
-    team_id_lookup = _homepage_team_id_lookup(games)
+    team_context_lookup = _homepage_team_context_lookup(games)
+    player_id_cache = {}
+    lineup_fallback_cache = {}
+
+    def _lineup_fallback_info(player_name, team_context):
+        game_pk = team_context.get("game_pk", "") if team_context else ""
+        if not player_name or not game_pk:
+            return {}
+        if game_pk not in lineup_fallback_cache:
+            lineup_fallback_cache[game_pk] = get_game_lineups(game_pk, team_context.get("game") if team_context else None)
+        lineup_context = lineup_fallback_cache.get(game_pk, {}) or {}
+        player_key = normalize_name(player_name)
+        for side in ("away", "home"):
+            for player in lineup_context.get(side, []) or []:
+                if normalize_name(player.get("name", "")) == player_key:
+                    opponent_side = "home" if side == "away" else "away"
+                    return {
+                        "player_id": player.get("player_id", ""),
+                        "hand": player.get("handedness", ""),
+                        "team": lineup_context.get(f"{side}_team", team_context.get("team", "")),
+                        "team_id": lineup_context.get(f"{side}_team_id", team_context.get("team_id", "")),
+                        "opponent": lineup_context.get(f"{opponent_side}_team", team_context.get("opponent", "")),
+                        "opponent_id": lineup_context.get(f"{opponent_side}_team_id", team_context.get("opponent_id", "")),
+                        "game_pk": game_pk,
+                        "game_time": team_context.get("game_time", ""),
+                    }
+        return {}
+
     rows = []
     seen = set()
     for record in st.session_state.get("prizepicks_projections", []):
@@ -4123,23 +4161,39 @@ def render_homepage_props_tab():
             continue
         seen.add(unique_key)
 
-        slate_info = slate_batters.get(normalize_name(player_name), {})
         projection_team = _projection_value(record, "team", default="")
-        team = slate_info.get("team") or projection_team
-        opponent = slate_info.get("opponent") or _projection_value(record, "description", default="")
-        hand = slate_info.get("hand", "")
-        team_id = ""
+        team_context = {}
         for key in _team_lookup_keys(projection_team):
-            team_id = team_id_lookup.get(key, "")
-            if team_id:
+            team_context = team_context_lookup.get(key, {})
+            if team_context:
                 break
-        if not team_id:
-            team_id = slate_info.get("team_id", "")
+        team = team_context.get("team") or projection_team
+        team_id = team_context.get("team_id", "")
+        opponent = team_context.get("opponent") or _projection_value(record, "description", default="")
+        opponent_id = team_context.get("opponent_id", "")
+        game_pk = team_context.get("game_pk", "")
+        game_time = team_context.get("game_time", "")
+        hand = ""
+
         player_id = _projection_player_id(record)
         if not player_id:
-            player_id = resolve_player_id_from_team_roster(player_name, team_id)
+            player_cache_key = (normalize_name(player_name), str(team_id or ""))
+            if player_cache_key not in player_id_cache:
+                player_id_cache[player_cache_key] = resolve_player_id_from_team_roster(player_name, team_id)
+            player_id = player_id_cache[player_cache_key]
+
+        lineup_info = {}
         if not player_id:
-            player_id = slate_info.get("player_id", "")
+            lineup_info = _lineup_fallback_info(player_name, team_context)
+            player_id = lineup_info.get("player_id", "")
+            hand = lineup_info.get("hand", "")
+            team = lineup_info.get("team") or team
+            team_id = lineup_info.get("team_id") or team_id
+            opponent = lineup_info.get("opponent") or opponent
+            opponent_id = lineup_info.get("opponent_id") or opponent_id
+            game_pk = lineup_info.get("game_pk") or game_pk
+            game_time = lineup_info.get("game_time") or game_time
+
         image_url = mlb_player_headshot_url(player_id) or _projection_value(record, "image_url", "imageUrl", default="")
         image_tag_rendered = bool(image_url)
         logger.debug(
@@ -4149,7 +4203,6 @@ def render_homepage_props_tab():
             image_url,
             image_tag_rendered,
         )
-        game_time = slate_info.get("game_time", "")
         batter_href = ""
         if player_id:
             batter_href = _build_batter_detail_href(
@@ -4157,10 +4210,10 @@ def render_homepage_props_tab():
                 batter_name=player_name,
                 batter_hand=hand,
                 team=team,
-                team_id=team_id or slate_info.get("team_id", ""),
+                team_id=team_id,
                 opponent=opponent,
-                opponent_id=slate_info.get("opponent_id", ""),
-                return_game_pk=slate_info.get("game_pk", ""),
+                opponent_id=opponent_id,
+                return_game_pk=game_pk,
                 prop=selected_prop,
                 line=line_value,
             )
@@ -4173,7 +4226,7 @@ def render_homepage_props_tab():
             "href": batter_href,
             "team": team,
             "opponent": opponent,
-            "opponent_id": slate_info.get("opponent_id", ""),
+            "opponent_id": opponent_id,
             "hand": hand,
             "player_id": player_id,
             "prop": selected_prop,
