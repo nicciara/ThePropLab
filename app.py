@@ -444,6 +444,16 @@ def _projection_player_id(record):
     return str(value or "")
 
 
+def _projection_player_mlbam_id(player_attributes):
+    if not isinstance(player_attributes, dict):
+        return ""
+    for key in ("mlbam_id", "mlbamId", "mlb_id", "mlbId", "batter_id", "batterId"):
+        value = player_attributes.get(key)
+        if value not in {None, ""}:
+            return str(value)
+    return ""
+
+
 def _projection_player_name(record):
     return str(_projection_value(record, "player", "player_name", "display_name", "displayName", "name", "full_name", "fullName", default="") or "")
 
@@ -677,6 +687,7 @@ def load_prizepicks_mlb_projections(debug_version=2):
                 "rank": attributes.get("rank"),
                 "player": player_name,
                 "player_name": player_name,
+                "player_id": _projection_player_mlbam_id(player_attributes),
                 "league": player_attributes.get("league"),
                 "team": player_attributes.get("team"),
             }
@@ -2855,6 +2866,15 @@ def build_roster_name_id_map(team_id):
     return out
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def resolve_player_id_from_team_roster(player_name, team_id):
+    name_key = normalize_name(player_name)
+    if not name_key or not team_id:
+        return ""
+    roster_map = build_roster_name_id_map(team_id)
+    return str(roster_map.get(name_key) or "")
+
+
 @st.cache_data(ttl=1800)
 def load_fangraphs_projected_lineups():
     url = "https://www.fangraphs.com/api/roster-resource/lineup-tracker/data?season=2026"
@@ -4048,6 +4068,42 @@ def render_homepage_props_tab():
 
     selected_prop_key = _prop_match_key(selected_prop)
     slate_batters = homepage_slate_batter_map(games)
+
+    def _team_lookup_keys(value):
+        normalized = normalize_name(value)
+        if not normalized:
+            return set()
+        aliases = {
+            "ari": {"az"},
+            "az": {"ari"},
+            "chw": {"cws"},
+            "cws": {"chw"},
+            "kcr": {"kc"},
+            "kc": {"kcr"},
+            "sfg": {"sf"},
+            "sf": {"sfg"},
+            "tbr": {"tb"},
+            "tb": {"tbr"},
+            "wsh": {"was"},
+            "was": {"wsh"},
+        }
+        return {normalized, *aliases.get(normalized, set())}
+
+    def _homepage_team_id_lookup(games_df):
+        team_lookup = {}
+        if games_df is None or (isinstance(games_df, pd.DataFrame) and games_df.empty):
+            return team_lookup
+        for _, game in games_df.iterrows():
+            for side in ("away", "home"):
+                team_id = game.get(f"{side}_team_id", "")
+                if not team_id:
+                    continue
+                for value in (game.get(f"{side}_team", ""), game.get(f"{side}_abbrev", "")):
+                    for key in _team_lookup_keys(value):
+                        team_lookup[key] = team_id
+        return team_lookup
+
+    team_id_lookup = _homepage_team_id_lookup(games)
     rows = []
     seen = set()
     for record in st.session_state.get("prizepicks_projections", []):
@@ -4068,11 +4124,31 @@ def render_homepage_props_tab():
         seen.add(unique_key)
 
         slate_info = slate_batters.get(normalize_name(player_name), {})
-        team = slate_info.get("team") or _projection_value(record, "team", default="")
+        projection_team = _projection_value(record, "team", default="")
+        team = slate_info.get("team") or projection_team
         opponent = slate_info.get("opponent") or _projection_value(record, "description", default="")
         hand = slate_info.get("hand", "")
-        player_id = slate_info.get("player_id", "")
+        team_id = ""
+        for key in _team_lookup_keys(projection_team):
+            team_id = team_id_lookup.get(key, "")
+            if team_id:
+                break
+        if not team_id:
+            team_id = slate_info.get("team_id", "")
+        player_id = _projection_player_id(record)
+        if not player_id:
+            player_id = resolve_player_id_from_team_roster(player_name, team_id)
+        if not player_id:
+            player_id = slate_info.get("player_id", "")
         image_url = mlb_player_headshot_url(player_id) or _projection_value(record, "image_url", "imageUrl", default="")
+        image_tag_rendered = bool(image_url)
+        logger.debug(
+            "Props headshot debug: player=%s resolved_player_id=%s image_url=%s image_tag_rendered=%s",
+            player_name,
+            player_id,
+            image_url,
+            image_tag_rendered,
+        )
         game_time = slate_info.get("game_time", "")
         batter_href = ""
         if player_id:
@@ -4081,7 +4157,7 @@ def render_homepage_props_tab():
                 batter_name=player_name,
                 batter_hand=hand,
                 team=team,
-                team_id=slate_info.get("team_id", ""),
+                team_id=team_id or slate_info.get("team_id", ""),
                 opponent=opponent,
                 opponent_id=slate_info.get("opponent_id", ""),
                 return_game_pk=slate_info.get("game_pk", ""),
