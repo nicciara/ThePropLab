@@ -79,271 +79,272 @@ PROJECTION_STATE_KEYS = (
     "prop_projections",
 )
 
-st.set_page_config(page_title="🧪 The Prop Lab", layout="wide")
+def _render_page_header_and_styles():
+    st.set_page_config(page_title="🧪 The Prop Lab", layout="wide")
 
-# Header: single-line title with sport selector (MLB, NBA, NFL, NHL, WNBA)
-# Single header row with two columns: title (left) and dropdown (right)
-header_left, header_right = st.columns([9, 1])
-with header_left:
+    # Header: single-line title with sport selector (MLB, NBA, NFL, NHL, WNBA)
+    # Single header row with two columns: title (left) and dropdown (right)
+    header_left, header_right = st.columns([9, 1])
+    with header_left:
+        st.markdown(
+            "<div style='font-size:20px; font-weight:700; text-align:left; margin:0; padding-left:0;'>🧪 The Prop Lab |</div>",
+            unsafe_allow_html=True,
+        )
+    with header_right:
+        sport = st.selectbox("", ["MLB", "NBA", "NFL", "NHL", "WNBA"], index=0, key="selected_sport")
+
+    # If a non-MLB sport is selected, show a simple coming-soon placeholder and stop further MLB-specific rendering.
+    if sport != "MLB":
+        st.markdown(
+            f"<div style='display:flex; align-items:center; justify-content:center; height:200px;'><div style='text-align:center; font-size:20px; color:#374151; font-weight:600;'>{sport} coming soon — check back later.</div></div>",
+            unsafe_allow_html=True,
+        )
+        st.stop()
+
     st.markdown(
-        "<div style='font-size:20px; font-weight:700; text-align:left; margin:0; padding-left:0;'>🧪 The Prop Lab |</div>",
-        unsafe_allow_html=True,
-    )
-with header_right:
-    sport = st.selectbox("", ["MLB", "NBA", "NFL", "NHL", "WNBA"], index=0, key="selected_sport")
-
-# If a non-MLB sport is selected, show a simple coming-soon placeholder and stop further MLB-specific rendering.
-if sport != "MLB":
-    st.markdown(
-        f"<div style='display:flex; align-items:center; justify-content:center; height:200px;'><div style='text-align:center; font-size:20px; color:#374151; font-weight:600;'>{sport} coming soon — check back later.</div></div>",
-        unsafe_allow_html=True,
-    )
-    st.stop()
-
-st.markdown(
-    """
-    <style>
-    :root{
-        --dash-page-bg:linear-gradient(180deg,#f7faff 0%, #f3f7ff 100%);
-        --dash-card-bg:#ffffff;
-        --dash-text:#0b1220;
-        --dash-muted:#475569;
-        --dash-control-bg:#ffffff;
-        --dash-control-text:#111827;
-        --dash-control-border:#cbd5e1;
-        --dash-surface:#edf4ff;
-        --dash-surface-2:#e3eeff;
-        --dash-border:#5f7598;
-        --dash-shadow:0 10px 24px rgba(15,23,42,0.18);
-        --dash-title:#0f172a;
-        --dash-label:#1f2d42;
-        --dash-value:#0b1220;
-        --dash-accent:#0057d8;
-    }
-    @media (prefers-color-scheme: dark){
+        """
+        <style>
         :root{
-            --dash-page-bg:linear-gradient(180deg,#07111f 0%, #0b1526 100%);
-            --dash-card-bg:#0f1b2d;
-            --dash-text:#e5edf8;
-            --dash-muted:#b7c4d8;
-            --dash-border:#4f6688;
-            --dash-control-bg:#111c2e;
-            --dash-control-text:#f8fafc;
-            --dash-control-border:#5f7598;
-            --dash-surface:#102033;
-            --dash-surface-2:#16283f;
-            --dash-shadow:0 10px 24px rgba(0,0,0,0.34);
-            --dash-title:#f8fafc;
-            --dash-label:#cbd5e1;
-            --dash-value:#f1f5f9;
-            --dash-accent:#7dd3fc;
+            --dash-page-bg:linear-gradient(180deg,#f7faff 0%, #f3f7ff 100%);
+            --dash-card-bg:#ffffff;
+            --dash-text:#0b1220;
+            --dash-muted:#475569;
+            --dash-control-bg:#ffffff;
+            --dash-control-text:#111827;
+            --dash-control-border:#cbd5e1;
+            --dash-surface:#edf4ff;
+            --dash-surface-2:#e3eeff;
+            --dash-border:#5f7598;
+            --dash-shadow:0 10px 24px rgba(15,23,42,0.18);
+            --dash-title:#0f172a;
+            --dash-label:#1f2d42;
+            --dash-value:#0b1220;
+            --dash-accent:#0057d8;
         }
-    }
-    section[data-testid="stMain"] .block-container{padding-bottom:1rem}
-    section[data-testid="stMain"]{background:var(--dash-page-bg);color:var(--dash-text)}
-    section[data-testid="stMain"] [data-testid="stVerticalBlock"]{gap:0.5rem}
-    section[data-testid="stMain"] [data-testid="stHorizontalBlock"]{gap:0.75rem}
-    section[data-testid="stMain"] h1,section[data-testid="stMain"] h2,section[data-testid="stMain"] h3{margin-top:0.2rem;margin-bottom:0.45rem}
-    section[data-testid="stMain"] p{margin-top:0.2rem;margin-bottom:0.3rem}
-    section[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]{
-        border:2px solid var(--dash-border)!important;
-        border-radius:16px!important;
-        background:var(--dash-card-bg)!important;
-        box-shadow:var(--dash-shadow)!important;
-        color:var(--dash-text)!important;
-    }
-    .game-card{padding:10px 14px 20px 14px;box-sizing:border-box}
-    .game-card .lineup-area{padding:8px 6px}
-    /* Style Streamlit buttons used as inline pitcher links to look like normal hyperlinks (scoped to game cards) */
-    .game-card .stButton>button{background:none;border:none;padding:0;color:var(--dash-value);text-decoration:none;cursor:pointer;font-size:inherit;font-weight:650}
-    .game-card .stButton>button:hover{color:var(--dash-accent);text-decoration:underline}
-    .nav-name-link{color:var(--dash-value)!important;text-decoration:none!important;font-weight:650;cursor:pointer}
-    .nav-name-link:hover{color:var(--dash-accent)!important;text-decoration:underline!important}
-    div[data-testid="stSegmentedControl"] div[role="radiogroup"]{overflow-x:auto;flex-wrap:nowrap}
-    div[data-testid="stSegmentedControl"] label{white-space:pre-line;line-height:1.2}
-    .st-key-prop_tab_row{
-        max-width:100%;
-        overflow-x:auto;
-        overflow-y:hidden;
-    }
-    .st-key-prop_tab_row [data-testid="stHorizontalBlock"]{
-        width:max-content;
-        min-width:100%;
-        max-width:none;
-        overflow-x:auto;
-        overflow-y:hidden;
-        padding:2px 6px 8px 6px;
-        margin:0 0 4px 0;
-        scroll-behavior:smooth;
-        -webkit-overflow-scrolling:touch;
-        scrollbar-width:thin;
-        scrollbar-color:var(--dash-control-border) transparent;
-        flex-wrap:nowrap!important;
-        gap:8px;
-    }
-    .st-key-prop_tab_row [data-testid="stHorizontalBlock"]>div{
-        flex:0 0 auto!important;
-        width:auto!important;
-        min-width:max-content!important;
-    }
-    .st-key-prop_tab_row [data-testid="stHorizontalBlock"]::-webkit-scrollbar{
-        height:6px;
-    }
-    .st-key-prop_tab_row [data-testid="stHorizontalBlock"]::-webkit-scrollbar-track{
-        background:transparent;
-    }
-    .st-key-prop_tab_row [data-testid="stHorizontalBlock"]::-webkit-scrollbar-thumb{
-        background:var(--dash-control-border);
-        border-radius:999px;
-    }
-    .st-key-prop_tab_row .stButton{
-        flex:0 0 auto;
-    }
-    .st-key-prop_tab_row .stButton>button{
-        min-height:34px;
-        padding:7px 14px;
-        border:1px solid var(--dash-control-border);
-        border-radius:999px;
-        background:var(--dash-control-bg);
-        color:var(--dash-control-text)!important;
-        font-size:14px;
-        font-weight:700;
-        line-height:1;
-        text-decoration:none!important;
-        box-shadow:0 1px 2px rgba(15,23,42,0.05);
-        cursor:pointer;
-        white-space:nowrap;
-    }
-    .st-key-prop_tab_row .stButton>button p{
-        margin:0;
-        white-space:nowrap;
-    }
-    .st-key-prop_tab_row .stButton>button:hover{
-        border-color:var(--dash-accent);
-        color:var(--dash-control-text)!important;
-    }
-    .st-key-prop_tab_row .stButton>button[kind="primary"]{
-        border-color:var(--dash-accent);
-        background:var(--dash-surface-2);
-        color:var(--dash-title)!important;
-        box-shadow:0 0 0 2px rgba(0,87,216,0.12);
-    }
-    .st-key-game_log_range_tiles [data-testid="stHorizontalBlock"]{overflow-x:auto;flex-wrap:nowrap;gap:0.65rem}
-    .st-key-game_log_range_tiles .stButton>button{
-        min-width:132px;
-        min-height:88px;
-        padding:10px 14px;
-        border-radius:13px;
-        border:1px solid #273449;
-        background:#07111f;
-        color:#e5edf8;
-        box-shadow:0 8px 18px rgba(15,23,42,0.22);
-        white-space:pre-line;
-        line-height:1.22;
-        font-size:15px;
-        font-weight:800;
-    }
-    .st-key-game_log_range_tiles .stButton>button p{margin:0;white-space:pre-line;line-height:1.22}
-    .st-key-game_log_range_tiles .stButton>button:hover{
-        border-color:#7dd3fc;
-        background:#0b1b31;
-        color:#ffffff;
-    }
-    .st-key-game_log_range_tiles .stButton>button[kind="primary"]{
-        border:2px solid #38bdf8;
-        background:#102a47;
-        box-shadow:0 0 0 2px rgba(56,189,248,0.22),0 10px 20px rgba(15,23,42,0.28);
-        color:#ffffff;
-    }
-    .line-badge{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:6px 12px;border:1px solid var(--dash-control-border);border-radius:999px;min-width:120px;background:var(--dash-card-bg);box-shadow:0 1px 2px rgba(15,23,42,0.04);white-space:nowrap}
-    .line-value{font-weight:700;font-size:22px;color:var(--dash-title);line-height:1}
-    .book-badge,.boost-badge{display:inline-flex;align-items:center;justify-content:center;line-height:1;white-space:nowrap}
-    .badge-img{display:block;object-fit:contain;flex:0 0 auto}
-    .book-badge-img{height:23px;width:auto;max-width:34px;transform:translateY(-1.5px)}
-    .modifier-badge-img{height:26px;width:auto;max-width:30px}
-    .line-badge-wrap{display:flex;align-items:center;justify-content:center}
-    .alt-line-row{display:flex;align-items:center;gap:8px;margin:4px 0}
-    .prop-control-spacer{height:4px}
-    .dash-card{
-        border:2px solid var(--dash-border);
-        border-radius:16px;
-        background:var(--dash-card-bg);
-        box-shadow:var(--dash-shadow);
-        padding:14px 16px;
-        position:relative;
-        overflow:hidden;
-    }
-    .dash-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--dash-accent)}
-    .dash-card-title{font-weight:900;font-size:21px;line-height:1.15;color:var(--dash-title);margin-bottom:12px}
-    .dash-grid{display:grid;grid-template-columns:1fr auto;row-gap:8px;column-gap:14px;font-size:13px}
-    .dash-grid-compact{display:grid;grid-template-columns:126px auto;column-gap:8px;row-gap:7px;font-size:12px;line-height:1.25}
-    .dash-label{font-weight:800;color:var(--dash-label);letter-spacing:0.015em;text-transform:uppercase;font-size:11px}
-    .dash-value{font-weight:800;color:var(--dash-value);font-size:14px}
-    .dash-accent{font-weight:800;color:var(--dash-accent)}
-    .section-title-strong{font-weight:900;font-size:24px;color:var(--dash-title);margin-bottom:10px;line-height:1.15;letter-spacing:0.01em}
-    section[data-testid="stMain"] [data-testid="stWidgetLabel"] label,
-    section[data-testid="stMain"] [data-testid="stWidgetLabel"] p{
-        color:var(--dash-text)!important;
-    }
-    section[data-testid="stMain"] [data-baseweb="select"]{
-        filter:none!important;
-        zoom:1!important;
-    }
-    section[data-testid="stMain"] [data-baseweb="select"] > div{
-        background-color:var(--dash-control-bg)!important;
-        border-color:var(--dash-control-border)!important;
-        color:var(--dash-control-text)!important;
-    }
-    section[data-testid="stMain"] [data-baseweb="select"] div,
-    section[data-testid="stMain"] [data-baseweb="select"] span{
-        filter:none!important;
-        font-weight:400!important;
-        color:var(--dash-control-text)!important;
-        line-height:1.35!important;
-        text-rendering:auto;
-        -webkit-font-smoothing:auto;
-    }
-    section[data-testid="stMain"] [data-baseweb="select"] input{
-        color:var(--dash-control-text)!important;
-    }
-    section[data-testid="stMain"] [data-baseweb="select"] input::placeholder{
-        color:var(--dash-muted)!important;
-        opacity:1!important;
-    }
-    section[data-testid="stMain"] [data-baseweb="select"] svg{
-        filter:none!important;
-        color:var(--dash-control-text)!important;
-        fill:var(--dash-control-text)!important;
-    }
-    div[data-baseweb="popover"] [role="listbox"],
-    div[data-baseweb="popover"] ul,
-    div[data-baseweb="menu"]{
-        background-color:var(--dash-control-bg)!important;
-        color:var(--dash-control-text)!important;
-        border-color:var(--dash-control-border)!important;
-    }
-    div[data-baseweb="popover"] [role="option"],
-    div[data-baseweb="popover"] li,
-    div[data-baseweb="menu"] li{
-        background-color:var(--dash-control-bg)!important;
-        color:var(--dash-control-text)!important;
-    }
-    div[data-baseweb="popover"] [role="option"] *,
-    div[data-baseweb="popover"] li *,
-    div[data-baseweb="menu"] li *{
-        color:var(--dash-control-text)!important;
-    }
-    div[data-baseweb="popover"] [role="option"]:hover,
-    div[data-baseweb="popover"] li:hover,
-    div[data-baseweb="menu"] li:hover,
-    div[data-baseweb="popover"] [aria-selected="true"]{
-        background-color:var(--dash-surface-2)!important;
-        color:var(--dash-control-text)!important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+        @media (prefers-color-scheme: dark){
+            :root{
+                --dash-page-bg:linear-gradient(180deg,#07111f 0%, #0b1526 100%);
+                --dash-card-bg:#0f1b2d;
+                --dash-text:#e5edf8;
+                --dash-muted:#b7c4d8;
+                --dash-border:#4f6688;
+                --dash-control-bg:#111c2e;
+                --dash-control-text:#f8fafc;
+                --dash-control-border:#5f7598;
+                --dash-surface:#102033;
+                --dash-surface-2:#16283f;
+                --dash-shadow:0 10px 24px rgba(0,0,0,0.34);
+                --dash-title:#f8fafc;
+                --dash-label:#cbd5e1;
+                --dash-value:#f1f5f9;
+                --dash-accent:#7dd3fc;
+            }
+        }
+        section[data-testid="stMain"] .block-container{padding-bottom:1rem}
+        section[data-testid="stMain"]{background:var(--dash-page-bg);color:var(--dash-text)}
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"]{gap:0.5rem}
+        section[data-testid="stMain"] [data-testid="stHorizontalBlock"]{gap:0.75rem}
+        section[data-testid="stMain"] h1,section[data-testid="stMain"] h2,section[data-testid="stMain"] h3{margin-top:0.2rem;margin-bottom:0.45rem}
+        section[data-testid="stMain"] p{margin-top:0.2rem;margin-bottom:0.3rem}
+        section[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]{
+            border:2px solid var(--dash-border)!important;
+            border-radius:16px!important;
+            background:var(--dash-card-bg)!important;
+            box-shadow:var(--dash-shadow)!important;
+            color:var(--dash-text)!important;
+        }
+        .game-card{padding:10px 14px 20px 14px;box-sizing:border-box}
+        .game-card .lineup-area{padding:8px 6px}
+        /* Style Streamlit buttons used as inline pitcher links to look like normal hyperlinks (scoped to game cards) */
+        .game-card .stButton>button{background:none;border:none;padding:0;color:var(--dash-value);text-decoration:none;cursor:pointer;font-size:inherit;font-weight:650}
+        .game-card .stButton>button:hover{color:var(--dash-accent);text-decoration:underline}
+        .nav-name-link{color:var(--dash-value)!important;text-decoration:none!important;font-weight:650;cursor:pointer}
+        .nav-name-link:hover{color:var(--dash-accent)!important;text-decoration:underline!important}
+        div[data-testid="stSegmentedControl"] div[role="radiogroup"]{overflow-x:auto;flex-wrap:nowrap}
+        div[data-testid="stSegmentedControl"] label{white-space:pre-line;line-height:1.2}
+        .st-key-prop_tab_row{
+            max-width:100%;
+            overflow-x:auto;
+            overflow-y:hidden;
+        }
+        .st-key-prop_tab_row [data-testid="stHorizontalBlock"]{
+            width:max-content;
+            min-width:100%;
+            max-width:none;
+            overflow-x:auto;
+            overflow-y:hidden;
+            padding:2px 6px 8px 6px;
+            margin:0 0 4px 0;
+            scroll-behavior:smooth;
+            -webkit-overflow-scrolling:touch;
+            scrollbar-width:thin;
+            scrollbar-color:var(--dash-control-border) transparent;
+            flex-wrap:nowrap!important;
+            gap:8px;
+        }
+        .st-key-prop_tab_row [data-testid="stHorizontalBlock"]>div{
+            flex:0 0 auto!important;
+            width:auto!important;
+            min-width:max-content!important;
+        }
+        .st-key-prop_tab_row [data-testid="stHorizontalBlock"]::-webkit-scrollbar{
+            height:6px;
+        }
+        .st-key-prop_tab_row [data-testid="stHorizontalBlock"]::-webkit-scrollbar-track{
+            background:transparent;
+        }
+        .st-key-prop_tab_row [data-testid="stHorizontalBlock"]::-webkit-scrollbar-thumb{
+            background:var(--dash-control-border);
+            border-radius:999px;
+        }
+        .st-key-prop_tab_row .stButton{
+            flex:0 0 auto;
+        }
+        .st-key-prop_tab_row .stButton>button{
+            min-height:34px;
+            padding:7px 14px;
+            border:1px solid var(--dash-control-border);
+            border-radius:999px;
+            background:var(--dash-control-bg);
+            color:var(--dash-control-text)!important;
+            font-size:14px;
+            font-weight:700;
+            line-height:1;
+            text-decoration:none!important;
+            box-shadow:0 1px 2px rgba(15,23,42,0.05);
+            cursor:pointer;
+            white-space:nowrap;
+        }
+        .st-key-prop_tab_row .stButton>button p{
+            margin:0;
+            white-space:nowrap;
+        }
+        .st-key-prop_tab_row .stButton>button:hover{
+            border-color:var(--dash-accent);
+            color:var(--dash-control-text)!important;
+        }
+        .st-key-prop_tab_row .stButton>button[kind="primary"]{
+            border-color:var(--dash-accent);
+            background:var(--dash-surface-2);
+            color:var(--dash-title)!important;
+            box-shadow:0 0 0 2px rgba(0,87,216,0.12);
+        }
+        .st-key-game_log_range_tiles [data-testid="stHorizontalBlock"]{overflow-x:auto;flex-wrap:nowrap;gap:0.65rem}
+        .st-key-game_log_range_tiles .stButton>button{
+            min-width:132px;
+            min-height:88px;
+            padding:10px 14px;
+            border-radius:13px;
+            border:1px solid #273449;
+            background:#07111f;
+            color:#e5edf8;
+            box-shadow:0 8px 18px rgba(15,23,42,0.22);
+            white-space:pre-line;
+            line-height:1.22;
+            font-size:15px;
+            font-weight:800;
+        }
+        .st-key-game_log_range_tiles .stButton>button p{margin:0;white-space:pre-line;line-height:1.22}
+        .st-key-game_log_range_tiles .stButton>button:hover{
+            border-color:#7dd3fc;
+            background:#0b1b31;
+            color:#ffffff;
+        }
+        .st-key-game_log_range_tiles .stButton>button[kind="primary"]{
+            border:2px solid #38bdf8;
+            background:#102a47;
+            box-shadow:0 0 0 2px rgba(56,189,248,0.22),0 10px 20px rgba(15,23,42,0.28);
+            color:#ffffff;
+        }
+        .line-badge{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:6px 12px;border:1px solid var(--dash-control-border);border-radius:999px;min-width:120px;background:var(--dash-card-bg);box-shadow:0 1px 2px rgba(15,23,42,0.04);white-space:nowrap}
+        .line-value{font-weight:700;font-size:22px;color:var(--dash-title);line-height:1}
+        .book-badge,.boost-badge{display:inline-flex;align-items:center;justify-content:center;line-height:1;white-space:nowrap}
+        .badge-img{display:block;object-fit:contain;flex:0 0 auto}
+        .book-badge-img{height:23px;width:auto;max-width:34px;transform:translateY(-1.5px)}
+        .modifier-badge-img{height:26px;width:auto;max-width:30px}
+        .line-badge-wrap{display:flex;align-items:center;justify-content:center}
+        .alt-line-row{display:flex;align-items:center;gap:8px;margin:4px 0}
+        .prop-control-spacer{height:4px}
+        .dash-card{
+            border:2px solid var(--dash-border);
+            border-radius:16px;
+            background:var(--dash-card-bg);
+            box-shadow:var(--dash-shadow);
+            padding:14px 16px;
+            position:relative;
+            overflow:hidden;
+        }
+        .dash-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--dash-accent)}
+        .dash-card-title{font-weight:900;font-size:21px;line-height:1.15;color:var(--dash-title);margin-bottom:12px}
+        .dash-grid{display:grid;grid-template-columns:1fr auto;row-gap:8px;column-gap:14px;font-size:13px}
+        .dash-grid-compact{display:grid;grid-template-columns:126px auto;column-gap:8px;row-gap:7px;font-size:12px;line-height:1.25}
+        .dash-label{font-weight:800;color:var(--dash-label);letter-spacing:0.015em;text-transform:uppercase;font-size:11px}
+        .dash-value{font-weight:800;color:var(--dash-value);font-size:14px}
+        .dash-accent{font-weight:800;color:var(--dash-accent)}
+        .section-title-strong{font-weight:900;font-size:24px;color:var(--dash-title);margin-bottom:10px;line-height:1.15;letter-spacing:0.01em}
+        section[data-testid="stMain"] [data-testid="stWidgetLabel"] label,
+        section[data-testid="stMain"] [data-testid="stWidgetLabel"] p{
+            color:var(--dash-text)!important;
+        }
+        section[data-testid="stMain"] [data-baseweb="select"]{
+            filter:none!important;
+            zoom:1!important;
+        }
+        section[data-testid="stMain"] [data-baseweb="select"] > div{
+            background-color:var(--dash-control-bg)!important;
+            border-color:var(--dash-control-border)!important;
+            color:var(--dash-control-text)!important;
+        }
+        section[data-testid="stMain"] [data-baseweb="select"] div,
+        section[data-testid="stMain"] [data-baseweb="select"] span{
+            filter:none!important;
+            font-weight:400!important;
+            color:var(--dash-control-text)!important;
+            line-height:1.35!important;
+            text-rendering:auto;
+            -webkit-font-smoothing:auto;
+        }
+        section[data-testid="stMain"] [data-baseweb="select"] input{
+            color:var(--dash-control-text)!important;
+        }
+        section[data-testid="stMain"] [data-baseweb="select"] input::placeholder{
+            color:var(--dash-muted)!important;
+            opacity:1!important;
+        }
+        section[data-testid="stMain"] [data-baseweb="select"] svg{
+            filter:none!important;
+            color:var(--dash-control-text)!important;
+            fill:var(--dash-control-text)!important;
+        }
+        div[data-baseweb="popover"] [role="listbox"],
+        div[data-baseweb="popover"] ul,
+        div[data-baseweb="menu"]{
+            background-color:var(--dash-control-bg)!important;
+            color:var(--dash-control-text)!important;
+            border-color:var(--dash-control-border)!important;
+        }
+        div[data-baseweb="popover"] [role="option"],
+        div[data-baseweb="popover"] li,
+        div[data-baseweb="menu"] li{
+            background-color:var(--dash-control-bg)!important;
+            color:var(--dash-control-text)!important;
+        }
+        div[data-baseweb="popover"] [role="option"] *,
+        div[data-baseweb="popover"] li *,
+        div[data-baseweb="menu"] li *{
+            color:var(--dash-control-text)!important;
+        }
+        div[data-baseweb="popover"] [role="option"]:hover,
+        div[data-baseweb="popover"] li:hover,
+        div[data-baseweb="menu"] li:hover,
+        div[data-baseweb="popover"] [aria-selected="true"]{
+            background-color:var(--dash-surface-2)!important;
+            color:var(--dash-control-text)!important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def normalize_name(name):
@@ -2673,64 +2674,65 @@ def load_batter_overall_contact_stats(batter_id):
     return load_batter_overall_contact_stats_for_lineup((batter_key,)).get(batter_key, {})
 
 
-requested_view = _query_param_value("view")
-requested_batter_id = _query_param_value("batter_id")
-if requested_view == "batter_detail" and requested_batter_id:
-    st.session_state["selected_batter"] = {
-        "name": _query_param_value("batter_name", "Batter Detail"),
-        "id": requested_batter_id,
-        "hand": _query_param_value("batter_hand", ""),
-        "team": _query_param_value("team", ""),
-        "team_id": _query_param_value("team_id", ""),
-        "opponent": _query_param_value("opponent", ""),
-        "opponent_id": _query_param_value("opponent_id", ""),
-        "return_pitcher_id": _query_param_value("return_pitcher_id", ""),
-        "return_game_pk": _query_param_value("return_game_pk", ""),
-        "return_pitcher_side": _query_param_value("return_pitcher_side", ""),
-        "return_pitcher_name": _query_param_value("return_pitcher_name", ""),
-        "return_pitcher_hand": _query_param_value("return_pitcher_hand", ""),
-    }
-    requested_prop = _query_param_value("prop", "")
-    if requested_prop in GAME_LOG_PROPS:
-        st.session_state["selected_prop"] = requested_prop
+def _initialize_page_state_from_query():
+    requested_view = _query_param_value("view")
+    requested_batter_id = _query_param_value("batter_id")
+    if requested_view == "batter_detail" and requested_batter_id:
+        st.session_state["selected_batter"] = {
+            "name": _query_param_value("batter_name", "Batter Detail"),
+            "id": requested_batter_id,
+            "hand": _query_param_value("batter_hand", ""),
+            "team": _query_param_value("team", ""),
+            "team_id": _query_param_value("team_id", ""),
+            "opponent": _query_param_value("opponent", ""),
+            "opponent_id": _query_param_value("opponent_id", ""),
+            "return_pitcher_id": _query_param_value("return_pitcher_id", ""),
+            "return_game_pk": _query_param_value("return_game_pk", ""),
+            "return_pitcher_side": _query_param_value("return_pitcher_side", ""),
+            "return_pitcher_name": _query_param_value("return_pitcher_name", ""),
+            "return_pitcher_hand": _query_param_value("return_pitcher_hand", ""),
+        }
+        requested_prop = _query_param_value("prop", "")
+        if requested_prop in GAME_LOG_PROPS:
+            st.session_state["selected_prop"] = requested_prop
 
-requested_pitcher_id = _query_param_value("pitcher_id")
-requested_game_pk = _query_param_value("game_pk")
-if requested_view == "pitcher_detail" and requested_pitcher_id and requested_game_pk:
-    st.session_state["selected_pitcher"] = {
-        "name": _query_param_value("pitcher_name", ""),
-        "id": requested_pitcher_id,
-        "hand": _query_param_value("pitcher_hand", ""),
-        "side": _query_param_value("pitcher_side", ""),
-    }
-    try:
-        st.session_state["selected_game"] = int(str(requested_game_pk))
-    except Exception:
-        st.session_state["selected_game"] = requested_game_pk
+    requested_pitcher_id = _query_param_value("pitcher_id")
+    requested_game_pk = _query_param_value("game_pk")
+    if requested_view == "pitcher_detail" and requested_pitcher_id and requested_game_pk:
+        st.session_state["selected_pitcher"] = {
+            "name": _query_param_value("pitcher_name", ""),
+            "id": requested_pitcher_id,
+            "hand": _query_param_value("pitcher_hand", ""),
+            "side": _query_param_value("pitcher_side", ""),
+        }
+        try:
+            st.session_state["selected_game"] = int(str(requested_game_pk))
+        except Exception:
+            st.session_state["selected_game"] = requested_game_pk
 
-requested_date_value = _query_param_value("date", "")
-requested_date = pd.to_datetime(requested_date_value, errors="coerce") if requested_date_value else pd.NaT
-requested_home_tab = str(_query_param_value("home_tab", "lineups")).strip().lower()
-if requested_home_tab == "slate":
-    requested_home_tab = "lineups"
-if requested_home_tab not in {"lineups", "props"}:
-    requested_home_tab = "lineups"
-if st.session_state.get("home_tab") != requested_home_tab:
-    st.session_state["home_tab"] = requested_home_tab
-requested_home_prop = prop_label_from_query(_query_param_value("prop", "Hits"))
-if st.session_state.get("homepage_selected_prop") not in GAME_LOG_PROPS:
-    st.session_state["homepage_selected_prop"] = requested_home_prop
-elif requested_home_prop != st.session_state.get("homepage_selected_prop") and requested_home_tab == "props":
-    st.session_state["homepage_selected_prop"] = requested_home_prop
-if "selected_date" not in st.session_state:
-    st.session_state["selected_date"] = requested_date.date() if pd.notna(requested_date) else eastern_today()
-elif pd.notna(requested_date) and st.session_state.get("selected_date") != requested_date.date():
-    st.session_state["selected_date"] = requested_date.date()
-    st.session_state.pop("games", None)
-if "calendar_date" not in st.session_state:
-    st.session_state["calendar_date"] = st.session_state["selected_date"]
-elif pd.notna(requested_date) and st.session_state.get("calendar_date") != requested_date.date():
-    st.session_state["calendar_date"] = requested_date.date()
+    requested_date_value = _query_param_value("date", "")
+    requested_date = pd.to_datetime(requested_date_value, errors="coerce") if requested_date_value else pd.NaT
+    requested_home_tab = str(_query_param_value("home_tab", "lineups")).strip().lower()
+    if requested_home_tab == "slate":
+        requested_home_tab = "lineups"
+    if requested_home_tab not in {"lineups", "props"}:
+        requested_home_tab = "lineups"
+    if st.session_state.get("home_tab") != requested_home_tab:
+        st.session_state["home_tab"] = requested_home_tab
+    requested_home_prop = prop_label_from_query(_query_param_value("prop", "Hits"))
+    if st.session_state.get("homepage_selected_prop") not in GAME_LOG_PROPS:
+        st.session_state["homepage_selected_prop"] = requested_home_prop
+    elif requested_home_prop != st.session_state.get("homepage_selected_prop") and requested_home_tab == "props":
+        st.session_state["homepage_selected_prop"] = requested_home_prop
+    if "selected_date" not in st.session_state:
+        st.session_state["selected_date"] = requested_date.date() if pd.notna(requested_date) else eastern_today()
+    elif pd.notna(requested_date) and st.session_state.get("selected_date") != requested_date.date():
+        st.session_state["selected_date"] = requested_date.date()
+        st.session_state.pop("games", None)
+    if "calendar_date" not in st.session_state:
+        st.session_state["calendar_date"] = st.session_state["selected_date"]
+    elif pd.notna(requested_date) and st.session_state.get("calendar_date") != requested_date.date():
+        st.session_state["calendar_date"] = requested_date.date()
 
 
 @st.cache_data(ttl=43200)
@@ -3176,158 +3178,159 @@ def render_lineup_table(lineup, current_batter_id="", current_batter_name="", li
     )
 
 
-if st.session_state.get("selected_batter"):
-    sb = st.session_state.get("selected_batter", {})
-    has_return_pitcher = bool(sb.get("return_pitcher_id") and sb.get("return_game_pk"))
-    back_label = "← Back to Pitcher" if has_return_pitcher else "← Back to Slate"
-    if st.button(back_label):
-        st.session_state.pop("selected_batter", None)
-        if has_return_pitcher:
-            _set_query_params({
-                "view": "pitcher_detail",
-                "pitcher_id": sb.get("return_pitcher_id", ""),
-                "game_pk": sb.get("return_game_pk", ""),
-                "pitcher_side": sb.get("return_pitcher_side", ""),
-                "pitcher_name": sb.get("return_pitcher_name", ""),
-                "pitcher_hand": sb.get("return_pitcher_hand", ""),
-                "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
-            })
+def render_selected_batter_view():
+    if st.session_state.get("selected_batter"):
+        sb = st.session_state.get("selected_batter", {})
+        has_return_pitcher = bool(sb.get("return_pitcher_id") and sb.get("return_game_pk"))
+        back_label = "← Back to Pitcher" if has_return_pitcher else "← Back to Slate"
+        if st.button(back_label):
+            st.session_state.pop("selected_batter", None)
+            if has_return_pitcher:
+                _set_query_params({
+                    "view": "pitcher_detail",
+                    "pitcher_id": sb.get("return_pitcher_id", ""),
+                    "game_pk": sb.get("return_game_pk", ""),
+                    "pitcher_side": sb.get("return_pitcher_side", ""),
+                    "pitcher_name": sb.get("return_pitcher_name", ""),
+                    "pitcher_hand": sb.get("return_pitcher_hand", ""),
+                    "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
+                })
+            else:
+                try:
+                    _set_query_params({"date": st.session_state.get("selected_date", eastern_today()).isoformat()})
+                except Exception:
+                    pass
+            st.rerun()
+
+        batter_name = sb.get("name") or "Batter Detail"
+        batter_hand = sb.get("hand", "")
+        st.markdown(f"## {batter_name}{f' ({batter_hand})' if batter_hand else ''}")
+
+        batter_id = sb.get("id", "")
+        game_pk = sb.get("return_game_pk") or st.session_state.get("selected_game", "")
+        lineup_context = get_game_lineups(game_pk) if game_pk else {}
+        batter_team_key = normalize_name(sb.get("team", ""))
+        lineup_side = ""
+        if batter_team_key and normalize_name(lineup_context.get("away_team", "")) == batter_team_key:
+            lineup_side = "away"
+        elif batter_team_key and normalize_name(lineup_context.get("home_team", "")) == batter_team_key:
+            lineup_side = "home"
+        elif sb.get("return_pitcher_side") == "away":
+            lineup_side = "home"
+        elif sb.get("return_pitcher_side") == "home":
+            lineup_side = "away"
         else:
-            try:
-                _set_query_params({"date": st.session_state.get("selected_date", eastern_today()).isoformat()})
-            except Exception:
-                pass
-        st.rerun()
-
-    batter_name = sb.get("name") or "Batter Detail"
-    batter_hand = sb.get("hand", "")
-    st.markdown(f"## {batter_name}{f' ({batter_hand})' if batter_hand else ''}")
-
-    batter_id = sb.get("id", "")
-    game_pk = sb.get("return_game_pk") or st.session_state.get("selected_game", "")
-    lineup_context = get_game_lineups(game_pk) if game_pk else {}
-    batter_team_key = normalize_name(sb.get("team", ""))
-    lineup_side = ""
-    if batter_team_key and normalize_name(lineup_context.get("away_team", "")) == batter_team_key:
-        lineup_side = "away"
-    elif batter_team_key and normalize_name(lineup_context.get("home_team", "")) == batter_team_key:
-        lineup_side = "home"
-    elif sb.get("return_pitcher_side") == "away":
-        lineup_side = "home"
-    elif sb.get("return_pitcher_side") == "home":
-        lineup_side = "away"
-    else:
-        for candidate_side in ("away", "home"):
-            for player in lineup_context.get(candidate_side, []):
-                if str(player.get("player_id") or "") == str(batter_id or "") or normalize_name(player.get("name", "")) == normalize_name(batter_name):
-                    lineup_side = candidate_side
+            for candidate_side in ("away", "home"):
+                for player in lineup_context.get(candidate_side, []):
+                    if str(player.get("player_id") or "") == str(batter_id or "") or normalize_name(player.get("name", "")) == normalize_name(batter_name):
+                        lineup_side = candidate_side
+                        break
+                if lineup_side:
                     break
-            if lineup_side:
-                break
-    team_lineup = lineup_context.get(lineup_side, []) if lineup_side else []
-    current_opponent_context = selected_batter_opponent_context(sb, game_pk, lineup_context, lineup_side)
+        team_lineup = lineup_context.get(lineup_side, []) if lineup_side else []
+        current_opponent_context = selected_batter_opponent_context(sb, game_pk, lineup_context, lineup_side)
 
-    with st.container(border=True):
-        render_batter_prop_game_log_section(batter_id, batter_name, current_opponent_context)
+        with st.container(border=True):
+            render_batter_prop_game_log_section(batter_id, batter_name, current_opponent_context)
 
-    with st.container(border=True):
-        st.markdown(
-            run_value_title_with_legend_html(),
-            unsafe_allow_html=True,
-        )
-        run_value_df = load_batter_run_value_pitch_type_table(batter_id)
-        if run_value_df.empty:
-            st.info("Run value by pitch type is unavailable for this batter right now.")
-        else:
-            st.dataframe(
-                style_run_value_table(run_value_df),
-                hide_index=True,
-                use_container_width=True,
-            )
-
-    with st.container(border=True):
-        st.markdown(
-            "<div class='section-title-strong'>Strike Zone</div>",
-            unsafe_allow_html=True,
-        )
-        batter_strike_zone_cols = st.columns([1.15, 4])
-        with batter_strike_zone_cols[0]:
-            pitch_type_options = strike_zone.get_batter_pitch_type_options(batter_id)
-            # Streamlit selectbox options are plain text, so individual pitch names cannot be colored safely here.
-            selected_pitch_type = st.selectbox(
-                "Pitch Type",
-                pitch_type_options,
-                index=0,
-                key=f"batter_strike_zone_pitch_type_{batter_id}",
-            )
-            selected_pitcher_throws = st.selectbox(
-                "Pitcher Throws",
-                ["All", "RHP", "LHP"],
-                index=0,
-                key=f"batter_strike_zone_pitcher_throws_{batter_id}",
-            )
-            selected_metric = st.selectbox(
-                "Metric",
-                ["Pitch %", "Takes", "Batted Balls", "K%", "Home Runs"],
-                index=0,
-                key=f"batter_strike_zone_metric_{batter_id}",
-            )
-            selected_heatmap_scale = st.selectbox(
-                "Heatmap Scale",
-                [strike_zone.HEATMAP_SCALE_LEAGUE, strike_zone.HEATMAP_SCALE_SELF],
-                index=0,
-                key=f"batter_strike_zone_heatmap_scale_{batter_id}",
-            )
+        with st.container(border=True):
             st.markdown(
-                batter_heatmap_legend_html(selected_heatmap_scale),
+                run_value_title_with_legend_html(),
                 unsafe_allow_html=True,
             )
-            if selected_metric == "K%":
+            run_value_df = load_batter_run_value_pitch_type_table(batter_id)
+            if run_value_df.empty:
+                st.info("Run value by pitch type is unavailable for this batter right now.")
+            else:
+                st.dataframe(
+                    style_run_value_table(run_value_df),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+        with st.container(border=True):
+            st.markdown(
+                "<div class='section-title-strong'>Strike Zone</div>",
+                unsafe_allow_html=True,
+            )
+            batter_strike_zone_cols = st.columns([1.15, 4])
+            with batter_strike_zone_cols[0]:
+                pitch_type_options = strike_zone.get_batter_pitch_type_options(batter_id)
+                # Streamlit selectbox options are plain text, so individual pitch names cannot be colored safely here.
+                selected_pitch_type = st.selectbox(
+                    "Pitch Type",
+                    pitch_type_options,
+                    index=0,
+                    key=f"batter_strike_zone_pitch_type_{batter_id}",
+                )
+                selected_pitcher_throws = st.selectbox(
+                    "Pitcher Throws",
+                    ["All", "RHP", "LHP"],
+                    index=0,
+                    key=f"batter_strike_zone_pitcher_throws_{batter_id}",
+                )
+                selected_metric = st.selectbox(
+                    "Metric",
+                    ["Pitch %", "Takes", "Batted Balls", "K%", "Home Runs"],
+                    index=0,
+                    key=f"batter_strike_zone_metric_{batter_id}",
+                )
+                selected_heatmap_scale = st.selectbox(
+                    "Heatmap Scale",
+                    [strike_zone.HEATMAP_SCALE_LEAGUE, strike_zone.HEATMAP_SCALE_SELF],
+                    index=0,
+                    key=f"batter_strike_zone_heatmap_scale_{batter_id}",
+                )
                 st.markdown(
-                    "<div style='color:#b91c1c; font-size:12.5px; font-weight:600; line-height:1.35; text-align:left; margin:6px 0 0 0; padding:0 0 12px 12px;'>Note: K% shows the zone-touch distribution for plate appearances that ended in a strikeout.</div>",
+                    batter_heatmap_legend_html(selected_heatmap_scale),
                     unsafe_allow_html=True,
                 )
-        with batter_strike_zone_cols[1]:
-            strike_zone.display_batter_metric_strike_zone(
-                batter_id,
-                selected_pitch_type,
-                selected_pitcher_throws,
-                selected_metric,
-                selected_heatmap_scale,
+                if selected_metric == "K%":
+                    st.markdown(
+                        "<div style='color:#b91c1c; font-size:12.5px; font-weight:600; line-height:1.35; text-align:left; margin:6px 0 0 0; padding:0 0 12px 12px;'>Note: K% shows the zone-touch distribution for plate appearances that ended in a strikeout.</div>",
+                        unsafe_allow_html=True,
+                    )
+            with batter_strike_zone_cols[1]:
+                strike_zone.display_batter_metric_strike_zone(
+                    batter_id,
+                    selected_pitch_type,
+                    selected_pitcher_throws,
+                    selected_metric,
+                    selected_heatmap_scale,
+                )
+
+        with st.container(border=True):
+            lineup_team = lineup_context.get(f"{lineup_side}_team", sb.get("team", "")) if lineup_side else sb.get("team", "")
+            lineup_opponent = lineup_context.get("home_team", "") if lineup_side == "away" else lineup_context.get("away_team", "")
+            lineup_team_id = lineup_context.get(f"{lineup_side}_team_id", sb.get("team_id", "")) if lineup_side else sb.get("team_id", "")
+            lineup_opponent_side = "home" if lineup_side == "away" else "away"
+            lineup_opponent_id = lineup_context.get(f"{lineup_opponent_side}_team_id", sb.get("opponent_id", "")) if lineup_side else sb.get("opponent_id", "")
+            batter_lineup_link_context = {
+                "team": lineup_team,
+                "team_id": lineup_team_id,
+                "opponent": lineup_opponent or sb.get("opponent", ""),
+                "opponent_id": lineup_opponent_id,
+                "return_pitcher_id": sb.get("return_pitcher_id", ""),
+                "return_game_pk": game_pk,
+                "return_pitcher_side": sb.get("return_pitcher_side", ""),
+                "return_pitcher_name": sb.get("return_pitcher_name", ""),
+                "return_pitcher_hand": sb.get("return_pitcher_hand", ""),
+            }
+            st.markdown(
+                "<div class='section-title-strong'>Team Lineup Context</div>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                render_lineup_table(
+                    team_lineup,
+                    current_batter_id=batter_id,
+                    current_batter_name=batter_name,
+                    link_context=batter_lineup_link_context,
+                ),
+                unsafe_allow_html=True,
             )
 
-    with st.container(border=True):
-        lineup_team = lineup_context.get(f"{lineup_side}_team", sb.get("team", "")) if lineup_side else sb.get("team", "")
-        lineup_opponent = lineup_context.get("home_team", "") if lineup_side == "away" else lineup_context.get("away_team", "")
-        lineup_team_id = lineup_context.get(f"{lineup_side}_team_id", sb.get("team_id", "")) if lineup_side else sb.get("team_id", "")
-        lineup_opponent_side = "home" if lineup_side == "away" else "away"
-        lineup_opponent_id = lineup_context.get(f"{lineup_opponent_side}_team_id", sb.get("opponent_id", "")) if lineup_side else sb.get("opponent_id", "")
-        batter_lineup_link_context = {
-            "team": lineup_team,
-            "team_id": lineup_team_id,
-            "opponent": lineup_opponent or sb.get("opponent", ""),
-            "opponent_id": lineup_opponent_id,
-            "return_pitcher_id": sb.get("return_pitcher_id", ""),
-            "return_game_pk": game_pk,
-            "return_pitcher_side": sb.get("return_pitcher_side", ""),
-            "return_pitcher_name": sb.get("return_pitcher_name", ""),
-            "return_pitcher_hand": sb.get("return_pitcher_hand", ""),
-        }
-        st.markdown(
-            "<div class='section-title-strong'>Team Lineup Context</div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            render_lineup_table(
-                team_lineup,
-                current_batter_id=batter_id,
-                current_batter_name=batter_name,
-                link_context=batter_lineup_link_context,
-            ),
-            unsafe_allow_html=True,
-        )
-
-    st.stop()
+        st.stop()
 
 
 @st.cache_data(ttl=1800)
@@ -3599,322 +3602,323 @@ def load_regular_season_pitch_mix(player_id):
     }
 
 # Session-state based pitcher view (non-experimental)
-if st.session_state.get("selected_pitcher"):
-    sp = st.session_state.get("selected_pitcher")
-    gp = st.session_state.get("selected_game")
-    _ensure_query_params({
-        "view": "pitcher_detail",
-        "pitcher_id": sp.get("id", ""),
-        "pitcher_name": sp.get("name", ""),
-        "pitcher_hand": sp.get("hand", ""),
-        "pitcher_side": sp.get("side", ""),
-        "game_pk": gp,
-        "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
-    })
-    games_df = st.session_state.get("games")
-    if games_df is None or (isinstance(games_df, pd.DataFrame) and games_df.empty):
-        games_df = load_schedule(st.session_state.get("selected_date", eastern_today()))
-    match = games_df[games_df["game_pk"] == gp]
-    if match.empty:
-        st.info("Game not found")
-    else:
-        game = match.iloc[0]
-        lineup_context = get_game_lineups(game["game_pk"], game)
-        away_lineup = lineup_context.get("away", [])
-        home_lineup = lineup_context.get("home", [])
-        side = sp.get("side")
-        if side == "away":
-            name = sp.get("name")
-            pid = sp.get("id", "")
-            hand = sp.get("hand", "")
-            opponent_team = game.get("home_team", "")
-            opponent_lineup = home_lineup
+def render_selected_pitcher_view():
+    if st.session_state.get("selected_pitcher"):
+        sp = st.session_state.get("selected_pitcher")
+        gp = st.session_state.get("selected_game")
+        _ensure_query_params({
+            "view": "pitcher_detail",
+            "pitcher_id": sp.get("id", ""),
+            "pitcher_name": sp.get("name", ""),
+            "pitcher_hand": sp.get("hand", ""),
+            "pitcher_side": sp.get("side", ""),
+            "game_pk": gp,
+            "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
+        })
+        games_df = st.session_state.get("games")
+        if games_df is None or (isinstance(games_df, pd.DataFrame) and games_df.empty):
+            games_df = load_schedule(st.session_state.get("selected_date", eastern_today()))
+        match = games_df[games_df["game_pk"] == gp]
+        if match.empty:
+            st.info("Game not found")
         else:
-            name = sp.get("name")
-            pid = sp.get("id", "")
-            hand = sp.get("hand", "")
-            opponent_team = game.get("away_team", "")
-            opponent_lineup = away_lineup
-
-        opponent_count = len(opponent_lineup) if opponent_lineup else 0
-        rhb_count = sum(1 for p in opponent_lineup if p.get("handedness") == "R")
-        lhb_count = sum(1 for p in opponent_lineup if p.get("handedness") == "L")
-        switch_count = sum(1 for p in opponent_lineup if p.get("handedness") == "S")
-
-        if st.button("← Back to Slate"):
-            st.session_state.pop("selected_pitcher", None)
-            st.session_state.pop("selected_game", None)
-            try:
-                _set_query_params({"date": st.session_state.get("selected_date", eastern_today()).isoformat()})
-            except Exception:
-                pass
-            st.rerun()
-
-        st.markdown(f"## {name} {f'({hand})' if hand else ''}")
-        st.markdown(f"{game.get('away_team')} @ {game.get('home_team')} • {game.get('game_time_et')}")
-
-        try:
-            mlb_stats = load_pitcher_stats(pid)
-        except Exception as e:
-            mlb_stats = {}
-            logger.error("MLB stats request failed for %s: %s", pid, e)
-
-        try:
-            pitch_mix = load_regular_season_pitch_mix(pid)
-        except Exception as e:
-            pitch_mix = {"R": [], "L": [], "all": []}
-            logger.error("Regular season pitch mix request failed for %s: %s", pid, e)
-
-        def format_number(value, precision=2, suffix=""):
-            if value is None or value == "":
-                return "N/A"
-            try:
-                return f"{float(value):.{precision}f}{suffix}"
-            except (TypeError, ValueError):
-                return str(value)
-
-        era_value = format_number(mlb_stats.get("era"))
-        whip_value = format_number(mlb_stats.get("whip"))
-        k_value = format_number(mlb_stats.get("k_percent"))
-        bb_value = format_number(mlb_stats.get("bb_percent"))
-        ip_value = format_number(mlb_stats.get("innings_pitched"), precision=1)
-        hr_allowed_value = format_number(mlb_stats.get("hr_allowed"), precision=0)
-
-        fastball_terms = ["4-seam fastball", "sinker", "cutter", "splitter"]
-        breaking_terms = ["slider", "sweeper", "curveball", "knuckle curve", "slurve"]
-        offspeed_terms = ["changeup", "forkball", "screwball"]
-
-        actual_arsenal = pitch_mix.get("all", [])
-        actual_arsenal_rhb = pitch_mix.get("R", [])
-        actual_arsenal_lhb = pitch_mix.get("L", [])
-
-        if actual_arsenal:
-            primary_pitch = actual_arsenal[0]["name"]
-            total_pitches = float(sum(row["count"] for row in actual_arsenal))
-            fastball_count = 0.0
-            breaking_count = 0.0
-            offspeed_count = 0.0
-            for row in actual_arsenal:
-                pitch_name = str(row["name"]).lower()
-                count = float(row["count"])
-                if any(term in pitch_name for term in fastball_terms):
-                    fastball_count += count
-                elif any(term in pitch_name for term in breaking_terms):
-                    breaking_count += count
-                elif any(term in pitch_name for term in offspeed_terms):
-                    offspeed_count += count
-
-            fastball_value = format_number((fastball_count / total_pitches) * 100, precision=1, suffix="%")
-            breaking_value = format_number((breaking_count / total_pitches) * 100, precision=1, suffix="%")
-            offspeed_value = format_number((offspeed_count / total_pitches) * 100, precision=1, suffix="%")
-        else:
-            primary_pitch = "N/A"
-            fastball_value = "N/A"
-            breaking_value = "N/A"
-            offspeed_value = "N/A"
-
-        # --- Matchup Read (using already-loaded values; no new data fetching) ---
-        try:
-            def _parse_pct(s):
-                if s is None:
-                    return None
-                try:
-                    return float(str(s).replace('%', ''))
-                except Exception:
-                    return None
-
-            fb_pct = _parse_pct(fastball_value)
-            brk_pct = _parse_pct(breaking_value)
-            off_pct = _parse_pct(offspeed_value)
-
-            lean = None
-            if fb_pct is not None or brk_pct is not None or off_pct is not None:
-                # pick the largest available category
-                choices = [(fb_pct or -1, 'fastball'), (brk_pct or -1, 'breaking'), (off_pct or -1, 'offspeed')]
-                lean = max(choices, key=lambda x: x[0])[1]
-        except Exception:
-            lean = None
-
-        if lean:
-            arsenal_text = f"leans {lean} ({fastball_value} / {breaking_value} / {offspeed_value})"
-        else:
-            arsenal_text = f"{fastball_value} / {breaking_value} / {offspeed_value}"
-
-        def _arsenal_table_html(rows):
-            if rows:
-                rows_html = "".join(
-                    f"<span class='dash-label' style='text-transform:none; font-size:12px; letter-spacing:0;'>{pitch_type_text_html(row['name'])}</span><span class='dash-value dash-accent'>{row['usage_pct']:.1f}%</span>" for row in rows
-                )
-                return (
-                    "<div class='dash-grid' style='grid-template-columns:1fr auto; row-gap:7px; column-gap:12px;'>"
-                    "<span class='dash-label'>Pitch Name</span><span class='dash-label'>Usage %</span>"
-                    f"{rows_html}"
-                    "</div>"
-                )
+            game = match.iloc[0]
+            lineup_context = get_game_lineups(game["game_pk"], game)
+            away_lineup = lineup_context.get("away", [])
+            home_lineup = lineup_context.get("home", [])
+            side = sp.get("side")
+            if side == "away":
+                name = sp.get("name")
+                pid = sp.get("id", "")
+                hand = sp.get("hand", "")
+                opponent_team = game.get("home_team", "")
+                opponent_lineup = home_lineup
             else:
-                return "<div style='font-size:13px; color:#475569; font-weight:700;'>No data</div>"
+                name = sp.get("name")
+                pid = sp.get("id", "")
+                hand = sp.get("hand", "")
+                opponent_team = game.get("away_team", "")
+                opponent_lineup = away_lineup
 
-        stat_cols = st.columns(3)
+            opponent_count = len(opponent_lineup) if opponent_lineup else 0
+            rhb_count = sum(1 for p in opponent_lineup if p.get("handedness") == "R")
+            lhb_count = sum(1 for p in opponent_lineup if p.get("handedness") == "L")
+            switch_count = sum(1 for p in opponent_lineup if p.get("handedness") == "S")
 
-        with stat_cols[0]:
+            if st.button("← Back to Slate"):
+                st.session_state.pop("selected_pitcher", None)
+                st.session_state.pop("selected_game", None)
+                try:
+                    _set_query_params({"date": st.session_state.get("selected_date", eastern_today()).isoformat()})
+                except Exception:
+                    pass
+                st.rerun()
+
+            st.markdown(f"## {name} {f'({hand})' if hand else ''}")
+            st.markdown(f"{game.get('away_team')} @ {game.get('home_team')} • {game.get('game_time_et')}")
+
+            try:
+                mlb_stats = load_pitcher_stats(pid)
+            except Exception as e:
+                mlb_stats = {}
+                logger.error("MLB stats request failed for %s: %s", pid, e)
+
+            try:
+                pitch_mix = load_regular_season_pitch_mix(pid)
+            except Exception as e:
+                pitch_mix = {"R": [], "L": [], "all": []}
+                logger.error("Regular season pitch mix request failed for %s: %s", pid, e)
+
+            def format_number(value, precision=2, suffix=""):
+                if value is None or value == "":
+                    return "N/A"
+                try:
+                    return f"{float(value):.{precision}f}{suffix}"
+                except (TypeError, ValueError):
+                    return str(value)
+
+            era_value = format_number(mlb_stats.get("era"))
+            whip_value = format_number(mlb_stats.get("whip"))
+            k_value = format_number(mlb_stats.get("k_percent"))
+            bb_value = format_number(mlb_stats.get("bb_percent"))
+            ip_value = format_number(mlb_stats.get("innings_pitched"), precision=1)
+            hr_allowed_value = format_number(mlb_stats.get("hr_allowed"), precision=0)
+
+            fastball_terms = ["4-seam fastball", "sinker", "cutter", "splitter"]
+            breaking_terms = ["slider", "sweeper", "curveball", "knuckle curve", "slurve"]
+            offspeed_terms = ["changeup", "forkball", "screwball"]
+
+            actual_arsenal = pitch_mix.get("all", [])
+            actual_arsenal_rhb = pitch_mix.get("R", [])
+            actual_arsenal_lhb = pitch_mix.get("L", [])
+
+            if actual_arsenal:
+                primary_pitch = actual_arsenal[0]["name"]
+                total_pitches = float(sum(row["count"] for row in actual_arsenal))
+                fastball_count = 0.0
+                breaking_count = 0.0
+                offspeed_count = 0.0
+                for row in actual_arsenal:
+                    pitch_name = str(row["name"]).lower()
+                    count = float(row["count"])
+                    if any(term in pitch_name for term in fastball_terms):
+                        fastball_count += count
+                    elif any(term in pitch_name for term in breaking_terms):
+                        breaking_count += count
+                    elif any(term in pitch_name for term in offspeed_terms):
+                        offspeed_count += count
+
+                fastball_value = format_number((fastball_count / total_pitches) * 100, precision=1, suffix="%")
+                breaking_value = format_number((breaking_count / total_pitches) * 100, precision=1, suffix="%")
+                offspeed_value = format_number((offspeed_count / total_pitches) * 100, precision=1, suffix="%")
+            else:
+                primary_pitch = "N/A"
+                fastball_value = "N/A"
+                breaking_value = "N/A"
+                offspeed_value = "N/A"
+
+            # --- Matchup Read (using already-loaded values; no new data fetching) ---
+            try:
+                def _parse_pct(s):
+                    if s is None:
+                        return None
+                    try:
+                        return float(str(s).replace('%', ''))
+                    except Exception:
+                        return None
+
+                fb_pct = _parse_pct(fastball_value)
+                brk_pct = _parse_pct(breaking_value)
+                off_pct = _parse_pct(offspeed_value)
+
+                lean = None
+                if fb_pct is not None or brk_pct is not None or off_pct is not None:
+                    # pick the largest available category
+                    choices = [(fb_pct or -1, 'fastball'), (brk_pct or -1, 'breaking'), (off_pct or -1, 'offspeed')]
+                    lean = max(choices, key=lambda x: x[0])[1]
+            except Exception:
+                lean = None
+
+            if lean:
+                arsenal_text = f"leans {lean} ({fastball_value} / {breaking_value} / {offspeed_value})"
+            else:
+                arsenal_text = f"{fastball_value} / {breaking_value} / {offspeed_value}"
+
+            def _arsenal_table_html(rows):
+                if rows:
+                    rows_html = "".join(
+                        f"<span class='dash-label' style='text-transform:none; font-size:12px; letter-spacing:0;'>{pitch_type_text_html(row['name'])}</span><span class='dash-value dash-accent'>{row['usage_pct']:.1f}%</span>" for row in rows
+                    )
+                    return (
+                        "<div class='dash-grid' style='grid-template-columns:1fr auto; row-gap:7px; column-gap:12px;'>"
+                        "<span class='dash-label'>Pitch Name</span><span class='dash-label'>Usage %</span>"
+                        f"{rows_html}"
+                        "</div>"
+                    )
+                else:
+                    return "<div style='font-size:13px; color:#475569; font-weight:700;'>No data</div>"
+
+            stat_cols = st.columns(3)
+
+            with stat_cols[0]:
+                st.markdown(
+                    "<div class='dash-card'>"
+                    "<div class='dash-card-title'>2026 Season</div>"
+                    "<div class='dash-grid'>"
+                    f"<span class='dash-label'>ERA</span><span class='dash-value dash-accent'>{era_value}</span>"
+                    f"<span class='dash-label'>WHIP</span><span class='dash-value'>{whip_value}</span>"
+                    f"<span class='dash-label'>K%</span><span class='dash-value'>{k_value}</span>"
+                    f"<span class='dash-label'>BB%</span><span class='dash-value'>{bb_value}</span>"
+                    f"<span class='dash-label'>HR Allowed</span><span class='dash-value'>{hr_allowed_value}</span>"
+                    f"<span class='dash-label'>IP</span><span class='dash-value'>{ip_value}</span>"
+                    "</div></div>",
+                    unsafe_allow_html=True,
+                )
+
+            with stat_cols[1]:
+                with st.container(border=True):
+                    st.markdown(
+                        "<div class='section-title-strong'>Actual Pitch Arsenal</div>",
+                        unsafe_allow_html=True,
+                    )
+                    selected_arsenal_split = st.segmented_control(
+                        "Arsenal Split",
+                        ["LHB", "Overall", "RHB"],
+                        default="Overall",
+                        key=f"arsenal_split_{pid}",
+                        label_visibility="collapsed",
+                    )
+                    arsenal_rows = {
+                        "LHB": actual_arsenal_lhb,
+                        "Overall": actual_arsenal,
+                        "RHB": actual_arsenal_rhb,
+                    }.get(selected_arsenal_split or "Overall", actual_arsenal)
+                    st.markdown(_arsenal_table_html(arsenal_rows), unsafe_allow_html=True)
+
+            with stat_cols[2]:
+                st.markdown(
+                    "<div class='dash-card'>"
+                    "<div class='dash-card-title'>Matchup Context</div>"
+                    "<div class='dash-grid'>"
+                    f"<span class='dash-label'>Opponent</span><span class='dash-value'>{opponent_team or 'N/A'}</span>"
+                    f"<span class='dash-label'>Opposing Batters</span><span class='dash-value'>{opponent_count or 'N/A'}</span>"
+                    f"<span class='dash-label'>RHB</span><span class='dash-value'>{rhb_count}</span>"
+                    f"<span class='dash-label'>LHB</span><span class='dash-value'>{lhb_count}</span>"
+                    f"<span class='dash-label'>Switch</span><span class='dash-value'>{switch_count}</span>"
+                    "</div></div>",
+                    unsafe_allow_html=True,
+                )
+
             st.markdown(
-                "<div class='dash-card'>"
-                "<div class='dash-card-title'>2026 Season</div>"
-                "<div class='dash-grid'>"
-                f"<span class='dash-label'>ERA</span><span class='dash-value dash-accent'>{era_value}</span>"
-                f"<span class='dash-label'>WHIP</span><span class='dash-value'>{whip_value}</span>"
-                f"<span class='dash-label'>K%</span><span class='dash-value'>{k_value}</span>"
-                f"<span class='dash-label'>BB%</span><span class='dash-value'>{bb_value}</span>"
-                f"<span class='dash-label'>HR Allowed</span><span class='dash-value'>{hr_allowed_value}</span>"
-                f"<span class='dash-label'>IP</span><span class='dash-value'>{ip_value}</span>"
-                "</div></div>",
+                "<div class='dash-card' style='max-width:460px; margin-top:12px; margin-bottom:24px;'>"
+                "<div class='dash-card-title'>Matchup Read</div>"
+                "<div class='dash-grid-compact'>"
+                f"<span class='dash-label'>Primary Pitch</span><span class='dash-value dash-accent'>{pitch_type_text_html(primary_pitch)}</span>"
+                f"<span class='dash-label'>Arsenal</span><span class='dash-value'>{arsenal_text}</span>"
+                f"<span class='dash-label'>Opposing Lineup</span><span class='dash-value'>{rhb_count} RHB / {lhb_count} LHB / {switch_count} switch</span>"
+                "</div>"
+                "</div>",
                 unsafe_allow_html=True,
             )
 
-        with stat_cols[1]:
+            # Keep Matchup Read fully separated from Strike Zone without changing section order.
+            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+
+            pitch_type_options = ["All Pitches"]
+            if actual_arsenal:
+                pitch_type_options.extend(row["name"] for row in actual_arsenal)
+
             with st.container(border=True):
                 st.markdown(
-                    "<div class='section-title-strong'>Actual Pitch Arsenal</div>",
+                    "<div class='section-title-strong'>Strike Zone</div>",
                     unsafe_allow_html=True,
                 )
-                selected_arsenal_split = st.segmented_control(
-                    "Arsenal Split",
-                    ["LHB", "Overall", "RHB"],
-                    default="Overall",
-                    key=f"arsenal_split_{pid}",
-                    label_visibility="collapsed",
-                )
-                arsenal_rows = {
-                    "LHB": actual_arsenal_lhb,
-                    "Overall": actual_arsenal,
-                    "RHB": actual_arsenal_rhb,
-                }.get(selected_arsenal_split or "Overall", actual_arsenal)
-                st.markdown(_arsenal_table_html(arsenal_rows), unsafe_allow_html=True)
+                strike_zone_cols = st.columns([1.15, 4])
+                with strike_zone_cols[0]:
+                    # Streamlit selectbox options are plain text, so individual pitch names cannot be colored safely here.
+                    selected_pitch_type = st.selectbox(
+                        "Pitch Type",
+                        pitch_type_options,
+                        index=0,
+                        key=f"strike_zone_pitch_type_{pid}",
+                    )
+                    selected_batter_stands = st.selectbox(
+                        "Batter Stands",
+                        ["All Batters", "RHB", "LHB"],
+                        index=0,
+                        key=f"strike_zone_batter_stands_{pid}",
+                    )
+                    selected_pitcher_metric = st.selectbox(
+                        "Metric",
+                        list(strike_zone.PITCHER_STRIKE_ZONE_METRICS),
+                        index=0,
+                        key=f"strike_zone_metric_{pid}",
+                    )
+                    selected_pitcher_heatmap_scale = st.selectbox(
+                        "Heatmap Scale",
+                        [strike_zone.HEATMAP_SCALE_LEAGUE, strike_zone.HEATMAP_SCALE_SELF],
+                        index=0,
+                        key=f"strike_zone_heatmap_scale_{pid}",
+                    )
+                    st.markdown(
+                        pitcher_heatmap_legend_html(selected_pitcher_heatmap_scale),
+                        unsafe_allow_html=True,
+                    )
+                with strike_zone_cols[1]:
+                    strike_zone.display_strike_zone(
+                        pid,
+                        selected_pitch_type,
+                        selected_batter_stands,
+                        selected_pitcher_metric,
+                        selected_pitcher_heatmap_scale,
+                    )
 
-        with stat_cols[2]:
-            st.markdown(
-                "<div class='dash-card'>"
-                "<div class='dash-card-title'>Matchup Context</div>"
-                "<div class='dash-grid'>"
-                f"<span class='dash-label'>Opponent</span><span class='dash-value'>{opponent_team or 'N/A'}</span>"
-                f"<span class='dash-label'>Opposing Batters</span><span class='dash-value'>{opponent_count or 'N/A'}</span>"
-                f"<span class='dash-label'>RHB</span><span class='dash-value'>{rhb_count}</span>"
-                f"<span class='dash-label'>LHB</span><span class='dash-value'>{lhb_count}</span>"
-                f"<span class='dash-label'>Switch</span><span class='dash-value'>{switch_count}</span>"
-                "</div></div>",
-                unsafe_allow_html=True,
-            )
-
-        st.markdown(
-            "<div class='dash-card' style='max-width:460px; margin-top:12px; margin-bottom:24px;'>"
-            "<div class='dash-card-title'>Matchup Read</div>"
-            "<div class='dash-grid-compact'>"
-            f"<span class='dash-label'>Primary Pitch</span><span class='dash-value dash-accent'>{pitch_type_text_html(primary_pitch)}</span>"
-            f"<span class='dash-label'>Arsenal</span><span class='dash-value'>{arsenal_text}</span>"
-            f"<span class='dash-label'>Opposing Lineup</span><span class='dash-value'>{rhb_count} RHB / {lhb_count} LHB / {switch_count} switch</span>"
-            "</div>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-        # Keep Matchup Read fully separated from Strike Zone without changing section order.
-        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-
-        pitch_type_options = ["All Pitches"]
-        if actual_arsenal:
-            pitch_type_options.extend(row["name"] for row in actual_arsenal)
-
-        with st.container(border=True):
-            st.markdown(
-                "<div class='section-title-strong'>Strike Zone</div>",
-                unsafe_allow_html=True,
-            )
-            strike_zone_cols = st.columns([1.15, 4])
-            with strike_zone_cols[0]:
-                # Streamlit selectbox options are plain text, so individual pitch names cannot be colored safely here.
-                selected_pitch_type = st.selectbox(
-                    "Pitch Type",
-                    pitch_type_options,
-                    index=0,
-                    key=f"strike_zone_pitch_type_{pid}",
-                )
-                selected_batter_stands = st.selectbox(
-                    "Batter Stands",
-                    ["All Batters", "RHB", "LHB"],
-                    index=0,
-                    key=f"strike_zone_batter_stands_{pid}",
-                )
-                selected_pitcher_metric = st.selectbox(
-                    "Metric",
-                    list(strike_zone.PITCHER_STRIKE_ZONE_METRICS),
-                    index=0,
-                    key=f"strike_zone_metric_{pid}",
-                )
-                selected_pitcher_heatmap_scale = st.selectbox(
-                    "Heatmap Scale",
-                    [strike_zone.HEATMAP_SCALE_LEAGUE, strike_zone.HEATMAP_SCALE_SELF],
-                    index=0,
-                    key=f"strike_zone_heatmap_scale_{pid}",
-                )
+            with st.container(border=True):
                 st.markdown(
-                    pitcher_heatmap_legend_html(selected_pitcher_heatmap_scale),
+                    "<div class='section-title-strong'>Game Lineups</div>",
                     unsafe_allow_html=True,
                 )
-            with strike_zone_cols[1]:
-                strike_zone.display_strike_zone(
-                    pid,
-                    selected_pitch_type,
-                    selected_batter_stands,
-                    selected_pitcher_metric,
-                    selected_pitcher_heatmap_scale,
-                )
+                lineup_cols = st.columns(2)
+                with lineup_cols[0]:
+                    st.markdown(f"### {game.get('away_team', 'Away')}")
+                    st.markdown(
+                        render_lineup_table(
+                            away_lineup,
+                            link_context={
+                                "team": game.get("away_team", ""),
+                                "team_id": game.get("away_team_id", ""),
+                                "opponent": game.get("home_team", ""),
+                                "opponent_id": game.get("home_team_id", ""),
+                                "return_pitcher_id": pid,
+                                "return_game_pk": gp,
+                                "return_pitcher_side": side,
+                                "return_pitcher_name": name,
+                                "return_pitcher_hand": hand,
+                            },
+                        ),
+                        unsafe_allow_html=True,
+                    )
+                with lineup_cols[1]:
+                    st.markdown(f"### {game.get('home_team', 'Home')}")
+                    st.markdown(
+                        render_lineup_table(
+                            home_lineup,
+                            link_context={
+                                "team": game.get("home_team", ""),
+                                "team_id": game.get("home_team_id", ""),
+                                "opponent": game.get("away_team", ""),
+                                "opponent_id": game.get("away_team_id", ""),
+                                "return_pitcher_id": pid,
+                                "return_game_pk": gp,
+                                "return_pitcher_side": side,
+                                "return_pitcher_name": name,
+                                "return_pitcher_hand": hand,
+                            },
+                        ),
+                        unsafe_allow_html=True,
+                    )
 
-        with st.container(border=True):
-            st.markdown(
-                "<div class='section-title-strong'>Game Lineups</div>",
-                unsafe_allow_html=True,
-            )
-            lineup_cols = st.columns(2)
-            with lineup_cols[0]:
-                st.markdown(f"### {game.get('away_team', 'Away')}")
-                st.markdown(
-                    render_lineup_table(
-                        away_lineup,
-                        link_context={
-                            "team": game.get("away_team", ""),
-                            "team_id": game.get("away_team_id", ""),
-                            "opponent": game.get("home_team", ""),
-                            "opponent_id": game.get("home_team_id", ""),
-                            "return_pitcher_id": pid,
-                            "return_game_pk": gp,
-                            "return_pitcher_side": side,
-                            "return_pitcher_name": name,
-                            "return_pitcher_hand": hand,
-                        },
-                    ),
-                    unsafe_allow_html=True,
-                )
-            with lineup_cols[1]:
-                st.markdown(f"### {game.get('home_team', 'Home')}")
-                st.markdown(
-                    render_lineup_table(
-                        home_lineup,
-                        link_context={
-                            "team": game.get("home_team", ""),
-                            "team_id": game.get("home_team_id", ""),
-                            "opponent": game.get("away_team", ""),
-                            "opponent_id": game.get("away_team_id", ""),
-                            "return_pitcher_id": pid,
-                            "return_game_pk": gp,
-                            "return_pitcher_side": side,
-                            "return_pitcher_name": name,
-                            "return_pitcher_hand": hand,
-                        },
-                    ),
-                    unsafe_allow_html=True,
-                )
-
-        st.stop()
+            st.stop()
 
 
 # Pitcher view removed: query-param based navigation disabled to support older Streamlit versions
@@ -4093,6 +4097,7 @@ def render_homepage_props_tab():
             "href": batter_href,
             "team": team,
             "opponent": opponent,
+            "opponent_id": slate_info.get("opponent_id", ""),
             "hand": hand,
             "player_id": player_id,
             "prop": selected_prop,
@@ -4148,6 +4153,67 @@ def render_homepage_props_tab():
             return parts[0][:2].upper()
         return f"{parts[0][0]}{parts[-1][0]}".upper()
 
+    game_log_cache = {}
+
+    def _props_card_stat_values(row):
+        blank_values = {label: "—" for label in ("L5", "L10", "L15", "H2H", "AVG", "SZN")}
+        player_id = row.get("player_id")
+        prop_column = GAME_LOG_PROP_COLUMNS.get(row.get("prop"))
+        if not player_id or not prop_column:
+            return blank_values
+
+        try:
+            selected_prop_line = float(row.get("line"))
+        except (TypeError, ValueError):
+            return blank_values
+
+        include_first_inning = prop_column == "first_inning_hrrrbi"
+        game_log_key = (str(player_id), include_first_inning)
+        if game_log_key not in game_log_cache:
+            game_log_cache[game_log_key] = load_batter_prop_game_log(
+                player_id,
+                include_first_inning=include_first_inning,
+            )
+        game_log_df = game_log_cache[game_log_key]
+        if game_log_df.empty or prop_column not in game_log_df.columns:
+            return blank_values
+
+        stat_values = blank_values.copy()
+        for sample_label in ("L5", "L10", "L15"):
+            summary = prop_hit_rate_sample_summary(
+                game_log_df,
+                prop_column,
+                selected_prop_line,
+                sample_label,
+            )
+            stat_values[sample_label] = summary.get("hit_rate_text", "--")
+
+        season_summary = prop_hit_rate_sample_summary(
+            game_log_df,
+            prop_column,
+            selected_prop_line,
+            "2026",
+        )
+        stat_values["AVG"] = season_summary.get("avg_text", "--")
+        stat_values["SZN"] = season_summary.get("hit_rate_text", "--")
+
+        opponent_context = {
+            "id": str(row.get("opponent_id") or "").strip(),
+            "name": str(row.get("opponent") or "").strip(),
+            "abbr": "",
+        }
+        if opponent_context["id"] or opponent_context["name"]:
+            h2h_summary = prop_h2h_summary(
+                game_log_df,
+                prop_column,
+                selected_prop_line,
+                opponent_context,
+            )
+            if h2h_summary.get("games", 0) > 0:
+                stat_values["H2H"] = h2h_summary.get("hit_rate_text", "—")
+
+        return stat_values
+
     cards = []
     for row in rows:
         player_text = html.escape(row["player"])
@@ -4172,8 +4238,9 @@ def render_homepage_props_tab():
             if row.get("image_url")
             else initials_html
         )
+        stat_values = _props_card_stat_values(row)
         stat_tiles = "".join(
-            _prop_card_tile(label, "—")
+            _prop_card_tile(label, stat_values.get(label, "—"))
             for label in ("L5", "L10", "L15", "H2H", "AVG", "SZN")
         )
         open_link = (
@@ -4224,239 +4291,252 @@ def render_homepage_props_tab():
     )
 
 
-if st.session_state["calendar_date"] != st.session_state["selected_date"]:
-    st.session_state["calendar_date"] = st.session_state["selected_date"]
+def render_homepage():
+    if st.session_state["calendar_date"] != st.session_state["selected_date"]:
+        st.session_state["calendar_date"] = st.session_state["selected_date"]
 
-homepage_tab_label = "Props" if st.session_state.get("home_tab") == "props" else "Lineups"
-if st.session_state.get("homepage_tab_switch") != homepage_tab_label:
-    st.session_state["homepage_tab_switch"] = homepage_tab_label
+    homepage_tab_label = "Props" if st.session_state.get("home_tab") == "props" else "Lineups"
+    if st.session_state.get("homepage_tab_switch") != homepage_tab_label:
+        st.session_state["homepage_tab_switch"] = homepage_tab_label
 
-st.segmented_control(
-    "Homepage View",
-    ["Lineups", "Props"],
-    key="homepage_tab_switch",
-    on_change=set_homepage_tab,
-    label_visibility="collapsed",
-)
+    st.segmented_control(
+        "Homepage View",
+        ["Lineups", "Props"],
+        key="homepage_tab_switch",
+        on_change=set_homepage_tab,
+        label_visibility="collapsed",
+    )
 
-if st.session_state.get("home_tab") == "props":
+    if st.session_state.get("home_tab") == "props":
+        _ensure_query_params({
+            "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
+            "home_tab": "props",
+            "prop": st.session_state.get("homepage_selected_prop", "Hits"),
+        })
+        render_homepage_props_tab()
+        st.stop()
+
     _ensure_query_params({
         "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
-        "home_tab": "props",
-        "prop": st.session_state.get("homepage_selected_prop", "Hits"),
+        "home_tab": "lineups",
     })
-    render_homepage_props_tab()
-    st.stop()
 
-_ensure_query_params({
-    "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
-    "home_tab": "lineups",
-})
+    col1, col2, col3, col4 = st.columns([1, 4, 1, 1])
+    with col1:
+        st.button("←", on_click=shift_homepage_date, args=(-1,))
+    with col2:
+        formatted_date = st.session_state["selected_date"].strftime("%A, %B %d, %Y")
+        st.markdown(
+            f"<div style='text-align:center; font-size:20px; font-weight:600; margin: 8px 0;'>{formatted_date}</div>",
+            unsafe_allow_html=True,
+        )
+    with col3:
+        st.button("→", on_click=shift_homepage_date, args=(1,))
+    with col4:
+        st.button("Today", on_click=set_homepage_today)
 
-col1, col2, col3, col4 = st.columns([1, 4, 1, 1])
-with col1:
-    st.button("←", on_click=shift_homepage_date, args=(-1,))
-with col2:
-    formatted_date = st.session_state["selected_date"].strftime("%A, %B %d, %Y")
-    st.markdown(
-        f"<div style='text-align:center; font-size:20px; font-weight:600; margin: 8px 0;'>{formatted_date}</div>",
-        unsafe_allow_html=True,
-    )
-with col3:
-    st.button("→", on_click=shift_homepage_date, args=(1,))
-with col4:
-    st.button("Today", on_click=set_homepage_today)
+    with st.expander("Calendar", expanded=False):
+        st.date_input(
+            "Select date",
+            key="calendar_date",
+            on_change=set_homepage_calendar_date,
+        )
 
-with st.expander("Calendar", expanded=False):
-    st.date_input(
-        "Select date",
-        key="calendar_date",
-        on_change=set_homepage_calendar_date,
-    )
+    if "games" not in st.session_state:
+        st.session_state["games"] = load_schedule(st.session_state["selected_date"])
 
-if "games" not in st.session_state:
-    st.session_state["games"] = load_schedule(st.session_state["selected_date"])
+    if "games" in st.session_state:
+        PLAYER_API_CALLS = 0
+        games = st.session_state["games"]
+        st.success(f"Loaded {len(games)} games")
+        logger.debug("Games loaded: %s", len(games))
 
-if "games" in st.session_state:
-    PLAYER_API_CALLS = 0
-    games = st.session_state["games"]
-    st.success(f"Loaded {len(games)} games")
-    logger.debug("Games loaded: %s", len(games))
+        load_start = time.perf_counter()
+        for i in range(0, len(games), 2):
+            row_cols = st.columns(2)
 
-    load_start = time.perf_counter()
-    for i in range(0, len(games), 2):
-        row_cols = st.columns(2)
+            for col, (_, game) in zip(row_cols, games.iloc[i:i + 2].iterrows()):
+                with col:
+                    with st.container(border=True):
+                        st.markdown("<div class='game-card'>", unsafe_allow_html=True)
+                        st.markdown(
+                            f"<div style='display:flex; justify-content:center; align-items:center; gap:16px; margin-bottom:8px;'>"
+                            f"<div style='width:48px; height:48px; display:flex; justify-content:center; align-items:center;'>"
+                            f"<img src='https://www.mlbstatic.com/team-logos/{game['away_team_id']}.svg' alt='{game['away_abbrev']} logo' style='display:block; width:100%; height:100%; object-fit:contain;' />"
+                            f"</div>"
+                            f"<span style='font-size:1.1rem; font-weight:600; line-height:1; display:flex; align-items:center;'>@</span>"
+                            f"<div style='width:48px; height:48px; display:flex; justify-content:center; align-items:center;'>"
+                            f"<img src='https://www.mlbstatic.com/team-logos/{game['home_team_id']}.svg' alt='{game['home_abbrev']} logo' style='display:block; width:100%; height:100%; object-fit:contain;' />"
+                            f"</div>"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
+                        raw_status = game.get("status", "")
+                        display_status_text = display_status(raw_status)
+                        status_color_text = status_color(raw_status)
+                        st.markdown(
+                            f"<div style='text-align:center; margin-bottom:6px;'>"
+                            f"<span style='font-weight:700; font-size:17px;'>🕒 {game['game_time_et']}</span>"
+                            f"</div>"
+                            f"<div style='text-align:center; font-size:13px; color:#555;'>"
+                            f"{game['venue']} | "
+                            f"<span style='color:{status_color_text}; font-weight:700;'>{display_status_text}</span>"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
 
-        for col, (_, game) in zip(row_cols, games.iloc[i:i + 2].iterrows()):
-            with col:
-                with st.container(border=True):
-                    st.markdown("<div class='game-card'>", unsafe_allow_html=True)
-                    st.markdown(
-                        f"<div style='display:flex; justify-content:center; align-items:center; gap:16px; margin-bottom:8px;'>"
-                        f"<div style='width:48px; height:48px; display:flex; justify-content:center; align-items:center;'>"
-                        f"<img src='https://www.mlbstatic.com/team-logos/{game['away_team_id']}.svg' alt='{game['away_abbrev']} logo' style='display:block; width:100%; height:100%; object-fit:contain;' />"
-                        f"</div>"
-                        f"<span style='font-size:1.1rem; font-weight:600; line-height:1; display:flex; align-items:center;'>@</span>"
-                        f"<div style='width:48px; height:48px; display:flex; justify-content:center; align-items:center;'>"
-                        f"<img src='https://www.mlbstatic.com/team-logos/{game['home_team_id']}.svg' alt='{game['home_abbrev']} logo' style='display:block; width:100%; height:100%; object-fit:contain;' />"
-                        f"</div>"
-                        f"</div>",
-                        unsafe_allow_html=True,
-                    )
-                    raw_status = game.get("status", "")
-                    display_status_text = display_status(raw_status)
-                    status_color_text = status_color(raw_status)
-                    st.markdown(
-                        f"<div style='text-align:center; margin-bottom:6px;'>"
-                        f"<span style='font-weight:700; font-size:17px;'>🕒 {game['game_time_et']}</span>"
-                        f"</div>"
-                        f"<div style='text-align:center; font-size:13px; color:#555;'>"
-                        f"{game['venue']} | "
-                        f"<span style='color:{status_color_text}; font-weight:700;'>{display_status_text}</span>"
-                        f"</div>",
-                        unsafe_allow_html=True,
-                    )
+                        lineup_context = get_game_lineups(game["game_pk"], game)
+                        away_lineup = lineup_context.get("away", [])
+                        home_lineup = lineup_context.get("home", [])
 
-                    lineup_context = get_game_lineups(game["game_pk"], game)
-                    away_lineup = lineup_context.get("away", [])
-                    home_lineup = lineup_context.get("home", [])
+                        away_col, home_col = st.columns(2)
 
-                    away_col, home_col = st.columns(2)
-
-                    with away_col:
-                        st.markdown(f"### {game['away_team']}")
-                        away_pitcher_label = f"Starting Pitcher:"
-                        away_btn_key = f"away_pitch_{game['game_pk']}"
-                        c_label, c_button, c_hand = st.columns([1, 3, 1])
-                        c_label.markdown(away_pitcher_label)
-                        # Render pitcher name as a link-styled button that opens pitcher detail
-                        if c_button.button(game['away_pitcher'], key=away_btn_key):
-                            selected_pitcher = {
-                                'name': game.get('away_pitcher'),
-                                'id': game.get('away_pitcher_id'),
-                                'hand': game.get('away_pitcher_hand'),
-                                'side': 'away'
-                            }
-                            st.session_state['selected_pitcher'] = selected_pitcher
-                            st.session_state['selected_game'] = game['game_pk']
-                            _set_pitcher_detail_query(selected_pitcher, game['game_pk'])
-                            st.rerun()
-                        away_hand_text = game.get('away_pitcher_hand')
-                        c_hand.markdown(f"({away_hand_text})" if away_hand_text else "")
-                        if not away_lineup:
-                            st.markdown(
-                                f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; padding-top:6px; color:#92400e; font-weight:600;'>Lineup not posted yet.</div>",
-                                unsafe_allow_html=True,
-                            )
-                        else:
-                            away_lines = []
-                            for player in away_lineup:
-                                ph = f" ({player.get('handedness')})" if player.get('handedness') else ''
-                                batter_name = player.get("name", "")
-                                if player.get("player_id"):
-                                    batter_href = _build_batter_detail_href(
-                                        player.get("player_id"),
-                                        batter_name=batter_name,
-                                        batter_hand=player.get("handedness", ""),
-                                        team=game.get("away_team", ""),
-                                        team_id=game.get("away_team_id", ""),
-                                        opponent=game.get("home_team", ""),
-                                        opponent_id=game.get("home_team_id", ""),
-                                        return_game_pk=game["game_pk"],
-                                    )
-                                    batter_name_html = (
-                                        f"<a class='nav-name-link' href='{html.escape(batter_href, quote=True)}' target='_self'>"
-                                        f"{html.escape(str(batter_name))}</a>"
-                                    )
-                                else:
-                                    batter_name_html = html.escape(str(batter_name))
-                                away_lines.append(f"<div style='line-height:1.4; margin:4px 0;'>{player.get('number','')}. {batter_name_html}{ph} {player.get('position','')}</div>")
-                            away_lines_html = "".join(away_lines)
-                            away_warning_html = (
-                                "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #dc2626; border-radius:6px; background:#fef2f2; color:#b91c1c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
-                                if any(player.get("is_projected") for player in away_lineup)
-                                else ""
-                            )
-                            away_confirmed_html = ""
-                            if not away_warning_html:
-                                away_confirmed_html = (
-                                    "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #16a34a; border-radius:6px; background:#f0fdf4; color:#15803d; font-weight:800;'>"
-                                    "🟢 Confirmed MLB Lineup"
-                                    "</div>"
+                        with away_col:
+                            st.markdown(f"### {game['away_team']}")
+                            away_pitcher_label = f"Starting Pitcher:"
+                            away_btn_key = f"away_pitch_{game['game_pk']}"
+                            c_label, c_button, c_hand = st.columns([1, 3, 1])
+                            c_label.markdown(away_pitcher_label)
+                            # Render pitcher name as a link-styled button that opens pitcher detail
+                            if c_button.button(game['away_pitcher'], key=away_btn_key):
+                                selected_pitcher = {
+                                    'name': game.get('away_pitcher'),
+                                    'id': game.get('away_pitcher_id'),
+                                    'hand': game.get('away_pitcher_hand'),
+                                    'side': 'away'
+                                }
+                                st.session_state['selected_pitcher'] = selected_pitcher
+                                st.session_state['selected_game'] = game['game_pk']
+                                _set_pitcher_detail_query(selected_pitcher, game['game_pk'])
+                                st.rerun()
+                            away_hand_text = game.get('away_pitcher_hand')
+                            c_hand.markdown(f"({away_hand_text})" if away_hand_text else "")
+                            if not away_lineup:
+                                st.markdown(
+                                    f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; padding-top:6px; color:#92400e; font-weight:600;'>Lineup not posted yet.</div>",
+                                    unsafe_allow_html=True,
                                 )
-                            st.markdown(
-                                f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start;'>{away_warning_html}{away_confirmed_html}{away_lines_html}</div>",
-                                unsafe_allow_html=True,
-                            )
-
-                    with home_col:
-                        st.markdown(f"### {game['home_team']}")
-                        home_pitcher_label = f"Starting Pitcher:"
-                        home_btn_key = f"home_pitch_{game['game_pk']}"
-                        c_label_h, c_button_h, c_hand_h = st.columns([1, 3, 1])
-                        c_label_h.markdown(home_pitcher_label)
-                        # Render pitcher name as a link-styled button that opens pitcher detail
-                        if c_button_h.button(game['home_pitcher'], key=home_btn_key):
-                            selected_pitcher = {
-                                'name': game.get('home_pitcher'),
-                                'id': game.get('home_pitcher_id'),
-                                'hand': game.get('home_pitcher_hand'),
-                                'side': 'home'
-                            }
-                            st.session_state['selected_pitcher'] = selected_pitcher
-                            st.session_state['selected_game'] = game['game_pk']
-                            _set_pitcher_detail_query(selected_pitcher, game['game_pk'])
-                            st.rerun()
-                        home_hand_text = game.get('home_pitcher_hand')
-                        c_hand_h.markdown(f"({home_hand_text})" if home_hand_text else "")
-
-                        if not home_lineup:
-                            st.markdown(
-                                f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; padding-top:6px; color:#92400e; font-weight:600;'>Lineup not posted yet.</div>",
-                                unsafe_allow_html=True,
-                            )
-                        else:
-                            home_lines = []
-                            for player in home_lineup:
-                                ph = f" ({player.get('handedness')})" if player.get('handedness') else ''
-                                batter_name = player.get("name", "")
-                                if player.get("player_id"):
-                                    batter_href = _build_batter_detail_href(
-                                        player.get("player_id"),
-                                        batter_name=batter_name,
-                                        batter_hand=player.get("handedness", ""),
-                                        team=game.get("home_team", ""),
-                                        team_id=game.get("home_team_id", ""),
-                                        opponent=game.get("away_team", ""),
-                                        opponent_id=game.get("away_team_id", ""),
-                                        return_game_pk=game["game_pk"],
-                                    )
-                                    batter_name_html = (
-                                        f"<a class='nav-name-link' href='{html.escape(batter_href, quote=True)}' target='_self'>"
-                                        f"{html.escape(str(batter_name))}</a>"
-                                    )
-                                else:
-                                    batter_name_html = html.escape(str(batter_name))
-                                home_lines.append(f"<div style='line-height:1.4; margin:4px 0;'>{player.get('number','')}. {batter_name_html}{ph} {player.get('position','')}</div>")
-                            home_lines_html = "".join(home_lines)
-                            home_warning_html = (
-                                "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #dc2626; border-radius:6px; background:#fef2f2; color:#b91c1c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
-                                if any(player.get("is_projected") for player in home_lineup)
-                                else ""
-                            )
-                            home_confirmed_html = ""
-                            if not home_warning_html:
-                                home_confirmed_html = (
-                                    "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #16a34a; border-radius:6px; background:#f0fdf4; color:#15803d; font-weight:800;'>"
-                                    "🟢 Confirmed MLB Lineup"
-                                    "</div>"
+                            else:
+                                away_lines = []
+                                for player in away_lineup:
+                                    ph = f" ({player.get('handedness')})" if player.get('handedness') else ''
+                                    batter_name = player.get("name", "")
+                                    if player.get("player_id"):
+                                        batter_href = _build_batter_detail_href(
+                                            player.get("player_id"),
+                                            batter_name=batter_name,
+                                            batter_hand=player.get("handedness", ""),
+                                            team=game.get("away_team", ""),
+                                            team_id=game.get("away_team_id", ""),
+                                            opponent=game.get("home_team", ""),
+                                            opponent_id=game.get("home_team_id", ""),
+                                            return_game_pk=game["game_pk"],
+                                        )
+                                        batter_name_html = (
+                                            f"<a class='nav-name-link' href='{html.escape(batter_href, quote=True)}' target='_self'>"
+                                            f"{html.escape(str(batter_name))}</a>"
+                                        )
+                                    else:
+                                        batter_name_html = html.escape(str(batter_name))
+                                    away_lines.append(f"<div style='line-height:1.4; margin:4px 0;'>{player.get('number','')}. {batter_name_html}{ph} {player.get('position','')}</div>")
+                                away_lines_html = "".join(away_lines)
+                                away_warning_html = (
+                                    "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #dc2626; border-radius:6px; background:#fef2f2; color:#b91c1c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
+                                    if any(player.get("is_projected") for player in away_lineup)
+                                    else ""
                                 )
-                            st.markdown(
-                                f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start;'>{home_warning_html}{home_confirmed_html}{home_lines_html}</div>",
-                                unsafe_allow_html=True,
-                            )
-                    st.markdown("</div>", unsafe_allow_html=True)
-    load_time = time.perf_counter() - load_start
-    logger.debug("Player API calls: %s", PLAYER_API_CALLS)
-    logger.debug("Total load time: %.2fs", load_time)
-    st.caption(f"Games loaded: {len(games)} | player API calls: {PLAYER_API_CALLS} | total load time: {load_time:.2f}s")
+                                away_confirmed_html = ""
+                                if not away_warning_html:
+                                    away_confirmed_html = (
+                                        "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #16a34a; border-radius:6px; background:#f0fdf4; color:#15803d; font-weight:800;'>"
+                                        "🟢 Confirmed MLB Lineup"
+                                        "</div>"
+                                    )
+                                st.markdown(
+                                    f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start;'>{away_warning_html}{away_confirmed_html}{away_lines_html}</div>",
+                                    unsafe_allow_html=True,
+                                )
+
+                        with home_col:
+                            st.markdown(f"### {game['home_team']}")
+                            home_pitcher_label = f"Starting Pitcher:"
+                            home_btn_key = f"home_pitch_{game['game_pk']}"
+                            c_label_h, c_button_h, c_hand_h = st.columns([1, 3, 1])
+                            c_label_h.markdown(home_pitcher_label)
+                            # Render pitcher name as a link-styled button that opens pitcher detail
+                            if c_button_h.button(game['home_pitcher'], key=home_btn_key):
+                                selected_pitcher = {
+                                    'name': game.get('home_pitcher'),
+                                    'id': game.get('home_pitcher_id'),
+                                    'hand': game.get('home_pitcher_hand'),
+                                    'side': 'home'
+                                }
+                                st.session_state['selected_pitcher'] = selected_pitcher
+                                st.session_state['selected_game'] = game['game_pk']
+                                _set_pitcher_detail_query(selected_pitcher, game['game_pk'])
+                                st.rerun()
+                            home_hand_text = game.get('home_pitcher_hand')
+                            c_hand_h.markdown(f"({home_hand_text})" if home_hand_text else "")
+
+                            if not home_lineup:
+                                st.markdown(
+                                    f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; padding-top:6px; color:#92400e; font-weight:600;'>Lineup not posted yet.</div>",
+                                    unsafe_allow_html=True,
+                                )
+                            else:
+                                home_lines = []
+                                for player in home_lineup:
+                                    ph = f" ({player.get('handedness')})" if player.get('handedness') else ''
+                                    batter_name = player.get("name", "")
+                                    if player.get("player_id"):
+                                        batter_href = _build_batter_detail_href(
+                                            player.get("player_id"),
+                                            batter_name=batter_name,
+                                            batter_hand=player.get("handedness", ""),
+                                            team=game.get("home_team", ""),
+                                            team_id=game.get("home_team_id", ""),
+                                            opponent=game.get("away_team", ""),
+                                            opponent_id=game.get("away_team_id", ""),
+                                            return_game_pk=game["game_pk"],
+                                        )
+                                        batter_name_html = (
+                                            f"<a class='nav-name-link' href='{html.escape(batter_href, quote=True)}' target='_self'>"
+                                            f"{html.escape(str(batter_name))}</a>"
+                                        )
+                                    else:
+                                        batter_name_html = html.escape(str(batter_name))
+                                    home_lines.append(f"<div style='line-height:1.4; margin:4px 0;'>{player.get('number','')}. {batter_name_html}{ph} {player.get('position','')}</div>")
+                                home_lines_html = "".join(home_lines)
+                                home_warning_html = (
+                                    "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #dc2626; border-radius:6px; background:#fef2f2; color:#b91c1c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
+                                    if any(player.get("is_projected") for player in home_lineup)
+                                    else ""
+                                )
+                                home_confirmed_html = ""
+                                if not home_warning_html:
+                                    home_confirmed_html = (
+                                        "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #16a34a; border-radius:6px; background:#f0fdf4; color:#15803d; font-weight:800;'>"
+                                        "🟢 Confirmed MLB Lineup"
+                                        "</div>"
+                                    )
+                                st.markdown(
+                                    f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start;'>{home_warning_html}{home_confirmed_html}{home_lines_html}</div>",
+                                    unsafe_allow_html=True,
+                                )
+                        st.markdown("</div>", unsafe_allow_html=True)
+        load_time = time.perf_counter() - load_start
+        logger.debug("Player API calls: %s", PLAYER_API_CALLS)
+        logger.debug("Total load time: %.2fs", load_time)
+        st.caption(f"Games loaded: {len(games)} | player API calls: {PLAYER_API_CALLS} | total load time: {load_time:.2f}s")
+
+
+def main():
+    _render_page_header_and_styles()
+    _initialize_page_state_from_query()
+    render_selected_batter_view()
+    render_selected_pitcher_view()
+    render_homepage()
+
+
+if __name__ == "__main__":
+    main()
