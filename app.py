@@ -4039,6 +4039,9 @@ def homepage_slate_batter_map(games):
 
 
 def render_homepage_props_tab():
+    props_render_run_id = int(st.session_state.get("props_render_run_id", 0) or 0) + 1
+    st.session_state["props_render_run_id"] = props_render_run_id
+    logger.warning("Props render run %s: start", props_render_run_id)
     st.markdown("## Props")
     if "games" not in st.session_state:
         st.session_state["games"] = load_schedule(st.session_state["selected_date"])
@@ -4516,19 +4519,81 @@ def render_homepage_props_tab():
         return row
 
     card_slots = []
-    def _render_props_card_slot(slot, row, stat_values):
-        slot.empty()
-        slot.markdown(_props_card_html(row, stat_values), unsafe_allow_html=True)
+    def _render_props_card_slot(slot, row, stat_values, phase, index):
+        player_name = row.get("player", "")
+        player_id = row.get("player_id", "")
+        image_url = row.get("image_url", "")
+        has_real_stat = any(
+            str(stat_values.get(label, "—")) not in {"", "—", "--"}
+            for label in ("L5", "L10", "L15", "H2H", "AVG", "SZN")
+        )
+        logger.warning(
+            "Props render run %s: slot render begin phase=%s index=%s player=%s slot_id=%s has_markdown=%s player_id=%s image=%s real_stat=%s",
+            props_render_run_id,
+            phase,
+            index,
+            player_name,
+            id(slot),
+            hasattr(slot, "markdown"),
+            player_id,
+            bool(image_url),
+            has_real_stat,
+        )
+        try:
+            slot.empty()
+            slot.markdown(_props_card_html(row, stat_values), unsafe_allow_html=True)
+            logger.warning(
+                "Props render run %s: slot render complete phase=%s index=%s player=%s slot_id=%s",
+                props_render_run_id,
+                phase,
+                index,
+                player_name,
+                id(slot),
+            )
+        except Exception:
+            logger.exception(
+                "Props render run %s: slot render failed phase=%s index=%s player=%s slot_id=%s",
+                props_render_run_id,
+                phase,
+                index,
+                player_name,
+                id(slot),
+            )
+            raise
 
-    for row in rows:
+    logger.warning("Props render run %s: placeholder phase start rows=%s", props_render_run_id, len(rows))
+    for index, row in enumerate(rows):
         slot = st.empty()
-        _render_props_card_slot(slot, row, _props_blank_stat_values())
+        _render_props_card_slot(slot, row, _props_blank_stat_values(), "placeholder", index)
         card_slots.append((slot, row))
+    logger.warning("Props render run %s: placeholder phase complete slots=%s", props_render_run_id, len(card_slots))
 
+    logger.warning("Props render run %s: enrichment phase start slots=%s", props_render_run_id, len(card_slots))
     for index, (slot, row) in enumerate(card_slots):
-        enriched_row = _enrich_props_card_identity(row)
-        card_slots[index] = (slot, enriched_row)
-        _render_props_card_slot(slot, enriched_row, _props_blank_stat_values())
+        try:
+            enriched_row = _enrich_props_card_identity(row)
+            card_slots[index] = (slot, enriched_row)
+            logger.warning(
+                "Props render run %s: enrichment resolved index=%s player=%s slot_id=%s player_id=%s image=%s href=%s",
+                props_render_run_id,
+                index,
+                enriched_row.get("player", ""),
+                id(slot),
+                enriched_row.get("player_id", ""),
+                bool(enriched_row.get("image_url", "")),
+                bool(enriched_row.get("href", "")),
+            )
+            _render_props_card_slot(slot, enriched_row, _props_blank_stat_values(), "enrichment", index)
+        except Exception:
+            logger.exception(
+                "Props render run %s: enrichment failed index=%s player=%s slot_id=%s",
+                props_render_run_id,
+                index,
+                row.get("player", ""),
+                id(slot),
+            )
+            raise
+    logger.warning("Props render run %s: enrichment phase complete", props_render_run_id)
 
     rows_by_game_log_key = {}
     for index, row in enumerate(rows):
@@ -4539,11 +4604,39 @@ def render_homepage_props_tab():
         include_first_inning = prop_column == "first_inning_hrrrbi"
         rows_by_game_log_key.setdefault((player_id, include_first_inning), []).append((index, row))
 
-    for _, indexed_rows in rows_by_game_log_key.items():
-        stat_summary_cache = _build_props_stat_summary_cache([row for _, row in indexed_rows])
+    logger.warning(
+        "Props render run %s: stat phase start game_log_groups=%s stat_rows=%s",
+        props_render_run_id,
+        len(rows_by_game_log_key),
+        sum(len(indexed_rows) for indexed_rows in rows_by_game_log_key.values()),
+    )
+    for game_log_key, indexed_rows in rows_by_game_log_key.items():
+        logger.warning(
+            "Props render run %s: stat group start game_log_key=%s rows=%s",
+            props_render_run_id,
+            game_log_key,
+            len(indexed_rows),
+        )
+        try:
+            stat_summary_cache = _build_props_stat_summary_cache([row for _, row in indexed_rows])
+        except Exception:
+            logger.exception(
+                "Props render run %s: stat summary build failed game_log_key=%s rows=%s",
+                props_render_run_id,
+                game_log_key,
+                len(indexed_rows),
+            )
+            raise
         for index, row in indexed_rows:
             slot, _ = card_slots[index]
-            _render_props_card_slot(slot, row, _props_card_stat_values(row, stat_summary_cache))
+            _render_props_card_slot(slot, row, _props_card_stat_values(row, stat_summary_cache), "stat", index)
+        logger.warning(
+            "Props render run %s: stat group complete game_log_key=%s",
+            props_render_run_id,
+            game_log_key,
+        )
+    logger.warning("Props render run %s: stat phase complete", props_render_run_id)
+    logger.warning("Props render run %s: complete", props_render_run_id)
 
 
 def render_homepage():
