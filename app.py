@@ -4518,6 +4518,111 @@ def render_homepage_props_tab():
         })
         return row
 
+    prototype_rows = rows[:20]
+    legacy_rows = rows[20:]
+    prototype_batch_size = 5
+
+    def _props_fragment_signature(fragment_rows):
+        signature_parts = [
+            st.session_state.get("selected_date", eastern_today()).isoformat(),
+            selected_prop,
+        ]
+        for index, row in enumerate(fragment_rows):
+            signature_parts.append(
+                "|".join(
+                    [
+                        str(index),
+                        normalize_name(row.get("player", "")),
+                        str(row.get("line", "")),
+                        normalize_name(row.get("odds_type", "")),
+                        normalize_name(row.get("team", "")),
+                        normalize_name(row.get("opponent", "")),
+                    ]
+                )
+            )
+        return "||".join(signature_parts)
+
+    @st.fragment(run_every=1)
+    def _render_props_fragment_batch(batch_key, fragment_rows):
+        state_key = f"props_fragment_batch_state_{batch_key}"
+        signature = _props_fragment_signature(fragment_rows)
+        state = st.session_state.get(state_key)
+        if not isinstance(state, dict) or state.get("signature") != signature:
+            state = {
+                "signature": signature,
+                "rows": [dict(row) for row in fragment_rows],
+                "stat_values": {
+                    str(index): _props_blank_stat_values()
+                    for index in range(len(fragment_rows))
+                },
+                "next_enrich_index": 0,
+                "stat_groups": None,
+                "next_stat_group_index": 0,
+                "done": False,
+            }
+            st.session_state[state_key] = state
+
+        state_rows = state.get("rows", [])
+        stat_values_by_index = state.get("stat_values", {})
+        for index, row in enumerate(state_rows):
+            st.markdown(
+                _props_card_html(
+                    row,
+                    stat_values_by_index.get(str(index), _props_blank_stat_values()),
+                ),
+                unsafe_allow_html=True,
+            )
+
+        if state.get("done"):
+            return
+
+        next_enrich_index = int(state.get("next_enrich_index", 0) or 0)
+        if next_enrich_index < len(state_rows):
+            state_rows[next_enrich_index] = _enrich_props_card_identity(dict(state_rows[next_enrich_index]))
+            state["next_enrich_index"] = next_enrich_index + 1
+            st.session_state[state_key] = state
+            return
+
+        if state.get("stat_groups") is None:
+            rows_by_game_log_key = {}
+            for index, row in enumerate(state_rows):
+                cache_key = _props_stat_cache_key(row)
+                if not cache_key:
+                    continue
+                player_id, prop_column, _, _, _ = cache_key
+                include_first_inning = prop_column == "first_inning_hrrrbi"
+                rows_by_game_log_key.setdefault((player_id, include_first_inning), []).append(index)
+            state["stat_groups"] = list(rows_by_game_log_key.values())
+
+        next_group_index = int(state.get("next_stat_group_index", 0) or 0)
+        stat_groups = state.get("stat_groups") or []
+        if next_group_index < len(stat_groups):
+            group_indexes = stat_groups[next_group_index]
+            stat_summary_cache = _build_props_stat_summary_cache([state_rows[index] for index in group_indexes])
+            for index in group_indexes:
+                stat_values_by_index[str(index)] = _props_card_stat_values(state_rows[index], stat_summary_cache)
+            state["next_stat_group_index"] = next_group_index + 1
+            st.session_state[state_key] = state
+            return
+
+        state["done"] = True
+        st.session_state[state_key] = state
+
+    def _render_props_fragment_prototype():
+        if not prototype_rows:
+            return
+        logger.warning(
+            "Props render run %s: fragment prototype start rows=%s batches=%s",
+            props_render_run_id,
+            len(prototype_rows),
+            (len(prototype_rows) + prototype_batch_size - 1) // prototype_batch_size,
+        )
+        for batch_start in range(0, len(prototype_rows), prototype_batch_size):
+            batch_rows = prototype_rows[batch_start:batch_start + prototype_batch_size]
+            batch_key = f"{selected_prop_key}_{batch_start}"
+            _render_props_fragment_batch(batch_key, batch_rows)
+        logger.warning("Props render run %s: fragment prototype complete", props_render_run_id)
+
     card_slots = []
     def _render_props_card_slot(slot, row, stat_values, phase, index):
         player_name = row.get("player", "")
@@ -4561,8 +4666,10 @@ def render_homepage_props_tab():
             )
             raise
 
-    logger.warning("Props render run %s: placeholder phase start rows=%s", props_render_run_id, len(rows))
-    for index, row in enumerate(rows):
+    _render_props_fragment_prototype()
+
+    logger.warning("Props render run %s: placeholder phase start rows=%s", props_render_run_id, len(legacy_rows))
+    for index, row in enumerate(legacy_rows):
         slot = st.empty()
         _render_props_card_slot(slot, row, _props_blank_stat_values(), "placeholder", index)
         card_slots.append((slot, row))
@@ -4596,7 +4703,7 @@ def render_homepage_props_tab():
     logger.warning("Props render run %s: enrichment phase complete", props_render_run_id)
 
     rows_by_game_log_key = {}
-    for index, row in enumerate(rows):
+    for index, row in enumerate(legacy_rows):
         cache_key = _props_stat_cache_key(row)
         if not cache_key:
             continue
