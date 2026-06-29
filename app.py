@@ -4173,67 +4173,28 @@ def render_homepage_props_tab():
         opponent_id = team_context.get("opponent_id", "")
         game_pk = team_context.get("game_pk", "")
         game_time = team_context.get("game_time", "")
-        hand = ""
-
-        player_id = _projection_player_id(record)
-        if not player_id:
-            player_cache_key = (normalize_name(player_name), str(team_id or ""))
-            if player_cache_key not in player_id_cache:
-                player_id_cache[player_cache_key] = resolve_player_id_from_team_roster(player_name, team_id)
-            player_id = player_id_cache[player_cache_key]
-
-        lineup_info = {}
-        if not player_id:
-            lineup_info = _lineup_fallback_info(player_name, team_context)
-            player_id = lineup_info.get("player_id", "")
-            hand = lineup_info.get("hand", "")
-            team = lineup_info.get("team") or team
-            team_id = lineup_info.get("team_id") or team_id
-            opponent = lineup_info.get("opponent") or opponent
-            opponent_id = lineup_info.get("opponent_id") or opponent_id
-            game_pk = lineup_info.get("game_pk") or game_pk
-            game_time = lineup_info.get("game_time") or game_time
-
-        image_url = mlb_player_headshot_url(player_id) or _projection_value(record, "image_url", "imageUrl", default="")
-        image_tag_rendered = bool(image_url)
-        logger.debug(
-            "Props headshot debug: player=%s resolved_player_id=%s image_url=%s image_tag_rendered=%s",
-            player_name,
-            player_id,
-            image_url,
-            image_tag_rendered,
-        )
-        batter_href = ""
-        if player_id:
-            batter_href = _build_batter_detail_href(
-                player_id,
-                batter_name=player_name,
-                batter_hand=hand,
-                team=team,
-                team_id=team_id,
-                opponent=opponent,
-                opponent_id=opponent_id,
-                return_game_pk=game_pk,
-                prop=selected_prop,
-                line=line_value,
-            )
 
         modifier = str(odds_type or "").strip().title()
         if modifier not in {"Goblin", "Demon"}:
             modifier = "Standard"
         rows.append({
             "player": player_name,
-            "href": batter_href,
+            "href": "",
             "team": team,
+            "team_id": team_id,
             "opponent": opponent,
             "opponent_id": opponent_id,
-            "hand": hand,
-            "player_id": player_id,
+            "hand": "",
+            "player_id": "",
+            "projection_player_id": _projection_player_id(record),
+            "projection_image_url": _projection_value(record, "image_url", "imageUrl", default=""),
+            "team_context": team_context,
+            "game_pk": game_pk,
             "prop": selected_prop,
             "line": line_value,
             "odds_type": odds_type,
             "status": f"PrizePicks • {modifier}",
-            "image_url": image_url,
+            "image_url": _projection_value(record, "image_url", "imageUrl", default=""),
             "game_time": game_time,
         })
 
@@ -4282,69 +4243,142 @@ def render_homepage_props_tab():
             return parts[0][:2].upper()
         return f"{parts[0][0]}{parts[-1][0]}".upper()
 
-    game_log_cache = {}
+    def _props_blank_stat_values():
+        return {label: "—" for label in ("L5", "L10", "L15", "H2H", "AVG", "SZN")}
 
-    def _props_card_stat_values(row):
-        blank_values = {label: "—" for label in ("L5", "L10", "L15", "H2H", "AVG", "SZN")}
-        player_id = row.get("player_id")
+    def _props_stat_cache_key(row):
         prop_column = GAME_LOG_PROP_COLUMNS.get(row.get("prop"))
+        player_id = row.get("player_id")
         if not player_id or not prop_column:
-            return blank_values
-
+            return None
         try:
             selected_prop_line = float(row.get("line"))
         except (TypeError, ValueError):
-            return blank_values
+            return None
+        return (
+            str(player_id),
+            prop_column,
+            selected_prop_line,
+            str(row.get("opponent_id") or "").strip(),
+            normalize_name(row.get("opponent", "")),
+        )
 
-        include_first_inning = prop_column == "first_inning_hrrrbi"
-        game_log_key = (str(player_id), include_first_inning)
-        if game_log_key not in game_log_cache:
-            game_log_cache[game_log_key] = load_batter_prop_game_log(
+    def _props_summary_from_values(values, selected_prop_line, empty_hit_rate_text="--", empty_avg_text="--"):
+        if values.empty:
+            return {
+                "hit_rate_text": empty_hit_rate_text,
+                "avg_text": empty_avg_text,
+                "indicator": "",
+                "games": 0,
+            }
+
+        hit_rate = float((values >= selected_prop_line).mean() * 100.0)
+        avg_value = float(values.mean())
+        if hit_rate >= 60:
+            indicator = "🟢"
+        elif hit_rate >= 45:
+            indicator = "🟠"
+        else:
+            indicator = "🔴"
+
+        return {
+            "hit_rate_text": f"{hit_rate:.0f}%",
+            "avg_text": f"{avg_value:.2f}",
+            "indicator": indicator,
+            "games": int(len(values)),
+        }
+
+    def _props_numeric_sample_values(game_log_df, prop_column, sample_label):
+        sample_df = game_log_sample_dataframe(game_log_df, sample_label)
+        if sample_df.empty or prop_column not in sample_df.columns:
+            return pd.Series(dtype="float64")
+        return pd.to_numeric(sample_df[prop_column], errors="coerce").dropna()
+
+    def _build_props_stat_summary_cache(rows):
+        stat_summary_cache = {}
+        rows_by_game_log_key = {}
+        for row in rows:
+            cache_key = _props_stat_cache_key(row)
+            if not cache_key:
+                continue
+            player_id, prop_column, _, _, _ = cache_key
+            include_first_inning = prop_column == "first_inning_hrrrbi"
+            rows_by_game_log_key.setdefault((player_id, include_first_inning), []).append((row, cache_key))
+
+        for (player_id, include_first_inning), player_rows in rows_by_game_log_key.items():
+            game_log_df = load_batter_prop_game_log(
                 player_id,
                 include_first_inning=include_first_inning,
             )
-        game_log_df = game_log_cache[game_log_key]
-        if game_log_df.empty or prop_column not in game_log_df.columns:
-            return blank_values
+            if game_log_df.empty:
+                for _, cache_key in player_rows:
+                    stat_summary_cache[cache_key] = _props_blank_stat_values()
+                continue
 
-        stat_values = blank_values.copy()
-        for sample_label in ("L5", "L10", "L15"):
-            summary = prop_hit_rate_sample_summary(
-                game_log_df,
-                prop_column,
-                selected_prop_line,
-                sample_label,
-            )
-            stat_values[sample_label] = summary.get("hit_rate_text", "--")
+            rows_by_prop = {}
+            for row, cache_key in player_rows:
+                prop_column = cache_key[1]
+                rows_by_prop.setdefault(prop_column, []).append((row, cache_key))
 
-        season_summary = prop_hit_rate_sample_summary(
-            game_log_df,
-            prop_column,
-            selected_prop_line,
-            "2026",
-        )
-        stat_values["AVG"] = season_summary.get("avg_text", "--")
-        stat_values["SZN"] = season_summary.get("hit_rate_text", "--")
+            for prop_column, prop_rows in rows_by_prop.items():
+                if prop_column not in game_log_df.columns:
+                    for _, cache_key in prop_rows:
+                        stat_summary_cache[cache_key] = _props_blank_stat_values()
+                    continue
 
-        opponent_context = {
-            "id": str(row.get("opponent_id") or "").strip(),
-            "name": str(row.get("opponent") or "").strip(),
-            "abbr": "",
-        }
-        if opponent_context["id"] or opponent_context["name"]:
-            h2h_summary = prop_h2h_summary(
-                game_log_df,
-                prop_column,
-                selected_prop_line,
-                opponent_context,
-            )
-            if h2h_summary.get("games", 0) > 0:
-                stat_values["H2H"] = h2h_summary.get("hit_rate_text", "—")
+                sample_values = {
+                    sample_label: _props_numeric_sample_values(game_log_df, prop_column, sample_label)
+                    for sample_label in ("L5", "L10", "L15", "2026")
+                }
+                h2h_values_cache = {}
+                for row, cache_key in prop_rows:
+                    _, _, selected_prop_line, opponent_id, opponent_name_key = cache_key
+                    stat_values = _props_blank_stat_values()
 
-        return stat_values
+                    for sample_label in ("L5", "L10", "L15"):
+                        summary = _props_summary_from_values(sample_values[sample_label], selected_prop_line)
+                        stat_values[sample_label] = summary.get("hit_rate_text", "--")
 
-    cards = []
-    for row in rows:
+                    season_summary = _props_summary_from_values(sample_values["2026"], selected_prop_line)
+                    stat_values["AVG"] = season_summary.get("avg_text", "--")
+                    stat_values["SZN"] = season_summary.get("hit_rate_text", "--")
+
+                    if opponent_id or opponent_name_key:
+                        h2h_cache_key = (opponent_id, opponent_name_key)
+                        if h2h_cache_key not in h2h_values_cache:
+                            opponent_context = {
+                                "id": opponent_id,
+                                "name": str(row.get("opponent") or "").strip(),
+                                "abbr": "",
+                            }
+                            h2h_df = filter_game_logs_vs_opponent(game_log_df, opponent_context)
+                            if h2h_df.empty or prop_column not in h2h_df.columns:
+                                h2h_values_cache[h2h_cache_key] = pd.Series(dtype="float64")
+                            else:
+                                h2h_values_cache[h2h_cache_key] = pd.to_numeric(
+                                    h2h_df[prop_column],
+                                    errors="coerce",
+                                ).dropna()
+                        h2h_summary = _props_summary_from_values(
+                            h2h_values_cache[h2h_cache_key],
+                            selected_prop_line,
+                            empty_hit_rate_text="N/A",
+                            empty_avg_text="—",
+                        )
+                        if h2h_summary.get("games", 0) > 0:
+                            stat_values["H2H"] = h2h_summary.get("hit_rate_text", "—")
+
+                    stat_summary_cache[cache_key] = stat_values
+
+        return stat_summary_cache
+
+    def _props_card_stat_values(row, stat_summary_cache):
+        cache_key = _props_stat_cache_key(row)
+        if not cache_key:
+            return _props_blank_stat_values()
+        return stat_summary_cache.get(cache_key, _props_blank_stat_values())
+
+    def _props_card_html(row, stat_values):
         player_text = html.escape(row["player"])
         line_html = render_line_badge(row.get("line"), row.get("odds_type", ""), show_book_badge=True)
         try:
@@ -4367,7 +4401,6 @@ def render_homepage_props_tab():
             if row.get("image_url")
             else initials_html
         )
-        stat_values = _props_card_stat_values(row)
         stat_tiles = "".join(
             _prop_card_tile(label, stat_values.get(label, "—"))
             for label in ("L5", "L10", "L15", "H2H", "AVG", "SZN")
@@ -4380,7 +4413,7 @@ def render_homepage_props_tab():
             if row.get("href")
             else "<span style='font-size:12px; color:var(--dash-muted); font-weight:700;'>Player detail unavailable</span>"
         )
-        cards.append(
+        return (
             "<div style='border:1px solid var(--dash-border); border-radius:14px; background:var(--dash-card-bg); "
             "box-shadow:0 2px 9px rgba(15,23,42,.10); padding:18px; margin:14px 0; color:var(--dash-text);'>"
             "<div style='display:grid; grid-template-columns:auto minmax(220px,1fr) auto; align-items:center; gap:16px;'>"
@@ -4414,10 +4447,102 @@ def render_homepage_props_tab():
             "</div>"
         )
 
-    st.markdown(
-        f"<div style='width:100%; margin-top:14px;'>{''.join(cards)}</div>",
-        unsafe_allow_html=True,
-    )
+    def _enrich_props_card_identity(row):
+        player_name = row.get("player", "")
+        team_id = row.get("team_id", "")
+        team_context = row.get("team_context", {}) or {}
+        player_id = row.get("projection_player_id", "")
+        hand = row.get("hand", "")
+        team = row.get("team", "")
+        opponent = row.get("opponent", "")
+        opponent_id = row.get("opponent_id", "")
+        game_pk = row.get("game_pk", "")
+        game_time = row.get("game_time", "")
+
+        if not player_id:
+            player_cache_key = (normalize_name(player_name), str(team_id or ""))
+            if player_cache_key not in player_id_cache:
+                player_id_cache[player_cache_key] = resolve_player_id_from_team_roster(player_name, team_id)
+            player_id = player_id_cache[player_cache_key]
+
+        if not player_id:
+            lineup_info = _lineup_fallback_info(player_name, team_context)
+            player_id = lineup_info.get("player_id", "")
+            hand = lineup_info.get("hand", "")
+            team = lineup_info.get("team") or team
+            team_id = lineup_info.get("team_id") or team_id
+            opponent = lineup_info.get("opponent") or opponent
+            opponent_id = lineup_info.get("opponent_id") or opponent_id
+            game_pk = lineup_info.get("game_pk") or game_pk
+            game_time = lineup_info.get("game_time") or game_time
+
+        image_url = mlb_player_headshot_url(player_id) or row.get("projection_image_url", "")
+        image_tag_rendered = bool(image_url)
+        logger.debug(
+            "Props headshot debug: player=%s resolved_player_id=%s image_url=%s image_tag_rendered=%s",
+            player_name,
+            player_id,
+            image_url,
+            image_tag_rendered,
+        )
+
+        batter_href = ""
+        if player_id:
+            batter_href = _build_batter_detail_href(
+                player_id,
+                batter_name=player_name,
+                batter_hand=hand,
+                team=team,
+                team_id=team_id,
+                opponent=opponent,
+                opponent_id=opponent_id,
+                return_game_pk=game_pk,
+                prop=selected_prop,
+                line=row.get("line"),
+            )
+
+        row.update({
+            "href": batter_href,
+            "team": team,
+            "team_id": team_id,
+            "opponent": opponent,
+            "opponent_id": opponent_id,
+            "hand": hand,
+            "player_id": player_id,
+            "image_url": image_url,
+            "game_pk": game_pk,
+            "game_time": game_time,
+        })
+        return row
+
+    card_slots = []
+    for row in rows:
+        slot = st.empty()
+        slot.markdown(_props_card_html(row, _props_blank_stat_values()), unsafe_allow_html=True)
+        card_slots.append((slot, row))
+
+    for index, (slot, row) in enumerate(card_slots):
+        enriched_row = _enrich_props_card_identity(row)
+        card_slots[index] = (slot, enriched_row)
+        slot.markdown(_props_card_html(enriched_row, _props_blank_stat_values()), unsafe_allow_html=True)
+
+    rows_by_game_log_key = {}
+    for index, row in enumerate(rows):
+        cache_key = _props_stat_cache_key(row)
+        if not cache_key:
+            continue
+        player_id, prop_column, _, _, _ = cache_key
+        include_first_inning = prop_column == "first_inning_hrrrbi"
+        rows_by_game_log_key.setdefault((player_id, include_first_inning), []).append((index, row))
+
+    for _, indexed_rows in rows_by_game_log_key.items():
+        stat_summary_cache = _build_props_stat_summary_cache([row for _, row in indexed_rows])
+        for index, row in indexed_rows:
+            slot, _ = card_slots[index]
+            slot.markdown(
+                _props_card_html(row, _props_card_stat_values(row, stat_summary_cache)),
+                unsafe_allow_html=True,
+            )
 
 
 def render_homepage():
