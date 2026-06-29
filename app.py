@@ -3,6 +3,7 @@ import time
 import json
 import io
 import html
+import threading
 import altair as alt
 import streamlit as st
 import pandas as pd
@@ -16,6 +17,10 @@ import strike_zone
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 PLAYER_API_CALLS = 0
+PLAYER_INFO_SESSION_CACHE = {}
+PLAYER_INFO_SESSION_CACHE_LOCK = threading.Lock()
+SAVANT_RESPONSE_SESSION_CACHE = {}
+SAVANT_RESPONSE_SESSION_CACHE_LOCK = threading.Lock()
 LINEUP_MIN_HEIGHT = 220
 GAME_LOG_PROPS = [
     "Hits",
@@ -1172,6 +1177,29 @@ def savant_batter_detail_params(batter_id, start_date, end_date):
     }
 
 
+def _freeze_request_params(params):
+    frozen = []
+    for key, value in params.items():
+        if isinstance(value, (list, tuple)):
+            normalized_value = tuple(str(item) for item in value)
+        else:
+            normalized_value = str(value)
+        frozen.append((str(key), normalized_value))
+    return tuple(sorted(frozen))
+
+
+def _get_cached_response_text(url, params, timeout=45):
+    cache_key = (url, _freeze_request_params(params))
+    with SAVANT_RESPONSE_SESSION_CACHE_LOCK:
+        cached = SAVANT_RESPONSE_SESSION_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+        response = requests.get(url, params=params, timeout=timeout)
+        cached_response = (response.status_code, response.text)
+        SAVANT_RESPONSE_SESSION_CACHE[cache_key] = cached_response
+        return cached_response
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def load_batter_hit_details_by_game(batter_id, season_year):
     if not batter_id or not season_year:
@@ -1188,17 +1216,17 @@ def load_batter_hit_details_by_game(batter_id, season_year):
     params = savant_batter_detail_params(batter_id, start_date, end_date)
 
     try:
-        response = requests.get(url, params=params, timeout=45)
+        status_code, response_text = _get_cached_response_text(url, params, timeout=45)
     except Exception as exc:
         logger.warning("Batter hit detail fetch failed for batter_id=%s season=%s: %s", batter_id, season_year, exc)
         return {}
 
-    if response.status_code != 200:
-        logger.warning("Batter hit detail request failed for batter_id=%s season=%s status=%s", batter_id, season_year, response.status_code)
+    if status_code != 200:
+        logger.warning("Batter hit detail request failed for batter_id=%s season=%s status=%s", batter_id, season_year, status_code)
         return {}
 
     try:
-        raw_df = pd.read_csv(io.StringIO(response.text), low_memory=False)
+        raw_df = pd.read_csv(io.StringIO(response_text), low_memory=False)
     except Exception as exc:
         logger.warning("Failed parsing batter hit detail CSV for batter_id=%s season=%s: %s", batter_id, season_year, exc)
         return {}
@@ -2338,57 +2366,20 @@ def load_batter_run_value_pitch_type_table(batter_id):
     end_date = date.today().isoformat()
 
     url = "https://baseballsavant.mlb.com/statcast_search/csv"
-    params = {
-        "all": "true",
-        "hfPT": "",
-        "hfAB": "",
-        "hfBBT": "",
-        "hfPR": "",
-        "hfZ": "",
-        "stadium": "",
-        "hfBBL": "",
-        "hfNewZones": "",
-        "hfGT": "R|PO|S|",
-        "hfSea": "",
-        "hfSit": "",
-        "player_type": "batter",
-        "hfOuts": "",
-        "opponent": "",
-        "pitcher_throws": "",
-        "batter_stands": "",
-        "hfSA": "",
-        "game_date_gt": start_date,
-        "game_date_lt": end_date,
-        "batters_lookup[]": str(batter_id),
-        "team": "",
-        "position": "",
-        "hfRO": "",
-        "home_road": "",
-        "hfFlag": "",
-        "metric_1": "",
-        "hfInn": "",
-        "min_pitches": "0",
-        "min_results": "0",
-        "group_by": "name",
-        "sort_col": "pitches",
-        "player_event_sort": "h_launch_speed",
-        "sort_order": "desc",
-        "min_abs": "0",
-        "type": "details",
-    }
+    params = savant_batter_detail_params(batter_id, start_date, end_date)
 
     try:
-        response = requests.get(url, params=params, timeout=45)
+        status_code, response_text = _get_cached_response_text(url, params, timeout=45)
     except Exception as exc:
         logger.error("Batter run value fetch failed for batter_id=%s: %s", batter_id, exc)
         return pd.DataFrame()
 
-    if response.status_code != 200:
-        logger.warning("Batter run value request failed for batter_id=%s status=%s", batter_id, response.status_code)
+    if status_code != 200:
+        logger.warning("Batter run value request failed for batter_id=%s status=%s", batter_id, status_code)
         return pd.DataFrame()
 
     try:
-        raw_df = pd.read_csv(io.StringIO(response.text), low_memory=False)
+        raw_df = pd.read_csv(io.StringIO(response_text), low_memory=False)
     except Exception as exc:
         logger.error("Failed parsing batter run value CSV for batter_id=%s: %s", batter_id, exc)
         return pd.DataFrame()
@@ -2753,20 +2744,30 @@ def get_players_info(player_ids):
     if not sanitized_ids:
         return {}
 
-    PLAYER_API_CALLS += 1
-    logger.debug("Fetching handedness for player IDs: %s", sanitized_ids)
-    url = "https://statsapi.mlb.com/api/v1/people"
-    data = requests.get(url, params={"personIds": ",".join(str(pid) for pid in sanitized_ids)}).json()
-    people = data.get("people", [])
-    result = {}
-    for person in people:
-        pid = person.get("id")
-        result[pid] = {
-            "fullName": person.get("fullName", ""),
-            "batSide": person.get("batSide", {}).get("code", ""),
-            "pitchHand": person.get("pitchHand", {}).get("code", "")
-        }
-    return result
+    with PLAYER_INFO_SESSION_CACHE_LOCK:
+        missing_ids = [pid for pid in sanitized_ids if pid not in PLAYER_INFO_SESSION_CACHE]
+
+    if missing_ids:
+        PLAYER_API_CALLS += 1
+        logger.debug("Fetching handedness for player IDs: %s", missing_ids)
+        url = "https://statsapi.mlb.com/api/v1/people"
+        data = requests.get(url, params={"personIds": ",".join(str(pid) for pid in missing_ids)}).json()
+        people = data.get("people", [])
+        fetched = {}
+        for person in people:
+            pid = person.get("id")
+            fetched[pid] = {
+                "fullName": person.get("fullName", ""),
+                "batSide": person.get("batSide", {}).get("code", ""),
+                "pitchHand": person.get("pitchHand", {}).get("code", "")
+            }
+        for pid in missing_ids:
+            fetched.setdefault(pid, {})
+        with PLAYER_INFO_SESSION_CACHE_LOCK:
+            PLAYER_INFO_SESSION_CACHE.update(fetched)
+
+    with PLAYER_INFO_SESSION_CACHE_LOCK:
+        return {pid: PLAYER_INFO_SESSION_CACHE.get(pid, {}) for pid in sanitized_ids}
 
 
 @st.cache_data(ttl=300)
@@ -3561,9 +3562,7 @@ def load_regular_season_pitch_mix(player_id):
     end_date = date.today().isoformat()
 
     try:
-        from pybaseball import statcast_pitcher
-
-        df = statcast_pitcher(start_date, end_date, int(player_id))
+        df = strike_zone.load_pitcher_statcast_data(player_id, start_date, end_date)
     except Exception as exc:
         logger.error("Statcast pitch mix request failed for %s: %s", player_id, exc)
         return {"R": [], "L": [], "all": []}

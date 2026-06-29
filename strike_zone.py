@@ -1,4 +1,5 @@
 import logging
+import threading
 from datetime import date
 from pathlib import Path
 
@@ -6,6 +7,11 @@ import pandas as pd
 import streamlit as st
 
 logger = logging.getLogger(__name__)
+_PITCHER_LOCATION_SESSION_CACHE = {}
+_BATTER_LOCATION_SESSION_CACHE = {}
+_PITCHER_STATCAST_SESSION_CACHE = {}
+_BATTER_STATCAST_SESSION_CACHE = {}
+_LOCATION_SESSION_CACHE_LOCK = threading.Lock()
 
 GRID_CENTER_Z = 2.75
 
@@ -170,18 +176,79 @@ def _normalize_zone_value(zone_value):
 PITCHER_ZONE_METRIC_BASELINES = _load_zone_metric_baselines_from_csv(PITCHER_BASELINE_CSVS)
 
 
-@st.cache_data(ttl=300, show_spinner="Loading strike zone data...")
-def load_pitch_location_data(player_id, start_date, end_date):
-    try:
+def _location_cache_key(player_id, start_date, end_date):
+    return (int(player_id), str(start_date), str(end_date))
+
+
+def _get_cached_location_df(cache, key):
+    with _LOCATION_SESSION_CACHE_LOCK:
+        cached = cache.get(key)
+    if cached is None:
+        return None
+    return cached.copy()
+
+
+def _store_cached_location_df(cache, key, df):
+    with _LOCATION_SESSION_CACHE_LOCK:
+        cache[key] = df.copy()
+    return df
+
+
+def load_pitcher_statcast_data(player_id, start_date, end_date):
+    cache_key = _location_cache_key(player_id, start_date, end_date)
+    with _LOCATION_SESSION_CACHE_LOCK:
+        cached = _PITCHER_STATCAST_SESSION_CACHE.get(cache_key)
+        if cached is not None:
+            return cached.copy()
+
         from pybaseball import statcast_pitcher
 
         df = statcast_pitcher(start_date, end_date, int(player_id))
+        if df is None:
+            df = pd.DataFrame()
+        _PITCHER_STATCAST_SESSION_CACHE[cache_key] = df.copy()
+        return df
+
+
+def load_batter_statcast_data(batter_id, start_date, end_date):
+    cache_key = _location_cache_key(batter_id, start_date, end_date)
+    with _LOCATION_SESSION_CACHE_LOCK:
+        cached = _BATTER_STATCAST_SESSION_CACHE.get(cache_key)
+        if cached is not None:
+            return cached.copy()
+
+        from pybaseball import statcast_batter
+
+        df = statcast_batter(start_date, end_date, int(batter_id))
+        if df is None:
+            df = pd.DataFrame()
+        _BATTER_STATCAST_SESSION_CACHE[cache_key] = df.copy()
+        return df
+
+
+@st.cache_data(ttl=300, show_spinner="Loading strike zone data...")
+def load_pitch_location_data(player_id, start_date, end_date):
+    try:
+        cache_key = _location_cache_key(player_id, start_date, end_date)
+    except (TypeError, ValueError):
+        cache_key = None
+
+    if cache_key is not None:
+        cached_df = _get_cached_location_df(_PITCHER_LOCATION_SESSION_CACHE, cache_key)
+        if cached_df is not None:
+            return cached_df
+
+    try:
+        df = load_pitcher_statcast_data(player_id, start_date, end_date)
     except Exception as exc:
         logger.error("Statcast fetch failed for player_id=%s: %s", player_id, exc)
         return pd.DataFrame()
 
     if df is None or df.empty:
-        return pd.DataFrame()
+        empty_df = pd.DataFrame()
+        if cache_key is not None:
+            return _store_cached_location_df(_PITCHER_LOCATION_SESSION_CACHE, cache_key, empty_df)
+        return empty_df
 
     required = {"zone"}
     if not required.issubset(df.columns):
@@ -194,6 +261,8 @@ def load_pitch_location_data(player_id, start_date, end_date):
     if "batter_stands" not in result_df.columns and "stand" in result_df.columns:
         result_df["batter_stands"] = result_df["stand"]
 
+    if cache_key is not None:
+        return _store_cached_location_df(_PITCHER_LOCATION_SESSION_CACHE, cache_key, result_df)
     return result_df
 
 
@@ -227,15 +296,26 @@ def filter_by_batter_stands(df, batter_stands):
 @st.cache_data(ttl=300, show_spinner="Loading strike zone data...")
 def load_batter_pitch_location_data(batter_id, start_date, end_date):
     try:
-        from pybaseball import statcast_batter
+        cache_key = _location_cache_key(batter_id, start_date, end_date)
+    except (TypeError, ValueError):
+        cache_key = None
 
-        df = statcast_batter(start_date, end_date, int(batter_id))
+    if cache_key is not None:
+        cached_df = _get_cached_location_df(_BATTER_LOCATION_SESSION_CACHE, cache_key)
+        if cached_df is not None:
+            return cached_df
+
+    try:
+        df = load_batter_statcast_data(batter_id, start_date, end_date)
     except Exception as exc:
         logger.error("Statcast fetch failed for batter_id=%s: %s", batter_id, exc)
         return pd.DataFrame()
 
     if df is None or df.empty:
-        return pd.DataFrame()
+        empty_df = pd.DataFrame()
+        if cache_key is not None:
+            return _store_cached_location_df(_BATTER_LOCATION_SESSION_CACHE, cache_key, empty_df)
+        return empty_df
 
     if "zone" not in df.columns:
         logger.error("Statcast data missing zone column for batter_id=%s", batter_id)
@@ -244,6 +324,8 @@ def load_batter_pitch_location_data(batter_id, start_date, end_date):
     result_df = df.dropna(subset=["zone"]).copy()
     if "game_type" in result_df.columns:
         result_df = result_df[result_df["game_type"] == "R"].copy()
+    if cache_key is not None:
+        return _store_cached_location_df(_BATTER_LOCATION_SESSION_CACHE, cache_key, result_df)
     return result_df
 
 

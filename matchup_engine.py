@@ -8,6 +8,7 @@ bot can consume the same foundation later.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import importlib
 import os
 from time import perf_counter
@@ -1447,51 +1448,81 @@ def get_matchup_data(batter_id: Any, pitcher_id: Any) -> dict[str, Any]:
     )
     result["source_functions"]["app.py"].extend(["normalize_hand_code", "format_pitcher_hand"])
 
-    pitcher_season_stats = timer.timed(
-        "app.load_pitcher_stats",
-        _call_existing,
-        errors,
-        "app.load_pitcher_stats",
-        app.load_pitcher_stats,
-        pitcher_id,
-        default={},
-    )
+    app_data_started_at = perf_counter()
+    app_load_tasks = {
+        "pitcher_season_stats": (
+            "app.load_pitcher_stats",
+            "app.load_pitcher_stats",
+            app.load_pitcher_stats,
+            (pitcher_id,),
+            {},
+        ),
+        "pitch_mix": (
+            "Pitch mix",
+            "app.load_regular_season_pitch_mix",
+            app.load_regular_season_pitch_mix,
+            (pitcher_id,),
+            {"R": [], "L": [], "all": []},
+        ),
+        "batter_season_stats": (
+            "Batter contact stats",
+            "app.load_batter_overall_contact_stats",
+            app.load_batter_overall_contact_stats,
+            (batter_id,),
+            {},
+        ),
+        "batter_run_value": (
+            "Batter run value",
+            "app.load_batter_run_value_pitch_type_table",
+            app.load_batter_run_value_pitch_type_table,
+            (batter_id,),
+            pd.DataFrame(),
+        ),
+        "batter_game_log": (
+            "Game logs",
+            "app.load_batter_prop_game_log",
+            app.load_batter_prop_game_log,
+            (batter_id,),
+            pd.DataFrame(),
+        ),
+        "batter_hit_details": (
+            "Hit details",
+            "app.load_batter_hit_details_by_game",
+            app.load_batter_hit_details_by_game,
+            (batter_id, date.today().year),
+            {},
+        ),
+    }
+    with ThreadPoolExecutor(max_workers=len(app_load_tasks)) as executor:
+        app_futures = {
+            key: executor.submit(
+                timer.timed,
+                timing_label,
+                _call_existing,
+                errors,
+                error_label,
+                function,
+                *args,
+                default=default,
+            )
+            for key, (timing_label, error_label, function, args, default) in app_load_tasks.items()
+        }
+        app_loaded = {key: app_futures[key].result() for key in app_load_tasks}
+    timer.log("Independent app data loads", app_data_started_at)
+
+    pitcher_season_stats = app_loaded["pitcher_season_stats"]
     result["pitcher_season_stats"] = timer.timed("_json_safe pitcher season stats", _json_safe, pitcher_season_stats)
     result["source_functions"]["app.py"].append("load_pitcher_stats")
 
-    pitch_mix = timer.timed(
-        "Pitch mix",
-        _call_existing,
-        errors,
-        "app.load_regular_season_pitch_mix",
-        app.load_regular_season_pitch_mix,
-        pitcher_id,
-        default={"R": [], "L": [], "all": []},
-    )
+    pitch_mix = app_loaded["pitch_mix"]
     result["pitch_mix"] = timer.timed("_json_safe pitch mix", _json_safe, pitch_mix)
     result["source_functions"]["app.py"].append("load_regular_season_pitch_mix")
 
-    batter_season_stats = timer.timed(
-        "Batter contact stats",
-        _call_existing,
-        errors,
-        "app.load_batter_overall_contact_stats",
-        app.load_batter_overall_contact_stats,
-        batter_id,
-        default={},
-    )
+    batter_season_stats = app_loaded["batter_season_stats"]
     result["batter_season_stats"] = timer.timed("_json_safe batter contact stats", _json_safe, batter_season_stats)
     result["source_functions"]["app.py"].append("load_batter_overall_contact_stats")
 
-    batter_run_value = timer.timed(
-        "Batter run value",
-        _call_existing,
-        errors,
-        "app.load_batter_run_value_pitch_type_table",
-        app.load_batter_run_value_pitch_type_table,
-        batter_id,
-        default=pd.DataFrame(),
-    )
+    batter_run_value = app_loaded["batter_run_value"]
     result["batter_run_value_by_pitch_type"] = timer.timed(
         "_json_safe batter run value",
         _json_safe,
@@ -1499,28 +1530,11 @@ def get_matchup_data(batter_id: Any, pitcher_id: Any) -> dict[str, Any]:
     )
     result["source_functions"]["app.py"].append("load_batter_run_value_pitch_type_table")
 
-    batter_game_log = timer.timed(
-        "Game logs",
-        _call_existing,
-        errors,
-        "app.load_batter_prop_game_log",
-        app.load_batter_prop_game_log,
-        batter_id,
-        default=pd.DataFrame(),
-    )
+    batter_game_log = app_loaded["batter_game_log"]
     result["batter_game_log"] = timer.timed("_json_safe game logs", _json_safe, batter_game_log)
     result["source_functions"]["app.py"].append("load_batter_prop_game_log")
 
-    batter_hit_details = timer.timed(
-        "Hit details",
-        _call_existing,
-        errors,
-        "app.load_batter_hit_details_by_game",
-        app.load_batter_hit_details_by_game,
-        batter_id,
-        date.today().year,
-        default={},
-    )
+    batter_hit_details = app_loaded["batter_hit_details"]
     result["batter_hit_details_by_game"] = timer.timed("_json_safe hit details", _json_safe, batter_hit_details)
     result["source_functions"]["app.py"].append("load_batter_hit_details_by_game")
 
