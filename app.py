@@ -4516,15 +4516,19 @@ def render_homepage_props_tab():
         return row
 
     card_slots = []
+    def _render_props_card_slot(slot, row, stat_values):
+        slot.empty()
+        slot.markdown(_props_card_html(row, stat_values), unsafe_allow_html=True)
+
     for row in rows:
         slot = st.empty()
-        slot.markdown(_props_card_html(row, _props_blank_stat_values()), unsafe_allow_html=True)
+        _render_props_card_slot(slot, row, _props_blank_stat_values())
         card_slots.append((slot, row))
 
     for index, (slot, row) in enumerate(card_slots):
         enriched_row = _enrich_props_card_identity(row)
         card_slots[index] = (slot, enriched_row)
-        slot.markdown(_props_card_html(enriched_row, _props_blank_stat_values()), unsafe_allow_html=True)
+        _render_props_card_slot(slot, enriched_row, _props_blank_stat_values())
 
     rows_by_game_log_key = {}
     for index, row in enumerate(rows):
@@ -4539,10 +4543,7 @@ def render_homepage_props_tab():
         stat_summary_cache = _build_props_stat_summary_cache([row for _, row in indexed_rows])
         for index, row in indexed_rows:
             slot, _ = card_slots[index]
-            slot.markdown(
-                _props_card_html(row, _props_card_stat_values(row, stat_summary_cache)),
-                unsafe_allow_html=True,
-            )
+            _render_props_card_slot(slot, row, _props_card_stat_values(row, stat_summary_cache))
 
 
 def render_homepage():
