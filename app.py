@@ -3959,18 +3959,23 @@ def render_selected_batter_view():
 
         batter_id = sb.get("id", "")
         batter_detail_view_key = f"batter_detail_view_{batter_id or 'unknown'}"
-        if st.session_state.get(batter_detail_view_key) not in {"General Information", "Outfield"}:
-            st.session_state[batter_detail_view_key] = "General Information"
+        previous_view_label = st.session_state.get(batter_detail_view_key)
+        if previous_view_label == "General Information":
+            st.session_state[batter_detail_view_key] = "Batting"
+        elif previous_view_label == "Outfield":
+            st.session_state[batter_detail_view_key] = "Fielding"
+        elif previous_view_label not in {"Batting", "Fielding"}:
+            st.session_state[batter_detail_view_key] = "Batting"
         selected_view = st.segmented_control(
             "Batter Detail View",
-            ["General Information", "Outfield"],
+            ["Batting", "Fielding"],
             key=batter_detail_view_key,
             label_visibility="collapsed",
         )
 
-        if selected_view == "General Information":
+        if selected_view == "Batting":
             render_general_information(sb, batter_id, batter_name)
-        elif selected_view == "Outfield":
+        elif selected_view == "Fielding":
             render_outfield_information(batter_id)
 
         st.stop()
