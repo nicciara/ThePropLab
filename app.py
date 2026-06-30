@@ -5147,6 +5147,68 @@ def render_homepage_props_tab():
         st.info(f"No available PrizePicks players found for {selected_prop} on the current slate.")
         return
 
+    def _props_page_cache_signature(rows):
+        signature_parts = [
+            st.session_state.get("selected_date", eastern_today()).isoformat(),
+            selected_prop,
+        ]
+        for index, row in enumerate(rows):
+            signature_parts.append(
+                "|".join(
+                    [
+                        str(index),
+                        normalize_name(row.get("player", "")),
+                        str(row.get("projection_player_id", "")),
+                        str(row.get("line", "")),
+                        normalize_name(row.get("odds_type", "")),
+                        normalize_name(row.get("team", "")),
+                        str(row.get("team_id", "")),
+                        normalize_name(row.get("opponent", "")),
+                        str(row.get("opponent_id", "")),
+                        str(row.get("game_pk", "")),
+                    ]
+                )
+            )
+        return "||".join(signature_parts)
+
+    props_page_cache_signature = _props_page_cache_signature(rows)
+    props_cache_state = st.session_state.get("props_page_shared_cache")
+    if not isinstance(props_cache_state, dict) or props_cache_state.get("signature") != props_page_cache_signature:
+        props_cache_state = {
+            "signature": props_page_cache_signature,
+            "identity": {},
+            "stat_summaries": {},
+            "game_logs": {},
+            "counters": {
+                "identity_computed": 0,
+                "identity_hits": 0,
+                "stat_summary_computed": 0,
+                "stat_summary_hits": 0,
+                "game_log_load_calls": 0,
+                "game_log_hits": 0,
+            },
+            "fragments_done_logged": False,
+        }
+        st.session_state["props_page_shared_cache"] = props_cache_state
+
+    def _props_cache_counter(name, amount=1):
+        counters = props_cache_state.setdefault("counters", {})
+        counters[name] = int(counters.get(name, 0) or 0) + int(amount)
+
+    def _log_props_cache_stats(reason):
+        counters = props_cache_state.get("counters", {})
+        logger.info(
+            "Props shared cache stats reason=%s identity_computed=%s identity_hits=%s "
+            "stat_summary_computed=%s stat_summary_hits=%s game_log_load_calls=%s game_log_hits=%s",
+            reason,
+            counters.get("identity_computed", 0),
+            counters.get("identity_hits", 0),
+            counters.get("stat_summary_computed", 0),
+            counters.get("stat_summary_hits", 0),
+            counters.get("game_log_load_calls", 0),
+            counters.get("game_log_hits", 0),
+        )
+
     def _prop_card_tile(label, value):
         value_text = str(value or "—")
         tile_bg = "var(--dash-surface-2)"
@@ -5232,25 +5294,46 @@ def render_homepage_props_tab():
             return pd.Series(dtype="float64")
         return pd.to_numeric(sample_df[prop_column], errors="coerce").dropna()
 
+    def _props_game_log_cache_key(player_id, include_first_inning):
+        return (str(player_id), bool(include_first_inning))
+
+    def _props_cached_game_log(player_id, include_first_inning):
+        game_log_key = _props_game_log_cache_key(player_id, include_first_inning)
+        game_log_cache = props_cache_state.setdefault("game_logs", {})
+        if game_log_key in game_log_cache:
+            _props_cache_counter("game_log_hits")
+            return game_log_cache[game_log_key]
+        _props_cache_counter("game_log_load_calls")
+        game_log_df = load_batter_prop_game_log(
+            player_id,
+            include_first_inning=include_first_inning,
+        )
+        game_log_cache[game_log_key] = game_log_df
+        return game_log_df
+
     def _build_props_stat_summary_cache(rows):
         stat_summary_cache = {}
+        shared_stat_summary_cache = props_cache_state.setdefault("stat_summaries", {})
         rows_by_game_log_key = {}
         for row in rows:
             cache_key = _props_stat_cache_key(row)
             if not cache_key:
+                continue
+            if cache_key in shared_stat_summary_cache:
+                stat_summary_cache[cache_key] = shared_stat_summary_cache[cache_key]
+                _props_cache_counter("stat_summary_hits")
                 continue
             player_id, prop_column, _, _, _ = cache_key
             include_first_inning = prop_column == "first_inning_hrrrbi"
             rows_by_game_log_key.setdefault((player_id, include_first_inning), []).append((row, cache_key))
 
         for (player_id, include_first_inning), player_rows in rows_by_game_log_key.items():
-            game_log_df = load_batter_prop_game_log(
-                player_id,
-                include_first_inning=include_first_inning,
-            )
+            game_log_df = _props_cached_game_log(player_id, include_first_inning)
             if game_log_df.empty:
                 for _, cache_key in player_rows:
                     stat_summary_cache[cache_key] = _props_blank_stat_values()
+                    shared_stat_summary_cache[cache_key] = stat_summary_cache[cache_key]
+                    _props_cache_counter("stat_summary_computed")
                 continue
 
             rows_by_prop = {}
@@ -5262,6 +5345,8 @@ def render_homepage_props_tab():
                 if prop_column not in game_log_df.columns:
                     for _, cache_key in prop_rows:
                         stat_summary_cache[cache_key] = _props_blank_stat_values()
+                        shared_stat_summary_cache[cache_key] = stat_summary_cache[cache_key]
+                        _props_cache_counter("stat_summary_computed")
                     continue
 
                 sample_values = {
@@ -5307,6 +5392,8 @@ def render_homepage_props_tab():
                             stat_values["H2H"] = h2h_summary.get("hit_rate_text", "—")
 
                     stat_summary_cache[cache_key] = stat_values
+                    shared_stat_summary_cache[cache_key] = stat_values
+                    _props_cache_counter("stat_summary_computed")
 
         return stat_summary_cache
 
@@ -5386,6 +5473,35 @@ def render_homepage_props_tab():
         )
 
     def _enrich_props_card_identity(row):
+        identity_cache_key = (
+            normalize_name(row.get("player", "")),
+            str(row.get("projection_player_id", "")),
+            str(row.get("team_id", "")),
+            normalize_name(row.get("team", "")),
+            str(row.get("opponent_id", "")),
+            normalize_name(row.get("opponent", "")),
+            str(row.get("game_pk", "")),
+        )
+        identity_cache = props_cache_state.setdefault("identity", {})
+        if identity_cache_key in identity_cache:
+            _props_cache_counter("identity_hits")
+            row.update(identity_cache[identity_cache_key])
+            player_id = row.get("player_id", "")
+            if player_id:
+                row["href"] = _build_batter_detail_href(
+                    player_id,
+                    batter_name=row.get("player", ""),
+                    batter_hand=row.get("hand", ""),
+                    team=row.get("team", ""),
+                    team_id=row.get("team_id", ""),
+                    opponent=row.get("opponent", ""),
+                    opponent_id=row.get("opponent_id", ""),
+                    return_game_pk=row.get("game_pk", ""),
+                    prop=selected_prop,
+                    line=row.get("line"),
+                )
+            return row
+
         player_name = row.get("player", "")
         team_id = row.get("team_id", "")
         team_context = row.get("team_context", {}) or {}
@@ -5451,6 +5567,18 @@ def render_homepage_props_tab():
             "game_pk": game_pk,
             "game_time": game_time,
         })
+        identity_cache[identity_cache_key] = {
+            "team": team,
+            "team_id": team_id,
+            "opponent": opponent,
+            "opponent_id": opponent_id,
+            "hand": hand,
+            "player_id": player_id,
+            "image_url": image_url,
+            "game_pk": game_pk,
+            "game_time": game_time,
+        }
+        _props_cache_counter("identity_computed")
         return row
 
     prototype_card_limit = 100
@@ -5573,6 +5701,9 @@ def render_homepage_props_tab():
         st.session_state[state_key] = state
         logger.info("Props fragment batch complete: batch=%s rows=%s", batch_key, len(fragment_rows))
         if _all_props_fragment_batches_done() and not st.session_state.get(fragment_schedule_refresh_key, False):
+            if not props_cache_state.get("fragments_done_logged", False):
+                _log_props_cache_stats("fragments_complete")
+                props_cache_state["fragments_done_logged"] = True
             st.session_state[fragment_schedule_refresh_key] = True
             st.rerun()
 
@@ -5650,6 +5781,8 @@ def render_homepage_props_tab():
         for index, row in indexed_rows:
             slot, _ = card_slots[index]
             _render_props_card_slot(slot, row, _props_card_stat_values(row, stat_summary_cache), "stat", index)
+
+    _log_props_cache_stats("props_render_complete")
 
 
 def render_homepage():
