@@ -933,6 +933,76 @@ def style_run_value_table(df):
     return styled
 
 
+def compact_run_value_display_df(df):
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    display_df = df.copy()
+    if "%" in display_df.columns:
+        display_df = display_df.drop(columns=["%"])
+    return display_df
+
+
+def compact_run_value_table_formatters(df):
+    formatters = {}
+    integer_columns = {"Year", "Pitches", "PA"}
+    three_decimal_columns = {"BA", "SLG", "wOBA", "xBA", "xSLG", "xwOBA"}
+    one_decimal_metric_keys = {"whiff%", "k%", "putaway%", "hard hit%"}
+
+    for column in df.columns:
+        if column in integer_columns:
+            formatters[column] = lambda value: "—" if pd.isna(value) else f"{float(value):.0f}"
+            continue
+        if column in three_decimal_columns:
+            formatters[column] = lambda value: "—" if pd.isna(value) else f"{float(value):.3f}"
+            continue
+
+        normalized_column = str(column).strip().lower()
+        if normalized_column in one_decimal_metric_keys or "%" in str(column):
+            formatters[column] = lambda value: "—" if pd.isna(value) else f"{float(value):.1f}"
+
+    return formatters
+
+
+def opposing_pitcher_arsenal_card_html(pitcher_name, arsenal_rows):
+    title = html.escape(str(pitcher_name or "Opposing Pitcher Arsenal"))
+    if not arsenal_rows:
+        return (
+            "<div class='dash-card'>"
+            f"<div class='dash-card-title'>{title}</div>"
+            "<div style='font-size:13px; color:var(--dash-muted); font-weight:700;'>No arsenal data available.</div>"
+            "</div>"
+        )
+
+    rows_html = []
+    for row in arsenal_rows:
+        pitch_name_html = pitch_type_text_html(row.get("name", ""))
+        usage_text = f"{float(row.get('usage_pct', 0.0)):.1f}%"
+        velocity = row.get("avg_velocity")
+        velocity_text = f"{float(velocity):.1f}" if velocity not in {None, ""} and not pd.isna(velocity) else "—"
+        count_text = f"{int(float(row.get('count', 0) or 0))}"
+        rows_html.append(
+            "<div style='display:grid; grid-template-columns:minmax(120px,1fr) 58px 52px 40px; gap:8px; align-items:center; "
+            "padding:5px 0; border-top:1px solid rgba(148,163,184,0.22);'>"
+            f"<div style='font-size:12px; font-weight:700; line-height:1.2;'>{pitch_name_html}</div>"
+            f"<div style='font-size:12px; font-weight:800; text-align:right; color:var(--dash-accent);'>{usage_text}</div>"
+            f"<div style='font-size:12px; font-weight:700; text-align:right; color:var(--dash-value);'>{velocity_text}</div>"
+            f"<div style='font-size:12px; font-weight:700; text-align:right; color:var(--dash-value);'>{count_text}</div>"
+            "</div>"
+        )
+
+    return (
+        "<div class='dash-card'>"
+        f"<div class='dash-card-title'>{title}</div>"
+        "<div style='display:grid; grid-template-columns:minmax(120px,1fr) 58px 52px 40px; gap:8px; align-items:end; "
+        "font-size:11px; color:var(--dash-muted); font-weight:800; letter-spacing:0.02em; text-transform:uppercase; margin-bottom:2px;'>"
+        "<div>Pitch Type</div><div style='text-align:right;'>Usage</div><div style='text-align:right;'>Velo</div><div style='text-align:right;'>Ct</div>"
+        "</div>"
+        f"{''.join(rows_html)}"
+        "</div>"
+    )
+
+
 def _int_like(value, default=0):
     try:
         if pd.isna(value):
@@ -3337,19 +3407,46 @@ def render_general_information(sb, batter_id, batter_name):
         render_batter_prop_game_log_section(batter_id, batter_name, current_opponent_context)
 
     with st.container(border=True):
-        st.markdown(
-            run_value_title_with_legend_html(),
-            unsafe_allow_html=True,
-        )
-        run_value_df = load_batter_run_value_pitch_type_table(batter_id)
-        if run_value_df.empty:
-            st.info("Run value by pitch type is unavailable for this batter right now.")
-        else:
-            st.dataframe(
-                style_run_value_table(run_value_df),
-                hide_index=True,
-                use_container_width=True,
+        run_value_pitcher = selected_batter_comparison_pitcher_context(sb, game_pk, lineup_context, lineup_side)
+        run_value_cols = st.columns([3.2, 1.45])
+        with run_value_cols[0]:
+            st.markdown(
+                run_value_title_with_legend_html(),
+                unsafe_allow_html=True,
             )
+            run_value_df = load_batter_run_value_pitch_type_table(batter_id)
+            if run_value_df.empty:
+                st.info("Run value by pitch type is unavailable for this batter right now.")
+            else:
+                display_run_value_df = compact_run_value_display_df(run_value_df)
+                st.dataframe(
+                    style_run_value_table(display_run_value_df).format(
+                        compact_run_value_table_formatters(display_run_value_df)
+                    ),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+        with run_value_cols[1]:
+            pitcher_id = run_value_pitcher.get("id", "")
+            pitcher_name = run_value_pitcher.get("name", "") or "Opposing Pitcher Arsenal"
+            if pitcher_id:
+                opposing_arsenal_rows = sorted(
+                    load_regular_season_pitch_mix(pitcher_id).get("all", []),
+                    key=lambda row: float(row.get("usage_pct", 0.0)),
+                    reverse=True,
+                )
+                st.markdown(
+                    opposing_pitcher_arsenal_card_html(pitcher_name, opposing_arsenal_rows),
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    "<div class='dash-card'>"
+                    "<div class='dash-card-title'>Opposing Pitcher Arsenal</div>"
+                    "<div style='font-size:13px; color:var(--dash-muted); font-weight:700;'>No opposing pitcher selected.</div>"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
 
     with st.container(border=True):
         compare_key = f"batter_strike_zone_compare_{batter_id}"
@@ -4708,14 +4805,23 @@ def load_regular_season_pitch_mix(player_id):
         if total == 0:
             return []
 
-        return [
-            {
-                "name": pitch_name,
-                "count": int(count),
-                "usage_pct": (float(count) / float(total)) * 100.0,
-            }
-            for pitch_name, count in counts.items()
-        ]
+        rows = []
+        for pitch_name, count in counts.items():
+            pitch_frame = frame[frame[pitch_col] == pitch_name]
+            avg_velocity = None
+            if "release_speed" in pitch_frame.columns:
+                velocity_values = pd.to_numeric(pitch_frame["release_speed"], errors="coerce").dropna()
+                if not velocity_values.empty:
+                    avg_velocity = float(velocity_values.mean())
+            rows.append(
+                {
+                    "name": pitch_name,
+                    "count": int(count),
+                    "usage_pct": (float(count) / float(total)) * 100.0,
+                    "avg_velocity": avg_velocity,
+                }
+            )
+        return rows
 
     if "batter_stands" in working_df.columns:
         stands_series = working_df["batter_stands"].astype(str).str.upper()
