@@ -3232,6 +3232,136 @@ def render_lineup_table(lineup, current_batter_id="", current_batter_name="", li
     )
 
 
+def render_general_information(sb, batter_id, batter_name):
+    game_pk = sb.get("return_game_pk") or st.session_state.get("selected_game", "")
+    lineup_context = get_game_lineups(game_pk) if game_pk else {}
+    batter_team_key = normalize_name(sb.get("team", ""))
+    lineup_side = ""
+    if batter_team_key and normalize_name(lineup_context.get("away_team", "")) == batter_team_key:
+        lineup_side = "away"
+    elif batter_team_key and normalize_name(lineup_context.get("home_team", "")) == batter_team_key:
+        lineup_side = "home"
+    elif sb.get("return_pitcher_side") == "away":
+        lineup_side = "home"
+    elif sb.get("return_pitcher_side") == "home":
+        lineup_side = "away"
+    else:
+        for candidate_side in ("away", "home"):
+            for player in lineup_context.get(candidate_side, []):
+                if str(player.get("player_id") or "") == str(batter_id or "") or normalize_name(player.get("name", "")) == normalize_name(batter_name):
+                    lineup_side = candidate_side
+                    break
+            if lineup_side:
+                break
+    team_lineup = lineup_context.get(lineup_side, []) if lineup_side else []
+    current_opponent_context = selected_batter_opponent_context(sb, game_pk, lineup_context, lineup_side)
+
+    with st.container(border=True):
+        render_batter_prop_game_log_section(batter_id, batter_name, current_opponent_context)
+
+    with st.container(border=True):
+        st.markdown(
+            run_value_title_with_legend_html(),
+            unsafe_allow_html=True,
+        )
+        run_value_df = load_batter_run_value_pitch_type_table(batter_id)
+        if run_value_df.empty:
+            st.info("Run value by pitch type is unavailable for this batter right now.")
+        else:
+            st.dataframe(
+                style_run_value_table(run_value_df),
+                hide_index=True,
+                use_container_width=True,
+            )
+
+    with st.container(border=True):
+        st.markdown(
+            "<div class='section-title-strong'>Strike Zone</div>",
+            unsafe_allow_html=True,
+        )
+        batter_strike_zone_cols = st.columns([1.15, 4])
+        with batter_strike_zone_cols[0]:
+            pitch_type_options = strike_zone.get_batter_pitch_type_options(batter_id)
+            # Streamlit selectbox options are plain text, so individual pitch names cannot be colored safely here.
+            selected_pitch_type = st.selectbox(
+                "Pitch Type",
+                pitch_type_options,
+                index=0,
+                key=f"batter_strike_zone_pitch_type_{batter_id}",
+            )
+            selected_pitcher_throws = st.selectbox(
+                "Pitcher Throws",
+                ["All", "RHP", "LHP"],
+                index=0,
+                key=f"batter_strike_zone_pitcher_throws_{batter_id}",
+            )
+            selected_metric = st.selectbox(
+                "Metric",
+                ["Pitch %", "Takes", "Batted Balls", "K%", "Home Runs"],
+                index=0,
+                key=f"batter_strike_zone_metric_{batter_id}",
+            )
+            selected_heatmap_scale = st.selectbox(
+                "Heatmap Scale",
+                [strike_zone.HEATMAP_SCALE_LEAGUE, strike_zone.HEATMAP_SCALE_SELF],
+                index=0,
+                key=f"batter_strike_zone_heatmap_scale_{batter_id}",
+            )
+            st.markdown(
+                batter_heatmap_legend_html(selected_heatmap_scale),
+                unsafe_allow_html=True,
+            )
+            if selected_metric == "K%":
+                st.markdown(
+                    "<div style='color:#b91c1c; font-size:12.5px; font-weight:600; line-height:1.35; text-align:left; margin:6px 0 0 0; padding:0 0 12px 12px;'>Note: K% shows the zone-touch distribution for plate appearances that ended in a strikeout.</div>",
+                    unsafe_allow_html=True,
+                )
+        with batter_strike_zone_cols[1]:
+            strike_zone.display_batter_metric_strike_zone(
+                batter_id,
+                selected_pitch_type,
+                selected_pitcher_throws,
+                selected_metric,
+                selected_heatmap_scale,
+            )
+
+    with st.container(border=True):
+        lineup_team = lineup_context.get(f"{lineup_side}_team", sb.get("team", "")) if lineup_side else sb.get("team", "")
+        lineup_opponent = lineup_context.get("home_team", "") if lineup_side == "away" else lineup_context.get("away_team", "")
+        lineup_team_id = lineup_context.get(f"{lineup_side}_team_id", sb.get("team_id", "")) if lineup_side else sb.get("team_id", "")
+        lineup_opponent_side = "home" if lineup_side == "away" else "away"
+        lineup_opponent_id = lineup_context.get(f"{lineup_opponent_side}_team_id", sb.get("opponent_id", "")) if lineup_side else sb.get("opponent_id", "")
+        batter_lineup_link_context = {
+            "team": lineup_team,
+            "team_id": lineup_team_id,
+            "opponent": lineup_opponent or sb.get("opponent", ""),
+            "opponent_id": lineup_opponent_id,
+            "return_pitcher_id": sb.get("return_pitcher_id", ""),
+            "return_game_pk": game_pk,
+            "return_pitcher_side": sb.get("return_pitcher_side", ""),
+            "return_pitcher_name": sb.get("return_pitcher_name", ""),
+            "return_pitcher_hand": sb.get("return_pitcher_hand", ""),
+        }
+        st.markdown(
+            "<div class='section-title-strong'>Team Lineup Context</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            render_lineup_table(
+                team_lineup,
+                current_batter_id=batter_id,
+                current_batter_name=batter_name,
+                link_context=batter_lineup_link_context,
+            ),
+            unsafe_allow_html=True,
+        )
+
+
+def render_outfield_information():
+    st.markdown("## Outfield")
+    st.caption("Outfield statistics will be added here.")
+
+
 def render_selected_batter_view():
     if st.session_state.get("selected_batter"):
         sb = st.session_state.get("selected_batter", {})
@@ -3261,128 +3391,20 @@ def render_selected_batter_view():
         st.markdown(f"## {batter_name}{f' ({batter_hand})' if batter_hand else ''}")
 
         batter_id = sb.get("id", "")
-        game_pk = sb.get("return_game_pk") or st.session_state.get("selected_game", "")
-        lineup_context = get_game_lineups(game_pk) if game_pk else {}
-        batter_team_key = normalize_name(sb.get("team", ""))
-        lineup_side = ""
-        if batter_team_key and normalize_name(lineup_context.get("away_team", "")) == batter_team_key:
-            lineup_side = "away"
-        elif batter_team_key and normalize_name(lineup_context.get("home_team", "")) == batter_team_key:
-            lineup_side = "home"
-        elif sb.get("return_pitcher_side") == "away":
-            lineup_side = "home"
-        elif sb.get("return_pitcher_side") == "home":
-            lineup_side = "away"
-        else:
-            for candidate_side in ("away", "home"):
-                for player in lineup_context.get(candidate_side, []):
-                    if str(player.get("player_id") or "") == str(batter_id or "") or normalize_name(player.get("name", "")) == normalize_name(batter_name):
-                        lineup_side = candidate_side
-                        break
-                if lineup_side:
-                    break
-        team_lineup = lineup_context.get(lineup_side, []) if lineup_side else []
-        current_opponent_context = selected_batter_opponent_context(sb, game_pk, lineup_context, lineup_side)
+        batter_detail_view_key = f"batter_detail_view_{batter_id or 'unknown'}"
+        if st.session_state.get(batter_detail_view_key) not in {"General Information", "Outfield"}:
+            st.session_state[batter_detail_view_key] = "General Information"
+        selected_view = st.segmented_control(
+            "Batter Detail View",
+            ["General Information", "Outfield"],
+            key=batter_detail_view_key,
+            label_visibility="collapsed",
+        )
 
-        with st.container(border=True):
-            render_batter_prop_game_log_section(batter_id, batter_name, current_opponent_context)
-
-        with st.container(border=True):
-            st.markdown(
-                run_value_title_with_legend_html(),
-                unsafe_allow_html=True,
-            )
-            run_value_df = load_batter_run_value_pitch_type_table(batter_id)
-            if run_value_df.empty:
-                st.info("Run value by pitch type is unavailable for this batter right now.")
-            else:
-                st.dataframe(
-                    style_run_value_table(run_value_df),
-                    hide_index=True,
-                    use_container_width=True,
-                )
-
-        with st.container(border=True):
-            st.markdown(
-                "<div class='section-title-strong'>Strike Zone</div>",
-                unsafe_allow_html=True,
-            )
-            batter_strike_zone_cols = st.columns([1.15, 4])
-            with batter_strike_zone_cols[0]:
-                pitch_type_options = strike_zone.get_batter_pitch_type_options(batter_id)
-                # Streamlit selectbox options are plain text, so individual pitch names cannot be colored safely here.
-                selected_pitch_type = st.selectbox(
-                    "Pitch Type",
-                    pitch_type_options,
-                    index=0,
-                    key=f"batter_strike_zone_pitch_type_{batter_id}",
-                )
-                selected_pitcher_throws = st.selectbox(
-                    "Pitcher Throws",
-                    ["All", "RHP", "LHP"],
-                    index=0,
-                    key=f"batter_strike_zone_pitcher_throws_{batter_id}",
-                )
-                selected_metric = st.selectbox(
-                    "Metric",
-                    ["Pitch %", "Takes", "Batted Balls", "K%", "Home Runs"],
-                    index=0,
-                    key=f"batter_strike_zone_metric_{batter_id}",
-                )
-                selected_heatmap_scale = st.selectbox(
-                    "Heatmap Scale",
-                    [strike_zone.HEATMAP_SCALE_LEAGUE, strike_zone.HEATMAP_SCALE_SELF],
-                    index=0,
-                    key=f"batter_strike_zone_heatmap_scale_{batter_id}",
-                )
-                st.markdown(
-                    batter_heatmap_legend_html(selected_heatmap_scale),
-                    unsafe_allow_html=True,
-                )
-                if selected_metric == "K%":
-                    st.markdown(
-                        "<div style='color:#b91c1c; font-size:12.5px; font-weight:600; line-height:1.35; text-align:left; margin:6px 0 0 0; padding:0 0 12px 12px;'>Note: K% shows the zone-touch distribution for plate appearances that ended in a strikeout.</div>",
-                        unsafe_allow_html=True,
-                    )
-            with batter_strike_zone_cols[1]:
-                strike_zone.display_batter_metric_strike_zone(
-                    batter_id,
-                    selected_pitch_type,
-                    selected_pitcher_throws,
-                    selected_metric,
-                    selected_heatmap_scale,
-                )
-
-        with st.container(border=True):
-            lineup_team = lineup_context.get(f"{lineup_side}_team", sb.get("team", "")) if lineup_side else sb.get("team", "")
-            lineup_opponent = lineup_context.get("home_team", "") if lineup_side == "away" else lineup_context.get("away_team", "")
-            lineup_team_id = lineup_context.get(f"{lineup_side}_team_id", sb.get("team_id", "")) if lineup_side else sb.get("team_id", "")
-            lineup_opponent_side = "home" if lineup_side == "away" else "away"
-            lineup_opponent_id = lineup_context.get(f"{lineup_opponent_side}_team_id", sb.get("opponent_id", "")) if lineup_side else sb.get("opponent_id", "")
-            batter_lineup_link_context = {
-                "team": lineup_team,
-                "team_id": lineup_team_id,
-                "opponent": lineup_opponent or sb.get("opponent", ""),
-                "opponent_id": lineup_opponent_id,
-                "return_pitcher_id": sb.get("return_pitcher_id", ""),
-                "return_game_pk": game_pk,
-                "return_pitcher_side": sb.get("return_pitcher_side", ""),
-                "return_pitcher_name": sb.get("return_pitcher_name", ""),
-                "return_pitcher_hand": sb.get("return_pitcher_hand", ""),
-            }
-            st.markdown(
-                "<div class='section-title-strong'>Team Lineup Context</div>",
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                render_lineup_table(
-                    team_lineup,
-                    current_batter_id=batter_id,
-                    current_batter_name=batter_name,
-                    link_context=batter_lineup_link_context,
-                ),
-                unsafe_allow_html=True,
-            )
+        if selected_view == "General Information":
+            render_general_information(sb, batter_id, batter_name)
+        elif selected_view == "Outfield":
+            render_outfield_information()
 
         st.stop()
 
