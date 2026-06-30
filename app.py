@@ -1888,6 +1888,64 @@ def selected_batter_opponent_context(sb, game_pk, lineup_context, lineup_side):
     return context
 
 
+def toggle_batter_strike_zone_compare(compare_key):
+    st.session_state[compare_key] = not bool(st.session_state.get(compare_key, False))
+
+
+def selected_batter_comparison_pitcher_context(sb, game_pk, lineup_context, lineup_side):
+    context = {
+        "id": str(sb.get("return_pitcher_id") or "").strip(),
+        "name": str(sb.get("return_pitcher_name") or "").strip(),
+        "hand": str(sb.get("return_pitcher_hand") or "").strip(),
+    }
+    if context["id"] or context["name"]:
+        return context
+
+    if not game_pk:
+        return context
+
+    starters = load_game_starting_pitchers(game_pk)
+    if not starters:
+        return context
+
+    opponent_side = ""
+    if lineup_side in {"away", "home"}:
+        opponent_side = "home" if lineup_side == "away" else "away"
+    elif sb.get("return_pitcher_side") in {"away", "home"}:
+        opponent_side = str(sb.get("return_pitcher_side"))
+    else:
+        batter_team_key = normalize_name(sb.get("team", ""))
+        if batter_team_key and normalize_name(lineup_context.get("away_team", "")) == batter_team_key:
+            opponent_side = "home"
+        elif batter_team_key and normalize_name(lineup_context.get("home_team", "")) == batter_team_key:
+            opponent_side = "away"
+
+    if opponent_side not in {"away", "home"}:
+        return context
+
+    starter = starters.get(opponent_side, {}) or {}
+    return {
+        "id": str(starter.get("pitcher_id") or "").strip(),
+        "name": str(starter.get("pitcher_name") or "").strip(),
+        "hand": str(starter.get("pitcher_hand") or "").strip(),
+    }
+
+
+def batter_comparison_pitcher_stands(sb):
+    batter_hand = normalize_hand_code(sb.get("hand", ""))
+    if batter_hand == "R":
+        return "RHB"
+    if batter_hand == "L":
+        return "LHB"
+    return "All Batters"
+
+
+def comparison_pitch_type_for_pitcher(selected_pitch_type):
+    if str(selected_pitch_type).strip().lower() in {"all", "all pitches"}:
+        return "All Pitches"
+    return selected_pitch_type
+
+
 def set_game_log_range_selection(range_key, h2h_key, sample_label):
     h2h_enabled = bool(st.session_state.get(h2h_key, False))
     if h2h_enabled and st.session_state.get(range_key) == sample_label:
@@ -3277,10 +3335,25 @@ def render_general_information(sb, batter_id, batter_name):
             )
 
     with st.container(border=True):
-        st.markdown(
-            "<div class='section-title-strong'>Strike Zone</div>",
-            unsafe_allow_html=True,
-        )
+        compare_key = f"batter_strike_zone_compare_{batter_id}"
+        compare_enabled = bool(st.session_state.get(compare_key, False))
+        comparison_pitcher = selected_batter_comparison_pitcher_context(sb, game_pk, lineup_context, lineup_side)
+
+        strike_zone_header_cols = st.columns([5, 1.2])
+        with strike_zone_header_cols[0]:
+            st.markdown(
+                "<div class='section-title-strong'>Strike Zone</div>",
+                unsafe_allow_html=True,
+            )
+        with strike_zone_header_cols[1]:
+            st.button(
+                "Compare",
+                key=f"{compare_key}_button",
+                type="primary" if compare_enabled else "secondary",
+                on_click=toggle_batter_strike_zone_compare,
+                args=(compare_key,),
+                use_container_width=True,
+            )
         batter_strike_zone_cols = st.columns([1.15, 4])
         with batter_strike_zone_cols[0]:
             pitch_type_options = strike_zone.get_batter_pitch_type_options(batter_id)
@@ -3319,13 +3392,41 @@ def render_general_information(sb, batter_id, batter_name):
                     unsafe_allow_html=True,
                 )
         with batter_strike_zone_cols[1]:
-            strike_zone.display_batter_metric_strike_zone(
-                batter_id,
-                selected_pitch_type,
-                selected_pitcher_throws,
-                selected_metric,
-                selected_heatmap_scale,
-            )
+            if not compare_enabled:
+                strike_zone.display_batter_metric_strike_zone(
+                    batter_id,
+                    selected_pitch_type,
+                    selected_pitcher_throws,
+                    selected_metric,
+                    selected_heatmap_scale,
+                )
+            else:
+                comparison_cols = st.columns(2)
+                with comparison_cols[0]:
+                    st.caption("Batter")
+                    strike_zone.display_batter_metric_strike_zone(
+                        batter_id,
+                        selected_pitch_type,
+                        selected_pitcher_throws,
+                        selected_metric,
+                        selected_heatmap_scale,
+                    )
+                with comparison_cols[1]:
+                    pitcher_id = comparison_pitcher.get("id", "")
+                    pitcher_name = comparison_pitcher.get("name", "")
+                    if pitcher_id:
+                        pitcher_label = pitcher_name or "Opposing Pitcher"
+                        st.caption(f"{pitcher_label} Location Tendencies")
+                        strike_zone.display_strike_zone(
+                            pitcher_id,
+                            comparison_pitch_type_for_pitcher(selected_pitch_type),
+                            batter_comparison_pitcher_stands(sb),
+                            "Pitch %",
+                            selected_heatmap_scale,
+                        )
+                    else:
+                        st.caption("Opposing Pitcher")
+                        st.info("No pitcher selected for comparison.")
 
     with st.container(border=True):
         lineup_team = lineup_context.get(f"{lineup_side}_team", sb.get("team", "")) if lineup_side else sb.get("team", "")
