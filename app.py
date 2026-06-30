@@ -4977,7 +4977,6 @@ def homepage_slate_batter_map(games):
 def render_homepage_props_tab():
     props_render_run_id = int(st.session_state.get("props_render_run_id", 0) or 0) + 1
     st.session_state["props_render_run_id"] = props_render_run_id
-    logger.warning("Props render run %s: start", props_render_run_id)
     st.markdown("## Props")
     if "games" not in st.session_state:
         st.session_state["games"] = load_schedule(st.session_state["selected_date"])
@@ -5454,9 +5453,15 @@ def render_homepage_props_tab():
         })
         return row
 
-    prototype_rows = rows[:20]
-    legacy_rows = rows[20:]
+    prototype_card_limit = 100
+    prototype_rows = rows[:prototype_card_limit]
+    legacy_rows = rows[prototype_card_limit:]
     prototype_batch_size = 5
+    prototype_batches = []
+    for batch_start in range(0, len(prototype_rows), prototype_batch_size):
+        batch_rows = prototype_rows[batch_start:batch_start + prototype_batch_size]
+        batch_key = f"{selected_prop_key}_{batch_start}"
+        prototype_batches.append((batch_key, batch_rows))
 
     def _props_fragment_signature(fragment_rows):
         signature_parts = [
@@ -5478,39 +5483,35 @@ def render_homepage_props_tab():
             )
         return "||".join(signature_parts)
 
-    def _log_props_fragment_diag(batch_key, event, **fields):
-        field_parts = [
-            f"page_run={props_render_run_id}",
-            f"batch={batch_key}",
-            f"event={event}",
-        ]
-        for key, value in fields.items():
-            field_parts.append(f"{key}={value}")
-        logger.warning("Props fragment diag: %s", " ".join(field_parts))
+    def _props_fragment_batch_state_key(batch_key):
+        return f"props_fragment_batch_state_{batch_key}"
 
-    @st.fragment(run_every=1)
+    def _all_props_fragment_batches_done():
+        if not prototype_batches:
+            return True
+        for batch_key, batch_rows in prototype_batches:
+            state = st.session_state.get(_props_fragment_batch_state_key(batch_key))
+            signature = _props_fragment_signature(batch_rows)
+            if not isinstance(state, dict):
+                return False
+            if state.get("signature") != signature:
+                return False
+            if not state.get("done"):
+                return False
+        return True
+
+    prototype_signature = _props_fragment_signature(prototype_rows) if prototype_rows else ""
+    fragment_schedule_refresh_key = f"props_fragment_schedule_refresh_{selected_prop_key}_{prototype_signature}"
+    fragment_run_every = 1 if prototype_rows and not _all_props_fragment_batches_done() else None
+    if fragment_run_every is None:
+        st.session_state.pop(fragment_schedule_refresh_key, None)
+
+    @st.fragment(run_every=fragment_run_every)
     def _render_props_fragment_batch(batch_key, fragment_rows):
-        state_key = f"props_fragment_batch_state_{batch_key}"
+        state_key = _props_fragment_batch_state_key(batch_key)
         signature = _props_fragment_signature(fragment_rows)
         state = st.session_state.get(state_key)
-        invocation_key = f"props_fragment_batch_invocations_{batch_key}"
-        invocation_count = int(st.session_state.get(invocation_key, 0) or 0) + 1
-        st.session_state[invocation_key] = invocation_count
-        existing_signature = state.get("signature") if isinstance(state, dict) else ""
-        _log_props_fragment_diag(
-            batch_key,
-            "enter",
-            invocation=invocation_count,
-            run_every="1s",
-            state_exists=isinstance(state, dict),
-            signature_match=isinstance(state, dict) and existing_signature == signature,
-            existing_signature_len=len(str(existing_signature or "")),
-            new_signature_len=len(signature),
-        )
         if not isinstance(state, dict) or state.get("signature") != signature:
-            previous_next_enrich_index = state.get("next_enrich_index") if isinstance(state, dict) else "missing"
-            previous_next_stat_group_index = state.get("next_stat_group_index") if isinstance(state, dict) else "missing"
-            previous_done = state.get("done") if isinstance(state, dict) else "missing"
             state = {
                 "signature": signature,
                 "rows": [dict(row) for row in fragment_rows],
@@ -5524,29 +5525,9 @@ def render_homepage_props_tab():
                 "done": False,
             }
             st.session_state[state_key] = state
-            _log_props_fragment_diag(
-                batch_key,
-                "state_initialized",
-                invocation=invocation_count,
-                reason="missing_or_signature_mismatch",
-                previous_next_enrich_index=previous_next_enrich_index,
-                previous_next_stat_group_index=previous_next_stat_group_index,
-                previous_done=previous_done,
-                rows=len(fragment_rows),
-            )
 
         state_rows = state.get("rows", [])
         stat_values_by_index = state.get("stat_values", {})
-        _log_props_fragment_diag(
-            batch_key,
-            "post_init_state",
-            invocation=invocation_count,
-            next_enrich_index=state.get("next_enrich_index"),
-            next_stat_group_index=state.get("next_stat_group_index"),
-            done=state.get("done"),
-            row_count=len(state_rows),
-            stat_tile_sets=len(stat_values_by_index),
-        )
         for index, row in enumerate(state_rows):
             st.markdown(
                 _props_card_html(
@@ -5557,39 +5538,13 @@ def render_homepage_props_tab():
             )
 
         if state.get("done"):
-            _log_props_fragment_diag(
-                batch_key,
-                "exit_done",
-                invocation=invocation_count,
-                next_enrich_index=state.get("next_enrich_index"),
-                next_stat_group_index=state.get("next_stat_group_index"),
-            )
             return
 
         next_enrich_index = int(state.get("next_enrich_index", 0) or 0)
         if next_enrich_index < len(state_rows):
-            player_name = state_rows[next_enrich_index].get("player", "")
-            _log_props_fragment_diag(
-                batch_key,
-                "enrich_start",
-                invocation=invocation_count,
-                next_enrich_index=next_enrich_index,
-                player=normalize_name(player_name),
-            )
             state_rows[next_enrich_index] = _enrich_props_card_identity(dict(state_rows[next_enrich_index]))
             state["next_enrich_index"] = next_enrich_index + 1
             st.session_state[state_key] = state
-            enriched_row = state_rows[next_enrich_index]
-            _log_props_fragment_diag(
-                batch_key,
-                "exit_after_enrich",
-                invocation=invocation_count,
-                enriched_index=next_enrich_index,
-                next_enrich_index=state.get("next_enrich_index"),
-                player_id=bool(enriched_row.get("player_id")),
-                href=bool(enriched_row.get("href")),
-                image_url=bool(enriched_row.get("image_url")),
-            )
             return
 
         if state.get("stat_groups") is None:
@@ -5602,130 +5557,66 @@ def render_homepage_props_tab():
                 include_first_inning = prop_column == "first_inning_hrrrbi"
                 rows_by_game_log_key.setdefault((player_id, include_first_inning), []).append(index)
             state["stat_groups"] = list(rows_by_game_log_key.values())
-            _log_props_fragment_diag(
-                batch_key,
-                "stat_groups_built",
-                invocation=invocation_count,
-                stat_group_count=len(state.get("stat_groups") or []),
-            )
 
         next_group_index = int(state.get("next_stat_group_index", 0) or 0)
         stat_groups = state.get("stat_groups") or []
         if next_group_index < len(stat_groups):
             group_indexes = stat_groups[next_group_index]
-            _log_props_fragment_diag(
-                batch_key,
-                "stat_group_start",
-                invocation=invocation_count,
-                next_stat_group_index=next_group_index,
-                group_size=len(group_indexes),
-            )
             stat_summary_cache = _build_props_stat_summary_cache([state_rows[index] for index in group_indexes])
             for index in group_indexes:
                 stat_values_by_index[str(index)] = _props_card_stat_values(state_rows[index], stat_summary_cache)
             state["next_stat_group_index"] = next_group_index + 1
             st.session_state[state_key] = state
-            _log_props_fragment_diag(
-                batch_key,
-                "exit_after_stat_group",
-                invocation=invocation_count,
-                completed_stat_group_index=next_group_index,
-                next_stat_group_index=state.get("next_stat_group_index"),
-            )
             return
 
         state["done"] = True
         st.session_state[state_key] = state
-        _log_props_fragment_diag(
-            batch_key,
-            "exit_complete",
-            invocation=invocation_count,
-            next_enrich_index=state.get("next_enrich_index"),
-            next_stat_group_index=state.get("next_stat_group_index"),
-        )
+        logger.info("Props fragment batch complete: batch=%s rows=%s", batch_key, len(fragment_rows))
+        if _all_props_fragment_batches_done() and not st.session_state.get(fragment_schedule_refresh_key, False):
+            st.session_state[fragment_schedule_refresh_key] = True
+            st.rerun()
 
     def _render_props_fragment_prototype():
         if not prototype_rows:
             return
-        logger.warning(
-            "Props render run %s: fragment prototype start rows=%s batches=%s",
+        logger.info(
+            "Props render run %s: fragment prototype start rows=%s batches=%s run_every=%s",
             props_render_run_id,
             len(prototype_rows),
-            (len(prototype_rows) + prototype_batch_size - 1) // prototype_batch_size,
+            len(prototype_batches),
+            fragment_run_every,
         )
-        for batch_start in range(0, len(prototype_rows), prototype_batch_size):
-            batch_rows = prototype_rows[batch_start:batch_start + prototype_batch_size]
-            batch_key = f"{selected_prop_key}_{batch_start}"
+        for batch_key, batch_rows in prototype_batches:
             _render_props_fragment_batch(batch_key, batch_rows)
-        logger.warning("Props render run %s: fragment prototype complete", props_render_run_id)
+        logger.info("Props render run %s: fragment prototype complete", props_render_run_id)
 
     card_slots = []
     def _render_props_card_slot(slot, row, stat_values, phase, index):
-        player_name = row.get("player", "")
-        player_id = row.get("player_id", "")
-        image_url = row.get("image_url", "")
-        has_real_stat = any(
-            str(stat_values.get(label, "—")) not in {"", "—", "--"}
-            for label in ("L5", "L10", "L15", "H2H", "AVG", "SZN")
-        )
-        logger.warning(
-            "Props render run %s: slot render begin phase=%s index=%s player=%s slot_id=%s has_markdown=%s player_id=%s image=%s real_stat=%s",
-            props_render_run_id,
-            phase,
-            index,
-            player_name,
-            id(slot),
-            hasattr(slot, "markdown"),
-            player_id,
-            bool(image_url),
-            has_real_stat,
-        )
         try:
             slot.empty()
             slot.markdown(_props_card_html(row, stat_values), unsafe_allow_html=True)
-            logger.warning(
-                "Props render run %s: slot render complete phase=%s index=%s player=%s slot_id=%s",
-                props_render_run_id,
-                phase,
-                index,
-                player_name,
-                id(slot),
-            )
         except Exception:
             logger.exception(
                 "Props render run %s: slot render failed phase=%s index=%s player=%s slot_id=%s",
                 props_render_run_id,
                 phase,
                 index,
-                player_name,
+                row.get("player", ""),
                 id(slot),
             )
             raise
 
     _render_props_fragment_prototype()
 
-    logger.warning("Props render run %s: placeholder phase start rows=%s", props_render_run_id, len(legacy_rows))
     for index, row in enumerate(legacy_rows):
         slot = st.empty()
         _render_props_card_slot(slot, row, _props_blank_stat_values(), "placeholder", index)
         card_slots.append((slot, row))
-    logger.warning("Props render run %s: placeholder phase complete slots=%s", props_render_run_id, len(card_slots))
 
-    logger.warning("Props render run %s: enrichment phase start slots=%s", props_render_run_id, len(card_slots))
     for index, (slot, row) in enumerate(card_slots):
         try:
             enriched_row = _enrich_props_card_identity(row)
             card_slots[index] = (slot, enriched_row)
-            logger.warning(
-                "Props render run %s: enrichment resolved index=%s player=%s slot_id=%s player_id=%s image=%s href=%s",
-                props_render_run_id,
-                index,
-                enriched_row.get("player", ""),
-                id(slot),
-                enriched_row.get("player_id", ""),
-                bool(enriched_row.get("image_url", "")),
-                bool(enriched_row.get("href", "")),
-            )
             _render_props_card_slot(slot, enriched_row, _props_blank_stat_values(), "enrichment", index)
         except Exception:
             logger.exception(
@@ -5736,7 +5627,6 @@ def render_homepage_props_tab():
                 id(slot),
             )
             raise
-    logger.warning("Props render run %s: enrichment phase complete", props_render_run_id)
 
     rows_by_game_log_key = {}
     for index, row in enumerate(legacy_rows):
@@ -5746,20 +5636,7 @@ def render_homepage_props_tab():
         player_id, prop_column, _, _, _ = cache_key
         include_first_inning = prop_column == "first_inning_hrrrbi"
         rows_by_game_log_key.setdefault((player_id, include_first_inning), []).append((index, row))
-
-    logger.warning(
-        "Props render run %s: stat phase start game_log_groups=%s stat_rows=%s",
-        props_render_run_id,
-        len(rows_by_game_log_key),
-        sum(len(indexed_rows) for indexed_rows in rows_by_game_log_key.values()),
-    )
     for game_log_key, indexed_rows in rows_by_game_log_key.items():
-        logger.warning(
-            "Props render run %s: stat group start game_log_key=%s rows=%s",
-            props_render_run_id,
-            game_log_key,
-            len(indexed_rows),
-        )
         try:
             stat_summary_cache = _build_props_stat_summary_cache([row for _, row in indexed_rows])
         except Exception:
@@ -5773,13 +5650,6 @@ def render_homepage_props_tab():
         for index, row in indexed_rows:
             slot, _ = card_slots[index]
             _render_props_card_slot(slot, row, _props_card_stat_values(row, stat_summary_cache), "stat", index)
-        logger.warning(
-            "Props render run %s: stat group complete game_log_key=%s",
-            props_render_run_id,
-            game_log_key,
-        )
-    logger.warning("Props render run %s: stat phase complete", props_render_run_id)
-    logger.warning("Props render run %s: complete", props_render_run_id)
 
 
 def render_homepage():
