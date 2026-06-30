@@ -3957,10 +3957,11 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
         return (unit_vector[0] * length, unit_vector[1] * length)
 
     field_scale = 1.0
-    base_distance = 90 * field_scale
+    base_distance = 90.0 * field_scale
     base_offset = base_distance / math.sqrt(2)
-    foul_line_distance = base_distance * 3.25
-    fence_peak_y = base_distance * 3.55
+    foul_line_distance = 330.0 * field_scale
+    center_field_distance = 400.0 * field_scale
+    mound_distance = 60.5 * field_scale
     home_plate = (0, 0)
     first_base = (base_offset, base_offset)
     second_base = (0, base_offset * 2)
@@ -3970,16 +3971,20 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
     left_foul_unit = (third_base[0] / base_distance, third_base[1] / base_distance)
     right_foul_pole = scaled_vector(right_foul_unit, foul_line_distance)
     left_foul_pole = scaled_vector(left_foul_unit, foul_line_distance)
-    fence_points = quadratic_curve(left_foul_pole, (0, fence_peak_y), right_foul_pole)
+    fence_control_y = (center_field_distance * 2) - right_foul_pole[1]
+    fence_points = quadratic_curve(left_foul_pole, (0, fence_control_y), right_foul_pole)
     grass_points = [home_plate, right_foul_pole] + list(reversed(fence_points)) + [left_foul_pole]
+    infield_dirt_home_depth = 12.0 * field_scale
+    infield_dirt_corner_extra = 18.0 * field_scale
+    infield_dirt_second_extra = 25.0 * field_scale
     infield_dirt_points = [
-        (0, -base_distance * 0.12),
-        (base_distance * 0.98, first_base[1]),
-        (0, base_distance * 1.68),
-        (-base_distance * 0.98, third_base[1]),
+        (0, -infield_dirt_home_depth),
+        (first_base[0] + infield_dirt_corner_extra, first_base[1]),
+        (0, second_base[1] + infield_dirt_second_extra),
+        (third_base[0] - infield_dirt_corner_extra, third_base[1]),
     ]
     mound_radius = base_distance * 0.145
-    mound_center = (0, base_distance * 0.79)
+    mound_center = (0, mound_distance)
     base_marker_radius = base_distance * 0.055
     home_plate_points = [
         (0, -base_distance * 0.067),
