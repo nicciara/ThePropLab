@@ -5455,7 +5455,12 @@ def render_homepage_props_tab():
 
     prototype_card_limit = 100
     prototype_rows = rows[:prototype_card_limit]
-    legacy_rows = rows[prototype_card_limit:]
+    props_loaded_card_limit_key = f"props_loaded_card_limit_{selected_prop_key}"
+    loaded_card_limit = int(st.session_state.get(props_loaded_card_limit_key, prototype_card_limit) or prototype_card_limit)
+    loaded_card_limit = max(prototype_card_limit, loaded_card_limit)
+    rendered_rows = rows[:loaded_card_limit]
+    legacy_rows = rendered_rows[prototype_card_limit:]
+    remaining_row_count = max(len(rows) - loaded_card_limit, 0)
     prototype_batch_size = 5
     prototype_batches = []
     for batch_start in range(0, len(prototype_rows), prototype_batch_size):
@@ -5613,198 +5618,22 @@ def render_homepage_props_tab():
 
     _render_props_fragment_prototype()
 
-    for index, row in enumerate(legacy_rows):
+    for row in legacy_rows:
         slot = st.empty()
-        _render_props_card_slot(slot, row, _props_blank_stat_values(), "placeholder", index)
+        _render_props_card_slot(slot, row, _props_blank_stat_values(), "placeholder", 0)
         card_slots.append((slot, row))
 
-    for index, (slot, row) in enumerate(card_slots):
-        try:
-            enriched_row = _enrich_props_card_identity(row)
-            card_slots[index] = (slot, enriched_row)
-            _render_props_card_slot(slot, enriched_row, _props_blank_stat_values(), "enrichment", index)
-        except Exception:
-            logger.exception(
-                "Props render run %s: enrichment failed index=%s player=%s slot_id=%s",
-                props_render_run_id,
-                index,
-                row.get("player", ""),
-                id(slot),
+    if remaining_row_count > 0:
+        def _load_more_props_rows():
+            st.session_state[props_loaded_card_limit_key] = min(
+                len(rows),
+                loaded_card_limit + prototype_card_limit,
             )
-            raise
 
-    rows_by_game_log_key = {}
-    for index, row in enumerate(legacy_rows):
-        cache_key = _props_stat_cache_key(row)
-        if not cache_key:
-            continue
-        player_id, prop_column, _, _, _ = cache_key
-        include_first_inning = prop_column == "first_inning_hrrrbi"
-        rows_by_game_log_key.setdefault((player_id, include_first_inning), []).append((index, row))
-    for game_log_key, indexed_rows in rows_by_game_log_key.items():
-        try:
-            stat_summary_cache = _build_props_stat_summary_cache([row for _, row in indexed_rows])
-        except Exception:
-            logger.exception(
-                "Props render run %s: stat summary build failed game_log_key=%s rows=%s",
-                props_render_run_id,
-                game_log_key,
-                len(indexed_rows),
-            )
-            raise
-        for index, row in indexed_rows:
-            slot, _ = card_slots[index]
-            _render_props_card_slot(slot, row, _props_card_stat_values(row, stat_summary_cache), "stat", index)
-
-
-def prewarm_props_shared_data(selected_date, selected_prop, games_df=None, batch_size=5):
-    selected_prop = selected_prop if selected_prop in GAME_LOG_PROPS else "Hits"
-    context_key = f"{selected_date.isoformat()}|{_prop_match_key(selected_prop)}"
-    if st.session_state.get("props_prewarm_context") == context_key:
-        return
-
-    start_time = time.perf_counter()
-    warmed = []
-    logger.info(
-        "Props prewarm start date=%s prop=%s batch_size=%s",
-        selected_date.isoformat(),
-        selected_prop,
-        batch_size,
-    )
-    try:
-        games = games_df if isinstance(games_df, pd.DataFrame) and not games_df.empty else load_schedule(selected_date)
-        warmed.append("load_schedule")
-
-        projections = load_prizepicks_mlb_projections()
-        warmed.append("load_prizepicks_mlb_projections")
-
-        def _team_lookup_keys(value):
-            normalized = normalize_name(value)
-            if not normalized:
-                return set()
-            aliases = {
-                "ari": {"az"},
-                "az": {"ari"},
-                "chw": {"cws"},
-                "cws": {"chw"},
-                "kcr": {"kc"},
-                "kc": {"kcr"},
-                "sfg": {"sf"},
-                "sf": {"sfg"},
-                "tbr": {"tb"},
-                "tb": {"tbr"},
-                "wsh": {"was"},
-                "was": {"wsh"},
-            }
-            return {normalized, *aliases.get(normalized, set())}
-
-        team_context_lookup = {}
-        if isinstance(games, pd.DataFrame) and not games.empty:
-            for _, game in games.iterrows():
-                for side in ("away", "home"):
-                    team_id = game.get(f"{side}_team_id", "")
-                    if not team_id:
-                        continue
-                    opponent_side = "home" if side == "away" else "away"
-                    context = {
-                        "team": game.get(f"{side}_team", ""),
-                        "team_id": team_id,
-                        "opponent": game.get(f"{opponent_side}_team", ""),
-                        "opponent_id": game.get(f"{opponent_side}_team_id", ""),
-                        "game_pk": game.get("game_pk", ""),
-                    }
-                    for value in (game.get(f"{side}_team", ""), game.get(f"{side}_abbrev", "")):
-                        for key in _team_lookup_keys(value):
-                            team_context_lookup[key] = context
-
-        def _safe_sort_line(value):
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                return 0.0
-
-        selected_prop_key = _prop_match_key(selected_prop)
-        rows = []
-        seen = set()
-        for record in projections or []:
-            if not isinstance(record, dict):
-                continue
-            stat_type = record.get("stat_display_name") or _projection_stat_type(record)
-            if _prop_match_key(stat_type) != selected_prop_key:
-                continue
-
-            player_name = str(record.get("player") or _projection_player_name(record) or "").strip()
-            if not player_name:
-                continue
-
-            line_value = _projection_line_value(record)
-            odds_type = _projection_value(record, "odds_type", "oddsType", default="")
-            unique_key = (normalize_name(player_name), selected_prop_key, str(line_value), normalize_name(odds_type))
-            if unique_key in seen:
-                continue
-            seen.add(unique_key)
-
-            projection_team = _projection_value(record, "team", default="")
-            team_context = {}
-            for key in _team_lookup_keys(projection_team):
-                team_context = team_context_lookup.get(key, {})
-                if team_context:
-                    break
-
-            rows.append({
-                "player": player_name,
-                "team": team_context.get("team") or projection_team,
-                "team_id": team_context.get("team_id", ""),
-                "opponent": team_context.get("opponent") or _projection_value(record, "description", default=""),
-                "opponent_id": team_context.get("opponent_id", ""),
-                "game_pk": team_context.get("game_pk", ""),
-                "prop": selected_prop,
-                "line": line_value,
-                "odds_type": odds_type,
-                "projection_player_id": _projection_player_id(record),
-            })
-
-        rows.sort(key=lambda row: (str(row.get("team", "")), str(row.get("player", "")), _safe_sort_line(row.get("line"))))
-        prewarm_rows = rows[:batch_size]
-
-        roster_team_ids = set()
-        game_log_targets = []
-        for row in prewarm_rows:
-            player_id = row.get("projection_player_id", "")
-            team_id = row.get("team_id", "")
-            if not player_id and team_id:
-                roster_team_ids.add(str(team_id))
-                player_id = resolve_player_id_from_team_roster(row.get("player", ""), team_id)
-            if player_id:
-                include_first_inning = GAME_LOG_PROP_COLUMNS.get(row.get("prop")) == "first_inning_hrrrbi"
-                game_log_targets.append((str(player_id), include_first_inning))
-
-        for team_id in sorted(roster_team_ids):
-            build_roster_name_id_map(team_id)
-        if roster_team_ids:
-            warmed.append(f"build_roster_name_id_map[{len(roster_team_ids)}]")
-
-        unique_game_log_targets = sorted(set(game_log_targets))
-        for player_id, include_first_inning in unique_game_log_targets:
-            load_batter_prop_game_log(player_id, include_first_inning=include_first_inning)
-        if unique_game_log_targets:
-            warmed.append(f"load_batter_prop_game_log[{len(unique_game_log_targets)}]")
-
-        st.session_state["props_prewarm_context"] = context_key
-        logger.info(
-            "Props prewarm finish elapsed=%.3fs warmed=%s rows=%s roster_teams=%s game_logs=%s",
-            time.perf_counter() - start_time,
-            ",".join(warmed),
-            len(prewarm_rows),
-            len(roster_team_ids),
-            len(unique_game_log_targets),
-        )
-    except Exception as exc:
-        logger.warning(
-            "Props prewarm failed elapsed=%.3fs warmed=%s error=%s",
-            time.perf_counter() - start_time,
-            ",".join(warmed),
-            exc,
+        st.button(
+            f"Load more props ({remaining_row_count} remaining)",
+            key=f"load_more_props_{selected_prop_key}",
+            on_click=_load_more_props_rows,
         )
 
 
@@ -6041,12 +5870,6 @@ def render_homepage():
                                     unsafe_allow_html=True,
                                 )
                         st.markdown("</div>", unsafe_allow_html=True)
-        prewarm_props_shared_data(
-            st.session_state["selected_date"],
-            st.session_state.get("homepage_selected_prop", "Hits"),
-            games_df=games,
-            batch_size=5,
-        )
         load_time = time.perf_counter() - load_start
         logger.debug("Player API calls: %s", PLAYER_API_CALLS)
         logger.debug("Total load time: %.2fs", load_time)
