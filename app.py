@@ -3452,19 +3452,20 @@ def defense_rating_style(value, threshold_key):
 
 def style_defense_rating_table(df):
     hidden_columns = [column for column in ("_RawValue", "_RatingKey") if column in df.columns]
+    style_source = df[hidden_columns].copy() if hidden_columns else pd.DataFrame(index=df.index)
+    visible_df = df.drop(columns=hidden_columns) if hidden_columns else df
 
     def cell_style(row, column_name):
         if column_name not in {"Value", "Rating"}:
             return ""
-        return defense_rating_style(row.get("_RawValue"), row.get("_RatingKey"))
+        if style_source.empty or row.name not in style_source.index:
+            return ""
+        return defense_rating_style(style_source.at[row.name, "_RawValue"], style_source.at[row.name, "_RatingKey"])
 
-    styled = df.style.apply(
+    return visible_df.style.apply(
         lambda row: [cell_style(row, column) for column in row.index],
         axis=1,
     )
-    if hidden_columns:
-        styled = styled.hide(axis="columns", subset=hidden_columns)
-    return styled
 
 
 def _savant_csv_dataframe(url, params, log_label):
