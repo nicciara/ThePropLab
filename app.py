@@ -1003,6 +1003,15 @@ def opposing_pitcher_arsenal_card_html(pitcher_name, arsenal_rows):
     )
 
 
+def default_opposing_pitcher_arsenal_split(batter_hand):
+    normalized_hand = normalize_hand_code(batter_hand)
+    if normalized_hand == "L":
+        return "LHB"
+    if normalized_hand == "R":
+        return "RHB"
+    return "Overall"
+
+
 def _int_like(value, default=0):
     try:
         if pd.isna(value):
@@ -3430,8 +3439,27 @@ def render_general_information(sb, batter_id, batter_name):
             pitcher_id = run_value_pitcher.get("id", "")
             pitcher_name = run_value_pitcher.get("name", "") or "Opposing Pitcher Arsenal"
             if pitcher_id:
+                arsenal_split_key = f"batter_opposing_pitcher_arsenal_split_{batter_id}_{pitcher_id}"
+                split_options = ["LHB", "Overall", "RHB"]
+                default_split = default_opposing_pitcher_arsenal_split(sb.get("hand", ""))
+                if st.session_state.get(arsenal_split_key) not in split_options:
+                    st.session_state[arsenal_split_key] = default_split
+
+                pitch_mix = load_regular_season_pitch_mix(pitcher_id)
+                selected_arsenal_split = st.segmented_control(
+                    "Opposing Pitcher Arsenal Split",
+                    split_options,
+                    default=st.session_state.get(arsenal_split_key, default_split),
+                    key=arsenal_split_key,
+                    label_visibility="collapsed",
+                )
+                opposing_arsenal_rows = {
+                    "LHB": pitch_mix.get("L", []),
+                    "Overall": pitch_mix.get("all", []),
+                    "RHB": pitch_mix.get("R", []),
+                }.get(selected_arsenal_split or default_split, pitch_mix.get("all", []))
                 opposing_arsenal_rows = sorted(
-                    load_regular_season_pitch_mix(pitcher_id).get("all", []),
+                    opposing_arsenal_rows,
                     key=lambda row: float(row.get("usage_pct", 0.0)),
                     reverse=True,
                 )
