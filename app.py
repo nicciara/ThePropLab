@@ -3358,12 +3358,37 @@ def render_general_information(sb, batter_id, batter_name):
 
 
 OUTFIELD_POSITIONS = ("7", "8", "9")
+INFIELD_POSITIONS = ("3", "4", "5", "6")
+DEFENSE_POSITION_GROUPS = {
+    "outfield": {
+        "positions": OUTFIELD_POSITIONS,
+        "savant_pos": "of",
+        "no_data_message": "No Outfield data available.",
+    },
+    "infield": {
+        "positions": INFIELD_POSITIONS,
+        "savant_pos": "if",
+        "no_data_message": "No Infield data available.",
+    },
+}
+DEFENSE_POSITION_LABEL_TO_ID = {"1B": "3", "2B": "4", "3B": "5", "SS": "6", "LF": "7", "CF": "8", "RF": "9"}
+DEFENSE_POSITION_ID_TO_ARM_FIELD = {
+    "3": "arm_1b",
+    "4": "arm_2b",
+    "5": "arm_3b",
+    "6": "arm_ss",
+    "7": "arm_lf",
+    "8": "arm_cf",
+    "9": "arm_rf",
+}
 OUTFIELD_RATING_THRESHOLDS = {
     "run_value": {"elite": 5.0, "good": 2.0, "average": -1.0},
     "oaa": {"elite": 5.0, "good": 2.0, "average": -1.0},
     "jump": {"elite": 1.5, "good": 0.5, "average": -0.5},
     "arm_strength": {"elite": 90.0, "good": 87.0, "average": 83.0},
     "sprint_speed": {"elite": 29.0, "good": 28.0, "average": 27.0},
+    "success_rate": {"elite": 90.0, "good": 85.0, "average": 80.0},
+    "success_rate_added": {"elite": 5.0, "good": 2.0, "average": -1.0},
 }
 
 
@@ -3375,17 +3400,15 @@ def _savant_player_key(player_id):
 
 
 def _numeric_value(value):
-    try:
-        if value in {None, ""}:
-            return None
-    except TypeError:
-        if value is None:
-            return None
+    if value is None:
+        return None
     try:
         if pd.isna(value):
             return None
     except TypeError:
         pass
+    if str(value).strip() == "":
+        return None
     try:
         return float(str(value).replace("%", "").strip())
     except (TypeError, ValueError):
@@ -3442,8 +3465,34 @@ def _savant_row_for_player(df, player_id, id_column):
     return matches.iloc[0].to_dict()
 
 
+def _normalize_defense_position(value):
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except TypeError:
+        pass
+    text = str(value).strip().upper()
+    if not text:
+        return ""
+    if text.endswith(".0"):
+        text = text[:-2]
+    return DEFENSE_POSITION_LABEL_TO_ID.get(text, text if text in DEFENSE_POSITION_ID_TO_ARM_FIELD else "")
+
+
+def _defense_group_for_position(position_id):
+    position_id = _normalize_defense_position(position_id)
+    if position_id in OUTFIELD_POSITIONS:
+        return "outfield"
+    if position_id in INFIELD_POSITIONS:
+        return "infield"
+    return ""
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
-def load_outfield_oaa(season_year):
+def load_defense_oaa(season_year, position_group):
+    group_config = DEFENSE_POSITION_GROUPS.get(position_group, DEFENSE_POSITION_GROUPS["outfield"])
     return _savant_csv_dataframe(
         "https://baseballsavant.mlb.com/leaderboard/outs_above_average",
         {
@@ -3454,13 +3503,21 @@ def load_outfield_oaa(season_year):
             "team": "",
             "range": "year",
             "min": "q",
-            "pos": "of",
+            "pos": group_config["savant_pos"],
             "roles": "",
             "viz": "show",
             "csv": "true",
         },
-        "Outfield OAA",
+        f"{position_group.title()} OAA",
     )
+
+
+def load_outfield_oaa(season_year):
+    return load_defense_oaa(season_year, "outfield")
+
+
+def load_infield_oaa(season_year):
+    return load_defense_oaa(season_year, "infield")
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -3473,28 +3530,40 @@ def load_outfield_jump(season_year):
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def load_outfield_arm_strength(season_year):
+def load_defense_arm_strength(season_year, position_group):
+    group_config = DEFENSE_POSITION_GROUPS.get(position_group, DEFENSE_POSITION_GROUPS["outfield"])
     return _savant_csv_dataframe(
         "https://baseballsavant.mlb.com/leaderboard/arm-strength",
-        {"year": str(season_year), "minThrows": "100", "pos": "of", "team": "", "csv": "true"},
-        "Outfield arm strength",
+        {"year": str(season_year), "minThrows": "100", "pos": group_config["savant_pos"], "team": "", "csv": "true"},
+        f"{position_group.title()} arm strength",
     )
 
 
+def load_outfield_arm_strength(season_year):
+    return load_defense_arm_strength(season_year, "outfield")
+
+
+def load_infield_arm_strength(season_year):
+    return load_defense_arm_strength(season_year, "infield")
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
-def load_outfield_fielding_run_value(season_year):
+def load_defense_fielding_run_value(season_year):
     return _savant_csv_dataframe(
         "https://baseballsavant.mlb.com/leaderboard/fielding-run-value",
         {
             "type": "fielder",
             "seasonStart": str(season_year),
             "seasonEnd": str(season_year),
-            "position": "of",
             "minInnings": "q",
             "csv": "true",
         },
-        "Outfield fielding run value",
+        "Fielding run value",
     )
+
+
+def load_outfield_fielding_run_value(season_year):
+    return load_defense_fielding_run_value(season_year)
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -3507,9 +3576,10 @@ def load_outfield_sprint_speed(season_year):
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def load_outfield_positioning(season_year, bat_side):
+def load_defense_positioning(season_year, bat_side, position_group):
+    group_config = DEFENSE_POSITION_GROUPS.get(position_group, DEFENSE_POSITION_GROUPS["outfield"])
     rows = []
-    for position in OUTFIELD_POSITIONS:
+    for position in group_config["positions"]:
         params = {
             "type": "player",
             "teamId": "",
@@ -3528,11 +3598,12 @@ def load_outfield_positioning(season_year, bat_side):
                 timeout=45,
             )
         except Exception as exc:
-            logger.warning("Outfield positioning request failed bat_side=%s position=%s: %s", bat_side, position, exc)
+            logger.warning("%s positioning request failed bat_side=%s position=%s: %s", position_group.title(), bat_side, position, exc)
             continue
         if response.status_code != 200:
             logger.warning(
-                "Outfield positioning request failed bat_side=%s position=%s status=%s",
+                "%s positioning request failed bat_side=%s position=%s status=%s",
+                position_group.title(),
                 bat_side,
                 position,
                 response.status_code,
@@ -3541,10 +3612,18 @@ def load_outfield_positioning(season_year, bat_side):
         try:
             payload = response.json()
         except Exception as exc:
-            logger.warning("Outfield positioning JSON parse failed bat_side=%s position=%s: %s", bat_side, position, exc)
+            logger.warning("%s positioning JSON parse failed bat_side=%s position=%s: %s", position_group.title(), bat_side, position, exc)
             continue
         rows.extend(payload.get("positionData", []) or [])
     return rows
+
+
+def load_outfield_positioning(season_year, bat_side):
+    return load_defense_positioning(season_year, bat_side, "outfield")
+
+
+def load_infield_positioning(season_year, bat_side):
+    return load_defense_positioning(season_year, bat_side, "infield")
 
 
 def _weighted_positioning_values(rows, player_id):
@@ -3579,16 +3658,50 @@ def _weighted_positioning_values(rows, player_id):
     return {label: totals[label] / total_weight for label in weighted_fields}
 
 
-def load_outfield_player_metrics(player_id):
+def _fielding_run_value_primary_position(row):
+    best_position = ""
+    best_outs = -1.0
+    for position in INFIELD_POSITIONS + OUTFIELD_POSITIONS:
+        outs = _numeric_value(row.get(f"outs_{position}"))
+        if outs is not None and outs > best_outs:
+            best_position = position
+            best_outs = outs
+    return best_position if best_outs > 0 else ""
+
+
+def detect_player_defense_position(player_id):
     season_year = date.today().year
-    oaa_row = _savant_row_for_player(load_outfield_oaa(season_year), player_id, "player_id")
-    jump_row = _savant_row_for_player(load_outfield_jump(season_year), player_id, "resp_fielder_id")
+    for position_group in ("outfield", "infield"):
+        oaa_row = _savant_row_for_player(load_defense_oaa(season_year, position_group), player_id, "player_id")
+        position_id = _normalize_defense_position(oaa_row.get("primary_pos_formatted")) if oaa_row else ""
+        if position_id and _defense_group_for_position(position_id) == position_group:
+            return position_group, position_id
+
+    fielding_run_value_row = _savant_row_for_player(load_defense_fielding_run_value(season_year), player_id, "id")
+    position_id = _fielding_run_value_primary_position(fielding_run_value_row)
+    position_group = _defense_group_for_position(position_id)
+    if position_group:
+        return position_group, position_id
+
     arm_row = _savant_row_for_player(load_outfield_arm_strength(season_year), player_id, "player_id")
-    fielding_run_value_row = _savant_row_for_player(load_outfield_fielding_run_value(season_year), player_id, "id")
+    position_id = _normalize_defense_position(arm_row.get("primary_position"))
+    position_group = _defense_group_for_position(position_id)
+    if position_group:
+        return position_group, position_id
+
+    return "outfield", ""
+
+
+def load_defense_player_metrics(player_id, position_group):
+    season_year = date.today().year
+    oaa_row = _savant_row_for_player(load_defense_oaa(season_year, position_group), player_id, "player_id")
+    jump_row = _savant_row_for_player(load_outfield_jump(season_year), player_id, "resp_fielder_id") if position_group == "outfield" else {}
+    arm_row = _savant_row_for_player(load_defense_arm_strength(season_year, position_group), player_id, "player_id")
+    fielding_run_value_row = _savant_row_for_player(load_defense_fielding_run_value(season_year), player_id, "id")
     sprint_row = _savant_row_for_player(load_outfield_sprint_speed(season_year), player_id, "player_id")
     positioning = {
-        "L": _weighted_positioning_values(load_outfield_positioning(season_year, "L"), player_id),
-        "R": _weighted_positioning_values(load_outfield_positioning(season_year, "R"), player_id),
+        "L": _weighted_positioning_values(load_defense_positioning(season_year, "L", position_group), player_id),
+        "R": _weighted_positioning_values(load_defense_positioning(season_year, "R", position_group), player_id),
     }
     return {
         "oaa": oaa_row,
@@ -3598,6 +3711,80 @@ def load_outfield_player_metrics(player_id):
         "sprint": sprint_row,
         "positioning": positioning,
     }
+
+
+def load_outfield_player_metrics(player_id):
+    return load_defense_player_metrics(player_id, "outfield")
+
+
+def _arm_strength_value(arm_row, primary_position, position_group):
+    position_field = DEFENSE_POSITION_ID_TO_ARM_FIELD.get(_normalize_defense_position(primary_position), "")
+    for field in (position_field, "arm_of" if position_group == "outfield" else "arm_inf", "arm_overall", "max_arm_strength"):
+        if field and _numeric_value(arm_row.get(field)) is not None:
+            return arm_row.get(field)
+    return None
+
+
+def _available_defensive_rows(primary_rows, fallback_rows=(), target_count=None):
+    rows = []
+    labels = set()
+    for row in primary_rows:
+        label, value, _rating_key = row
+        if _numeric_value(value) is None:
+            continue
+        rows.append(row)
+        labels.add(label)
+    target_count = target_count or len(primary_rows)
+    for row in fallback_rows:
+        if len(rows) >= target_count:
+            break
+        label, value, _rating_key = row
+        if label in labels or _numeric_value(value) is None:
+            continue
+        rows.append(row)
+        labels.add(label)
+    return rows
+
+
+def _overall_defensive_rows(metrics, position_group, primary_position):
+    oaa_row = metrics["oaa"]
+    jump_row = metrics["jump"]
+    arm_row = metrics["arm"]
+    fielding_run_value_row = metrics["fielding_run_value"]
+    sprint_row = metrics["sprint"]
+    arm_strength = _arm_strength_value(arm_row, primary_position, position_group)
+
+    if position_group == "infield":
+        primary_rows = [
+            ("Outs Above Average (OAA)", oaa_row.get("outs_above_average"), "oaa"),
+            ("Fielding Runs Prevented", oaa_row.get("fielding_runs_prevented"), "run_value"),
+            ("Fielding Run Value", fielding_run_value_row.get("total_runs"), "run_value"),
+            ("Range Runs", fielding_run_value_row.get("range_runs"), "run_value"),
+            ("Double Play Runs", fielding_run_value_row.get("dp_runs"), "run_value"),
+            ("Arm Runs", fielding_run_value_row.get("arm_runs"), "run_value"),
+            ("Arm Strength", arm_strength, "arm_strength"),
+            ("Sprint Speed", sprint_row.get("sprint_speed"), "sprint_speed"),
+        ]
+        fallback_rows = [
+            ("INF/OF Runs", fielding_run_value_row.get("inf_of_runs"), "run_value"),
+            ("Success Rate Added", oaa_row.get("diff_success_rate_formatted"), "success_rate_added"),
+            ("Actual Success Rate", oaa_row.get("actual_success_rate_formatted"), "success_rate"),
+            ("Estimated Success Rate", oaa_row.get("adj_estimated_success_rate_formatted"), "success_rate"),
+        ]
+        return _available_defensive_rows(primary_rows, fallback_rows=fallback_rows, target_count=len(primary_rows))
+
+    return [
+        ("Outs Above Average (OAA)", oaa_row.get("outs_above_average"), "oaa"),
+        ("Fielding Runs Prevented", oaa_row.get("fielding_runs_prevented"), "run_value"),
+        ("Fielding Run Value", fielding_run_value_row.get("total_runs"), "run_value"),
+        ("Jump", jump_row.get("rel_league_bootup_distance"), "jump"),
+        ("Reaction", jump_row.get("rel_league_reaction_distance"), "jump"),
+        ("Burst", jump_row.get("rel_league_burst_distance"), "jump"),
+        ("Route", jump_row.get("rel_league_routing_distance"), "jump"),
+        ("Arm Strength", arm_strength, "arm_strength"),
+        ("Arm Runs", fielding_run_value_row.get("arm_runs"), "run_value"),
+        ("Sprint Speed", sprint_row.get("sprint_speed"), "sprint_speed"),
+    ]
 
 
 def _outfield_metric_table(rows):
@@ -3611,6 +3798,26 @@ def _outfield_metric_table(rows):
             for label, value, rating_key in rows
         ],
         columns=["Metric", "Value", "Rating"],
+    )
+
+
+def _oaa_split_table(oaa_row):
+    rows = [
+        ("Overall OAA", oaa_row.get("outs_above_average"), "oaa"),
+        ("OAA vs Right-Handed Batters", oaa_row.get("outs_above_average_rhh"), "oaa"),
+        ("OAA vs Left-Handed Batters", oaa_row.get("outs_above_average_lhh"), "oaa"),
+    ]
+    return pd.DataFrame(
+        [
+            {
+                "Split": label,
+                "Value": _format_outfield_value(value),
+                "Rating": outfield_metric_rating(value, rating_key),
+            }
+            for label, value, rating_key in rows
+            if _numeric_value(value) is not None
+        ],
+        columns=["Split", "Value", "Rating"],
     )
 
 
@@ -3630,72 +3837,46 @@ def _render_positioning_card(title, positioning_values):
 
 
 def render_outfield_information(batter_id):
-    metrics = load_outfield_player_metrics(batter_id)
+    position_group, primary_position = detect_player_defense_position(batter_id)
+    metrics = load_defense_player_metrics(batter_id, position_group)
     oaa_row = metrics["oaa"]
-    jump_row = metrics["jump"]
     arm_row = metrics["arm"]
     fielding_run_value_row = metrics["fielding_run_value"]
-    sprint_row = metrics["sprint"]
     positioning = metrics["positioning"]
+    group_config = DEFENSE_POSITION_GROUPS.get(position_group, DEFENSE_POSITION_GROUPS["outfield"])
 
-    has_outfield_data = any(
+    has_defense_data = any(
         [
             bool(oaa_row),
-            bool(jump_row),
             bool(arm_row),
             bool(fielding_run_value_row),
             bool(positioning.get("L")),
             bool(positioning.get("R")),
         ]
     )
-    if not has_outfield_data:
-        st.info("No Outfield data available.")
+    if not has_defense_data:
+        st.info(group_config["no_data_message"])
         return
-
-    arm_strength = arm_row.get("arm_of")
-    overall_rows = [
-        ("Outs Above Average (OAA)", oaa_row.get("outs_above_average"), "oaa"),
-        ("Fielding Runs Prevented", oaa_row.get("fielding_runs_prevented"), "run_value"),
-        ("Fielding Run Value", fielding_run_value_row.get("total_runs"), "run_value"),
-        ("Jump", jump_row.get("rel_league_bootup_distance"), "jump"),
-        ("Reaction", jump_row.get("rel_league_reaction_distance"), "jump"),
-        ("Burst", jump_row.get("rel_league_burst_distance"), "jump"),
-        ("Route", jump_row.get("rel_league_routing_distance"), "jump"),
-        ("Arm Strength", arm_strength, "arm_strength"),
-        ("Arm Runs", fielding_run_value_row.get("arm_runs"), "run_value"),
-        ("Sprint Speed", sprint_row.get("sprint_speed"), "sprint_speed"),
-    ]
 
     with st.container(border=True):
         st.markdown("<div class='section-title-strong'>Overall Defensive Metrics</div>", unsafe_allow_html=True)
         st.dataframe(
-            _outfield_metric_table(overall_rows),
+            _outfield_metric_table(_overall_defensive_rows(metrics, position_group, primary_position)),
             hide_index=True,
             use_container_width=True,
         )
 
-    oaa_split_rows = [
-        ("Overall OAA", oaa_row.get("outs_above_average"), "oaa"),
-        ("OAA vs Right-Handed Batters", oaa_row.get("outs_above_average_rhh"), "oaa"),
-        ("OAA vs Left-Handed Batters", oaa_row.get("outs_above_average_lhh"), "oaa"),
-    ]
     with st.container(border=True):
         st.markdown("<div class='section-title-strong'>OAA Splits</div>", unsafe_allow_html=True)
-        st.dataframe(
-            pd.DataFrame(
-                [
-                    {
-                        "Split": label,
-                        "Value": _format_outfield_value(value),
-                        "Rating": outfield_metric_rating(value, rating_key),
-                    }
-                    for label, value, rating_key in oaa_split_rows
-                ],
-                columns=["Split", "Value", "Rating"],
-            ),
-            hide_index=True,
-            use_container_width=True,
-        )
+        split_df = _oaa_split_table(oaa_row)
+        if split_df.empty:
+            st.caption("No OAA split data available.")
+        else:
+            st.dataframe(
+                split_df,
+                hide_index=True,
+                use_container_width=True,
+            )
 
     st.markdown("<div class='section-title-strong'>Positioning</div>", unsafe_allow_html=True)
     left_col, right_col = st.columns(2)
