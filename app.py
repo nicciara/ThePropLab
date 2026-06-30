@@ -3924,9 +3924,10 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
     league_y = _numeric_value((league_positioning_values or {}).get("Average Y Position"))
     player_color = run_value_style_color_hex("elite")
     league_color = "#64748b"
-    line_color = "#5f7598"
-    grass_color = "#edf4ff"
-    dirt_color = "#e3eeff"
+    grass_color = "#3d8f5a"
+    dirt_color = "#c9985a"
+    mound_color = "#b78349"
+    line_color = "#ffffff"
 
     fence_center_y = 130
     fence_radius = 190
@@ -3949,8 +3950,22 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
 
     base_points = [(0, 0), (63.6, 63.6), (0, 127.3), (-63.6, 63.6)]
 
+    def shape_path(points, close=True):
+        path = "M " + " L ".join(f"{x:.2f},{y:.2f}" for x, y in points)
+        if close:
+            path += " Z"
+        return path
+
+    def diamond_points(x_value, y_value, radius):
+        return [
+            (x_value, y_value + radius),
+            (x_value + radius, y_value),
+            (x_value, y_value - radius),
+            (x_value - radius, y_value),
+        ]
+
     def marker_label_point(x_value, y_value):
-        candidates = [(0, 34), (0, -34), (36, 20), (-36, 20), (36, -20), (-36, -20)]
+        candidates = [(18, 18), (-18, 18), (18, -18), (-18, -18), (0, 24), (0, -24)]
         best_point = None
         best_score = None
         for x_offset, y_offset in candidates:
@@ -3960,86 +3975,96 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
                 ((label_x - base_x) ** 2 + (label_y - base_y) ** 2) ** 0.5
                 for base_x, base_y in base_points
             )
-            boundary_penalty = max(0, abs(label_x) - 190) + max(0, label_y - 320) + max(0, -20 - label_y)
+            boundary_penalty = max(0, abs(label_x) - 162) + max(0, label_y - 318) + max(0, -24 - label_y)
             score = base_distance - boundary_penalty * 2
             if best_score is None or score > best_score:
                 best_score = score
                 best_point = (label_x, label_y)
         return best_point
 
+    player_label = _last_name(player_name)
     player_label_x, player_label_y = marker_label_point(player_x, player_y)
-    plot_x_values = [-178, 178, player_x, player_label_x]
-    plot_y_values = [-18, 326, player_y, player_label_y]
+    plot_x_values = [-164, 164, player_x, player_label_x]
+    plot_y_values = [-24, 326, player_y, player_label_y]
     if league_x is not None and league_y is not None:
         plot_x_values.append(league_x)
         plot_y_values.append(league_y)
 
-    x_range = [min(plot_x_values) - 10, max(plot_x_values) + 10]
-    y_range = [min(plot_y_values) - 8, max(plot_y_values) + 8]
+    x_range = [min(plot_x_values) - 6, max(plot_x_values) + 6]
+    y_range = [min(plot_y_values) - 6, max(plot_y_values) + 6]
 
     fig = go.Figure()
-    fig.add_shape(type="rect", x0=-215, y0=-35, x1=215, y1=345, line_width=0, fillcolor=grass_color, layer="below")
-    fig.add_trace(
-        go.Scatter(
-            x=[0, 63.6, 0, -63.6, 0],
-            y=[0, 63.6, 127.3, 63.6, 0],
-            mode="lines",
-            line=dict(color=line_color, width=2),
-            hoverinfo="skip",
-            showlegend=False,
-        )
+    fig.add_shape(type="rect", x0=-175, y0=-34, x1=175, y1=338, line_width=0, fillcolor=grass_color, layer="below")
+    fig.add_shape(
+        type="path",
+        path=shape_path([(0, -10), (86, 63.6), (0, 149), (-86, 63.6)]),
+        line=dict(color="rgba(255,255,255,0)", width=0),
+        fillcolor=dirt_color,
+        layer="below",
     )
-    fig.add_trace(
-        go.Scatter(
-            x=[0, foul_end_x, None, 0, -foul_end_x],
-            y=[0, foul_end_y, None, 0, foul_end_y],
-            mode="lines",
-            line=dict(color=line_color, width=2),
-            hoverinfo="skip",
-            showlegend=False,
-        )
+    fig.add_shape(
+        type="path",
+        path=shape_path(base_points + [(0, 0)]),
+        line=dict(color=line_color, width=2),
+        fillcolor="rgba(0,0,0,0)",
+        layer="above",
     )
-    fig.add_trace(
-        go.Scatter(
-            x=fence_x,
-            y=fence_y,
-            mode="lines",
-            line=dict(color=line_color, width=4),
-            hoverinfo="skip",
-            showlegend=False,
-        )
+    fig.add_shape(
+        type="line",
+        x0=0,
+        y0=0,
+        x1=foul_end_x,
+        y1=foul_end_y,
+        line=dict(color=line_color, width=2),
+        layer="above",
     )
-    fig.add_trace(
-        go.Scatter(
-            x=[0, 63.6, 0, -63.6],
-            y=[0, 63.6, 127.3, 63.6],
-            mode="markers",
-            marker=dict(size=6, color=dirt_color, line=dict(color=line_color, width=1)),
-            hoverinfo="skip",
-            showlegend=False,
-        )
+    fig.add_shape(
+        type="line",
+        x0=0,
+        y0=0,
+        x1=-foul_end_x,
+        y1=foul_end_y,
+        line=dict(color=line_color, width=2),
+        layer="above",
     )
-    fig.add_trace(
-        go.Scatter(
-            x=[0, 70, 0, -70],
-            y=[-10, 57, 141, 57],
-            mode="text",
-            text=["Home", "1B", "2B", "3B"],
-            textfont=dict(size=10, color="rgba(95,117,152,0.7)"),
-            hoverinfo="skip",
-            showlegend=False,
+    fig.add_shape(
+        type="path",
+        path=shape_path(list(zip(fence_x, fence_y)), close=False),
+        line=dict(color=line_color, width=4),
+        layer="above",
+    )
+    fig.add_shape(
+        type="circle",
+        x0=-13,
+        y0=58,
+        x1=13,
+        y1=84,
+        line=dict(color="rgba(255,255,255,0.45)", width=1),
+        fillcolor=mound_color,
+        layer="above",
+    )
+    for base_x, base_y in [(63.6, 63.6), (0, 127.3), (-63.6, 63.6)]:
+        fig.add_shape(
+            type="path",
+            path=shape_path(diamond_points(base_x, base_y, 5)),
+            line=dict(color=line_color, width=1),
+            fillcolor=line_color,
+            layer="above",
         )
+    fig.add_shape(
+        type="path",
+        path=shape_path([(0, -6), (6, -1), (4, 7), (-4, 7), (-6, -1)]),
+        line=dict(color=line_color, width=1),
+        fillcolor=line_color,
+        layer="above",
     )
     if league_x is not None and league_y is not None:
         fig.add_trace(
             go.Scatter(
                 x=[league_x],
                 y=[league_y],
-                mode="markers+text",
-                marker=dict(size=9, color=league_color, opacity=0.55),
-                text=["League Avg"],
-                textposition="bottom center",
-                textfont=dict(size=9, color="rgba(100,116,139,0.62)"),
+                mode="markers",
+                marker=dict(size=7, color=league_color, opacity=0.45),
                 name="League Average",
                 hovertemplate="League Avg<br>X: %{x:.1f}<br>Y: %{y:.1f}<extra></extra>",
             )
@@ -4049,20 +4074,21 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
             x=[player_x],
             y=[player_y],
             mode="markers",
-            marker=dict(size=24, color=player_color, line=dict(color="#ffffff", width=2)),
+            marker=dict(size=12, color=player_color, line=dict(color=line_color, width=2)),
             name="Player",
             hovertemplate="Player<br>X: %{x:.1f}<br>Y: %{y:.1f}<extra></extra>",
         )
     )
-    fig.add_annotation(
-        x=player_label_x,
-        y=player_label_y,
-        text=html.escape(_last_name(player_name)),
-        showarrow=False,
-        font=dict(size=11, color=player_color),
-        xanchor="center",
-        yanchor="middle",
-    )
+    if player_label:
+        fig.add_annotation(
+            x=player_label_x,
+            y=player_label_y,
+            text=html.escape(player_label),
+            showarrow=False,
+            font=dict(size=11, color=player_color),
+            xanchor="center",
+            yanchor="middle",
+        )
     fig.update_xaxes(range=x_range, visible=False, scaleanchor="y", scaleratio=1)
     fig.update_yaxes(range=y_range, visible=False)
     fig.update_layout(
