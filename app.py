@@ -3929,10 +3929,14 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
     mound_color = "#b78349"
     line_color = "#ffffff"
 
-    fence_center_y = 128
-    fence_radius_x = 245
-    fence_radius_y = 180
-    base_points = [(0, 0), (63.6, 63.6), (0, 127.3), (-63.6, 63.6)]
+    field_scale = 1.0
+    base_distance = 90 * field_scale
+    base_offset = base_distance / math.sqrt(2)
+    field_radius = 245 * field_scale
+    fence_center_y = base_distance * (128 / 90)
+    fence_radius_x = field_radius
+    fence_radius_y = field_radius * (180 / 245)
+    base_points = [(0, 0), (base_offset, base_offset), (0, base_offset * 2), (-base_offset, base_offset)]
     home_plate, first_base, _, third_base = base_points
     right_foul_vector = (first_base[0] - home_plate[0], first_base[1] - home_plate[1])
     left_foul_vector = (third_base[0] - home_plate[0], third_base[1] - home_plate[1])
@@ -3954,6 +3958,7 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
     ]
     fence_x = [fence_radius_x * math.cos(theta) for theta in arc_thetas]
     fence_y = [fence_center_y + fence_radius_y * math.sin(theta) for theta in arc_thetas]
+    fence_points = list(zip(fence_x, fence_y))
 
     def shape_path(points, close=True):
         path = "M " + " L ".join(f"{x:.2f},{y:.2f}" for x, y in points)
@@ -3969,6 +3974,40 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
             (x_value - radius, y_value),
         ]
 
+    infield_dirt_points = [
+        (0, -base_distance * 0.11),
+        (base_distance * 0.96, first_base[1]),
+        (0, base_distance * 1.66),
+        (-base_distance * 0.96, third_base[1]),
+    ]
+    grass_points = [home_plate, (right_foul_end_x, right_foul_end_y)] + list(reversed(fence_points)) + [
+        (left_foul_end_x, left_foul_end_y)
+    ]
+    mound_radius = base_distance * 0.145
+    mound_center_y = base_distance * 0.79
+    base_marker_radius = base_distance * 0.055
+    home_plate_points = [
+        (0, -base_distance * 0.067),
+        (base_distance * 0.067, -base_distance * 0.011),
+        (base_distance * 0.044, base_distance * 0.078),
+        (-base_distance * 0.044, base_distance * 0.078),
+        (-base_distance * 0.067, -base_distance * 0.011),
+    ]
+    field_bounds_points = (
+        grass_points
+        + infield_dirt_points
+        + home_plate_points
+        + [
+            (-mound_radius, mound_center_y - mound_radius),
+            (mound_radius, mound_center_y + mound_radius),
+            (0, 0),
+        ]
+    )
+    field_x_min = min(x for x, _ in field_bounds_points)
+    field_x_max = max(x for x, _ in field_bounds_points)
+    field_y_min = min(y for _, y in field_bounds_points)
+    field_y_max = max(y for _, y in field_bounds_points)
+
     def marker_label_point(x_value, y_value):
         candidates = [(24, 24), (-24, 24), (24, -24), (-24, -24), (0, 32), (0, -32)]
         best_point = None
@@ -3980,7 +4019,12 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
                 ((label_x - base_x) ** 2 + (label_y - base_y) ** 2) ** 0.5
                 for base_x, base_y in base_points
             )
-            boundary_penalty = max(0, abs(label_x) - 162) + max(0, label_y - 318) + max(0, -24 - label_y)
+            boundary_penalty = (
+                max(0, field_x_min - label_x)
+                + max(0, label_x - field_x_max)
+                + max(0, field_y_min - label_y)
+                + max(0, label_y - field_y_max)
+            )
             score = base_distance - boundary_penalty * 2
             if best_score is None or score > best_score:
                 best_score = score
@@ -3989,24 +4033,29 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
 
     player_label = _last_name(player_name)
     player_label_x, player_label_y = marker_label_point(player_x, player_y)
-    plot_x_values = [min(fence_x), max(fence_x), left_foul_end_x, right_foul_end_x, -175, 175, player_x, player_label_x]
-    plot_y_values = [-34, 338, min(fence_y), max(fence_y), left_foul_end_y, right_foul_end_y, player_y, player_label_y]
+    plot_points = field_bounds_points + [(player_x, player_y), (player_label_x, player_label_y)]
     if league_x is not None and league_y is not None:
-        plot_x_values.append(league_x)
-        plot_y_values.append(league_y)
+        plot_points.append((league_x, league_y))
 
-    x_center = (min(plot_x_values) + max(plot_x_values)) / 2
-    y_center = (min(plot_y_values) + max(plot_y_values)) / 2
-    half_width = (max(plot_x_values) - min(plot_x_values)) * 0.525
-    half_height = (max(plot_y_values) - min(plot_y_values)) * 0.525
+    x_center = (field_x_min + field_x_max) / 2
+    y_center = (field_y_min + field_y_max) / 2
+    axis_padding = base_distance * 0.08
+    half_width = max(abs(x - x_center) for x, _ in plot_points) + axis_padding
+    half_height = max(abs(y - y_center) for _, y in plot_points) + axis_padding
     x_range = [x_center - half_width, x_center + half_width]
     y_range = [y_center - half_height, y_center + half_height]
 
     fig = go.Figure()
-    fig.add_shape(type="rect", x0=-175, y0=-34, x1=175, y1=338, line_width=0, fillcolor=grass_color, layer="below")
     fig.add_shape(
         type="path",
-        path=shape_path([(0, -10), (86, 63.6), (0, 149), (-86, 63.6)]),
+        path=shape_path(grass_points),
+        line=dict(color="rgba(255,255,255,0)", width=0),
+        fillcolor=grass_color,
+        layer="below",
+    )
+    fig.add_shape(
+        type="path",
+        path=shape_path(infield_dirt_points),
         line=dict(color="rgba(255,255,255,0)", width=0),
         fillcolor=dirt_color,
         layer="below",
@@ -4038,31 +4087,31 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
     )
     fig.add_shape(
         type="path",
-        path=shape_path(list(zip(fence_x, fence_y)), close=False),
+        path=shape_path(fence_points, close=False),
         line=dict(color=line_color, width=4),
         layer="above",
     )
     fig.add_shape(
         type="circle",
-        x0=-13,
-        y0=58,
-        x1=13,
-        y1=84,
+        x0=-mound_radius,
+        y0=mound_center_y - mound_radius,
+        x1=mound_radius,
+        y1=mound_center_y + mound_radius,
         line=dict(color="rgba(255,255,255,0.45)", width=1),
         fillcolor=mound_color,
         layer="above",
     )
-    for base_x, base_y in [(63.6, 63.6), (0, 127.3), (-63.6, 63.6)]:
+    for base_x, base_y in [first_base, base_points[2], third_base]:
         fig.add_shape(
             type="path",
-            path=shape_path(diamond_points(base_x, base_y, 5)),
+            path=shape_path(diamond_points(base_x, base_y, base_marker_radius)),
             line=dict(color=line_color, width=1),
             fillcolor=line_color,
             layer="above",
         )
     fig.add_shape(
         type="path",
-        path=shape_path([(0, -6), (6, -1), (4, 7), (-4, 7), (-6, -1)]),
+        path=shape_path(home_plate_points),
         line=dict(color=line_color, width=1),
         fillcolor=line_color,
         layer="above",
