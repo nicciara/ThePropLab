@@ -790,7 +790,7 @@ def pitch_type_cell_style(value):
 
 RUN_VALUE_STYLE_COLORS = {
     "bad": "color:#dc2626; font-weight:700;",
-    "average": "color:#d97706; font-weight:700;",
+    "average": "color:#ca8a04; font-weight:700;",
     "good": "color:#16a34a; font-weight:700;",
     "elite": "color:#2563eb; font-weight:700;",
 }
@@ -3424,18 +3424,47 @@ def _format_outfield_value(value):
     return f"{number:.1f}"
 
 
-def outfield_metric_rating(value, threshold_key):
+def defense_rating_level(value, threshold_key):
     number = _numeric_value(value)
     thresholds = OUTFIELD_RATING_THRESHOLDS.get(threshold_key)
     if number is None or not thresholds:
-        return "N/A"
+        return ""
     if number >= thresholds["elite"]:
-        return "Elite"
+        return "elite"
     if number >= thresholds["good"]:
-        return "Good"
+        return "good"
     if number >= thresholds["average"]:
-        return "Average"
-    return "Bad"
+        return "average"
+    return "bad"
+
+
+def outfield_metric_rating(value, threshold_key):
+    level = defense_rating_level(value, threshold_key)
+    if not level:
+        return "N/A"
+    return {"elite": "Elite", "good": "Good", "average": "Average", "bad": "Bad"}[level]
+
+
+def defense_rating_style(value, threshold_key):
+    level = defense_rating_level(value, threshold_key)
+    return RUN_VALUE_STYLE_COLORS.get(level, "")
+
+
+def style_defense_rating_table(df):
+    hidden_columns = [column for column in ("_RawValue", "_RatingKey") if column in df.columns]
+
+    def cell_style(row, column_name):
+        if column_name not in {"Value", "Rating"}:
+            return ""
+        return defense_rating_style(row.get("_RawValue"), row.get("_RatingKey"))
+
+    styled = df.style.apply(
+        lambda row: [cell_style(row, column) for column in row.index],
+        axis=1,
+    )
+    if hidden_columns:
+        styled = styled.hide(axis="columns", subset=hidden_columns)
+    return styled
 
 
 def _savant_csv_dataframe(url, params, log_label):
@@ -3768,8 +3797,8 @@ def _overall_defensive_rows(metrics, position_group, primary_position):
         fallback_rows = [
             ("INF/OF Runs", fielding_run_value_row.get("inf_of_runs"), "run_value"),
             ("Success Rate Added", oaa_row.get("diff_success_rate_formatted"), "success_rate_added"),
-            ("Actual Success Rate", oaa_row.get("actual_success_rate_formatted"), "success_rate"),
-            ("Estimated Success Rate", oaa_row.get("adj_estimated_success_rate_formatted"), "success_rate"),
+            ("Actual Success Rate", oaa_row.get("actual_success_rate_formatted"), ""),
+            ("Estimated Success Rate", oaa_row.get("adj_estimated_success_rate_formatted"), ""),
         ]
         return _available_defensive_rows(primary_rows, fallback_rows=fallback_rows, target_count=len(primary_rows))
 
@@ -3788,16 +3817,27 @@ def _overall_defensive_rows(metrics, position_group, primary_position):
 
 
 def _outfield_metric_table(rows):
+    signed_rating_keys = {"run_value", "oaa", "jump", "success_rate_added"}
+
+    def display_value(value, rating_key):
+        formatted = _format_outfield_value(value)
+        number = _numeric_value(value)
+        if formatted == "N/A" or rating_key not in signed_rating_keys or number is None or number <= 0:
+            return formatted
+        return f"+{formatted}"
+
     return pd.DataFrame(
         [
             {
                 "Metric": label,
-                "Value": _format_outfield_value(value),
+                "Value": display_value(value, rating_key),
                 "Rating": outfield_metric_rating(value, rating_key),
+                "_RawValue": value,
+                "_RatingKey": rating_key,
             }
             for label, value, rating_key in rows
         ],
-        columns=["Metric", "Value", "Rating"],
+        columns=["Metric", "Value", "Rating", "_RawValue", "_RatingKey"],
     )
 
 
@@ -3811,13 +3851,15 @@ def _oaa_split_table(oaa_row):
         [
             {
                 "Split": label,
-                "Value": _format_outfield_value(value),
+                "Value": f"+{_format_outfield_value(value)}" if (_numeric_value(value) or 0) > 0 else _format_outfield_value(value),
                 "Rating": outfield_metric_rating(value, rating_key),
+                "_RawValue": value,
+                "_RatingKey": rating_key,
             }
             for label, value, rating_key in rows
             if _numeric_value(value) is not None
         ],
-        columns=["Split", "Value", "Rating"],
+        columns=["Split", "Value", "Rating", "_RawValue", "_RatingKey"],
     )
 
 
@@ -3861,7 +3903,7 @@ def render_outfield_information(batter_id):
     with st.container(border=True):
         st.markdown("<div class='section-title-strong'>Overall Defensive Metrics</div>", unsafe_allow_html=True)
         st.dataframe(
-            _outfield_metric_table(_overall_defensive_rows(metrics, position_group, primary_position)),
+            style_defense_rating_table(_outfield_metric_table(_overall_defensive_rows(metrics, position_group, primary_position))),
             hide_index=True,
             use_container_width=True,
         )
@@ -3873,7 +3915,7 @@ def render_outfield_information(batter_id):
             st.caption("No OAA split data available.")
         else:
             st.dataframe(
-                split_df,
+                style_defense_rating_table(split_df),
                 hide_index=True,
                 use_container_width=True,
             )
