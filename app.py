@@ -3932,15 +3932,21 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
     fence_center_y = 128
     fence_radius_x = 245
     fence_radius_y = 180
-    foul_x_per_y = 250 / 400
-    arc_a = (foul_x_per_y / fence_radius_x) ** 2 + 1 / (fence_radius_y**2)
-    arc_b = -2 * fence_center_y / (fence_radius_y**2)
+    base_points = [(0, 0), (63.6, 63.6), (0, 127.3), (-63.6, 63.6)]
+    home_plate, first_base, _, third_base = base_points
+    right_foul_vector = (first_base[0] - home_plate[0], first_base[1] - home_plate[1])
+    left_foul_vector = (third_base[0] - home_plate[0], third_base[1] - home_plate[1])
+    arc_a = (right_foul_vector[0] / fence_radius_x) ** 2 + (right_foul_vector[1] / fence_radius_y) ** 2
+    arc_b = -2 * fence_center_y * right_foul_vector[1] / (fence_radius_y**2)
     arc_c = (fence_center_y / fence_radius_y) ** 2 - 1
     arc_discriminant = arc_b**2 - 4 * arc_a * arc_c
-    foul_end_y = (-arc_b + math.sqrt(arc_discriminant)) / (2 * arc_a)
-    foul_end_x = foul_x_per_y * foul_end_y
-    arc_start = math.atan2((foul_end_y - fence_center_y) / fence_radius_y, -foul_end_x / fence_radius_x)
-    arc_end = math.atan2((foul_end_y - fence_center_y) / fence_radius_y, foul_end_x / fence_radius_x)
+    foul_line_scale = (-arc_b + math.sqrt(arc_discriminant)) / (2 * arc_a)
+    right_foul_end_x = right_foul_vector[0] * foul_line_scale
+    right_foul_end_y = right_foul_vector[1] * foul_line_scale
+    left_foul_end_x = left_foul_vector[0] * foul_line_scale
+    left_foul_end_y = left_foul_vector[1] * foul_line_scale
+    arc_start = math.atan2((left_foul_end_y - fence_center_y) / fence_radius_y, left_foul_end_x / fence_radius_x)
+    arc_end = math.atan2((right_foul_end_y - fence_center_y) / fence_radius_y, right_foul_end_x / fence_radius_x)
     arc_steps = 96
     arc_thetas = [
         arc_start - ((arc_start - arc_end) * step / (arc_steps - 1))
@@ -3948,8 +3954,6 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
     ]
     fence_x = [fence_radius_x * math.cos(theta) for theta in arc_thetas]
     fence_y = [fence_center_y + fence_radius_y * math.sin(theta) for theta in arc_thetas]
-
-    base_points = [(0, 0), (63.6, 63.6), (0, 127.3), (-63.6, 63.6)]
 
     def shape_path(points, close=True):
         path = "M " + " L ".join(f"{x:.2f},{y:.2f}" for x, y in points)
@@ -4014,8 +4018,8 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
         type="line",
         x0=0,
         y0=0,
-        x1=foul_end_x,
-        y1=foul_end_y,
+        x1=right_foul_end_x,
+        y1=right_foul_end_y,
         line=dict(color=line_color, width=2),
         layer="above",
     )
@@ -4023,8 +4027,8 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
         type="line",
         x0=0,
         y0=0,
-        x1=-foul_end_x,
-        y1=foul_end_y,
+        x1=left_foul_end_x,
+        y1=left_foul_end_y,
         line=dict(color=line_color, width=2),
         layer="above",
     )
