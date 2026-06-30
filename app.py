@@ -1003,6 +1003,14 @@ def opposing_pitcher_arsenal_card_html(pitcher_name, arsenal_rows):
     )
 
 
+def format_pitcher_name_with_hand(pitcher_name, pitcher_hand=""):
+    name = str(pitcher_name or "").strip()
+    hand = str(pitcher_hand or "").strip()
+    if name and hand:
+        return f"{name} ({hand})"
+    return name or "Opposing Pitcher Arsenal"
+
+
 def default_opposing_pitcher_arsenal_split(batter_hand):
     normalized_hand = normalize_hand_code(batter_hand)
     if normalized_hand == "L":
@@ -3438,6 +3446,7 @@ def render_general_information(sb, batter_id, batter_name):
         with run_value_cols[1]:
             pitcher_id = run_value_pitcher.get("id", "")
             pitcher_name = run_value_pitcher.get("name", "") or "Opposing Pitcher Arsenal"
+            pitcher_hand = run_value_pitcher.get("hand", "")
             if pitcher_id:
                 arsenal_split_key = f"batter_opposing_pitcher_arsenal_split_{batter_id}_{pitcher_id}"
                 split_options = ["LHB", "Overall", "RHB"]
@@ -3464,7 +3473,10 @@ def render_general_information(sb, batter_id, batter_name):
                     reverse=True,
                 )
                 st.markdown(
-                    opposing_pitcher_arsenal_card_html(pitcher_name, opposing_arsenal_rows),
+                    opposing_pitcher_arsenal_card_html(
+                        format_pitcher_name_with_hand(pitcher_name, pitcher_hand),
+                        opposing_arsenal_rows,
+                    ),
                     unsafe_allow_html=True,
                 )
             else:
