@@ -3929,24 +3929,25 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
     mound_color = "#b78349"
     line_color = "#ffffff"
 
-    fence_center_y = 130
-    fence_radius = 190
+    fence_center_y = 128
+    fence_radius_x = 245
+    fence_radius_y = 180
     foul_x_per_y = 250 / 400
-    arc_a = foul_x_per_y**2 + 1
-    arc_b = -2 * fence_center_y
-    arc_c = fence_center_y**2 - fence_radius**2
+    arc_a = (foul_x_per_y / fence_radius_x) ** 2 + 1 / (fence_radius_y**2)
+    arc_b = -2 * fence_center_y / (fence_radius_y**2)
+    arc_c = (fence_center_y / fence_radius_y) ** 2 - 1
     arc_discriminant = arc_b**2 - 4 * arc_a * arc_c
     foul_end_y = (-arc_b + math.sqrt(arc_discriminant)) / (2 * arc_a)
     foul_end_x = foul_x_per_y * foul_end_y
-    arc_start = math.atan2(foul_end_y - fence_center_y, -foul_end_x)
-    arc_end = math.atan2(foul_end_y - fence_center_y, foul_end_x)
+    arc_start = math.atan2((foul_end_y - fence_center_y) / fence_radius_y, -foul_end_x / fence_radius_x)
+    arc_end = math.atan2((foul_end_y - fence_center_y) / fence_radius_y, foul_end_x / fence_radius_x)
     arc_steps = 96
     arc_thetas = [
         arc_start - ((arc_start - arc_end) * step / (arc_steps - 1))
         for step in range(arc_steps)
     ]
-    fence_x = [fence_radius * math.cos(theta) for theta in arc_thetas]
-    fence_y = [fence_center_y + fence_radius * math.sin(theta) for theta in arc_thetas]
+    fence_x = [fence_radius_x * math.cos(theta) for theta in arc_thetas]
+    fence_y = [fence_center_y + fence_radius_y * math.sin(theta) for theta in arc_thetas]
 
     base_points = [(0, 0), (63.6, 63.6), (0, 127.3), (-63.6, 63.6)]
 
@@ -3965,7 +3966,7 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
         ]
 
     def marker_label_point(x_value, y_value):
-        candidates = [(18, 18), (-18, 18), (18, -18), (-18, -18), (0, 24), (0, -24)]
+        candidates = [(24, 24), (-24, 24), (24, -24), (-24, -24), (0, 32), (0, -32)]
         best_point = None
         best_score = None
         for x_offset, y_offset in candidates:
@@ -4064,7 +4065,7 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
                 x=[league_x],
                 y=[league_y],
                 mode="markers",
-                marker=dict(size=7, color=league_color, opacity=0.45),
+                marker=dict(size=6, color=league_color, opacity=0.32),
                 name="League Average",
                 hovertemplate="League Avg<br>X: %{x:.1f}<br>Y: %{y:.1f}<extra></extra>",
             )
@@ -4074,12 +4075,22 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
             x=[player_x],
             y=[player_y],
             mode="markers",
-            marker=dict(size=12, color=player_color, line=dict(color=line_color, width=2)),
+            marker=dict(size=14, color=player_color, line=dict(color=line_color, width=2)),
             name="Player",
             hovertemplate="Player<br>X: %{x:.1f}<br>Y: %{y:.1f}<extra></extra>",
         )
     )
     if player_label:
+        for halo_x_offset, halo_y_offset in [(-1, 0), (1, 0), (0, -1), (0, 1), (-0.7, -0.7), (-0.7, 0.7), (0.7, -0.7), (0.7, 0.7)]:
+            fig.add_annotation(
+                x=player_label_x + halo_x_offset,
+                y=player_label_y + halo_y_offset,
+                text=html.escape(player_label),
+                showarrow=False,
+                font=dict(size=11, color=line_color),
+                xanchor="center",
+                yanchor="middle",
+            )
         fig.add_annotation(
             x=player_label_x,
             y=player_label_y,
