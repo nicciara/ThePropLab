@@ -8,6 +8,7 @@ import altair as alt
 import streamlit as st
 import pandas as pd
 import requests
+import plotly.graph_objects as go
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from urllib.parse import quote_plus
@@ -3609,6 +3610,7 @@ def load_outfield_sprint_speed(season_year):
 def load_defense_positioning(season_year, bat_side, position_group):
     group_config = DEFENSE_POSITION_GROUPS.get(position_group, DEFENSE_POSITION_GROUPS["outfield"])
     rows = []
+    league_rows = []
     for position in group_config["positions"]:
         params = {
             "type": "player",
@@ -3645,7 +3647,8 @@ def load_defense_positioning(season_year, bat_side, position_group):
             logger.warning("%s positioning JSON parse failed bat_side=%s position=%s: %s", position_group.title(), bat_side, position, exc)
             continue
         rows.extend(payload.get("positionData", []) or [])
-    return rows
+        league_rows.extend(payload.get("leagueAvg", []) or [])
+    return {"positionData": rows, "leagueAvg": league_rows}
 
 
 def load_outfield_positioning(season_year, bat_side):
@@ -3657,6 +3660,8 @@ def load_infield_positioning(season_year, bat_side):
 
 
 def _weighted_positioning_values(rows, player_id):
+    if isinstance(rows, dict):
+        rows = rows.get("positionData", [])
     player_key = _savant_player_key(player_id)
     player_rows = [
         row for row in rows or []
@@ -3674,6 +3679,34 @@ def _weighted_positioning_values(rows, player_id):
     total_weight = 0.0
     totals = {label: 0.0 for label in weighted_fields}
     for row in player_rows:
+        weight = _numeric_value(row.get("n")) or 0.0
+        if weight <= 0:
+            continue
+        for label, field in weighted_fields.items():
+            value = _numeric_value(row.get(field))
+            if value is not None:
+                totals[label] += value * weight
+        total_weight += weight
+
+    if total_weight <= 0:
+        return {}
+    return {label: totals[label] / total_weight for label in weighted_fields}
+
+
+def _weighted_league_positioning_values(positioning_payload):
+    league_rows = positioning_payload.get("leagueAvg", []) if isinstance(positioning_payload, dict) else []
+    if not league_rows:
+        return {}
+
+    weighted_fields = {
+        "Average Depth": "avg_norm_start_distance",
+        "Average Angle": "avg_norm_start_angle",
+        "Average X Position": "avg_norm_start_pos_x",
+        "Average Y Position": "avg_norm_start_pos_y",
+    }
+    total_weight = 0.0
+    totals = {label: 0.0 for label in weighted_fields}
+    for row in league_rows:
         weight = _numeric_value(row.get("n")) or 0.0
         if weight <= 0:
             continue
@@ -3729,9 +3762,15 @@ def load_defense_player_metrics(player_id, position_group):
     arm_row = _savant_row_for_player(load_defense_arm_strength(season_year, position_group), player_id, "player_id")
     fielding_run_value_row = _savant_row_for_player(load_defense_fielding_run_value(season_year), player_id, "id")
     sprint_row = _savant_row_for_player(load_outfield_sprint_speed(season_year), player_id, "player_id")
+    left_positioning = load_defense_positioning(season_year, "L", position_group)
+    right_positioning = load_defense_positioning(season_year, "R", position_group)
     positioning = {
-        "L": _weighted_positioning_values(load_defense_positioning(season_year, "L", position_group), player_id),
-        "R": _weighted_positioning_values(load_defense_positioning(season_year, "R", position_group), player_id),
+        "L": _weighted_positioning_values(left_positioning, player_id),
+        "R": _weighted_positioning_values(right_positioning, player_id),
+    }
+    league_positioning = {
+        "L": _weighted_league_positioning_values(left_positioning),
+        "R": _weighted_league_positioning_values(right_positioning),
     }
     return {
         "oaa": oaa_row,
@@ -3740,6 +3779,7 @@ def load_defense_player_metrics(player_id, position_group):
         "fielding_run_value": fielding_run_value_row,
         "sprint": sprint_row,
         "positioning": positioning,
+        "league_positioning": league_positioning,
     }
 
 
@@ -3864,12 +3904,121 @@ def _oaa_split_table(oaa_row):
     )
 
 
-def _render_positioning_card(title, positioning_values):
+def _last_name(name):
+    text = str(name or "").strip()
+    if not text:
+        return "Player"
+    if "," in text:
+        return text.split(",", 1)[0].strip() or text
+    return text.split()[-1]
+
+
+def _positioning_field_figure(positioning_values, league_positioning_values, player_name):
+    player_x = _numeric_value(positioning_values.get("Average X Position"))
+    player_y = _numeric_value(positioning_values.get("Average Y Position"))
+    if player_x is None or player_y is None:
+        return None
+
+    league_x = _numeric_value((league_positioning_values or {}).get("Average X Position"))
+    league_y = _numeric_value((league_positioning_values or {}).get("Average Y Position"))
+    player_color = run_value_style_color_hex("elite")
+    league_color = "#64748b"
+    line_color = "#5f7598"
+    grass_color = "#edf4ff"
+    dirt_color = "#e3eeff"
+
+    fig = go.Figure()
+    fig.add_shape(type="rect", x0=-275, y0=-15, x1=275, y1=430, line_width=0, fillcolor=grass_color, layer="below")
+    fig.add_shape(type="circle", x0=-190, y0=-60, x1=190, y1=320, line=dict(color=line_color, width=1), fillcolor="rgba(0,0,0,0)", layer="below")
+    fig.add_trace(
+        go.Scatter(
+            x=[0, 63.6, 0, -63.6, 0],
+            y=[0, 63.6, 127.3, 63.6, 0],
+            mode="lines",
+            line=dict(color=line_color, width=2),
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[0, 250, None, 0, -250],
+            y=[0, 400, None, 0, 400],
+            mode="lines",
+            line=dict(color=line_color, width=1),
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[0, 63.6, 0, -63.6],
+            y=[0, 63.6, 127.3, 63.6],
+            mode="markers",
+            marker=dict(size=7, color=dirt_color, line=dict(color=line_color, width=1)),
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[0, 63.6, 0, -63.6, -120, 0, 120],
+            y=[-8, 58, 138, 58, 250, 360, 250],
+            mode="text",
+            text=["Home", "1B", "2B", "3B", "LF", "CF", "RF"],
+            textfont=dict(size=10, color=line_color),
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+    if league_x is not None and league_y is not None:
+        fig.add_trace(
+            go.Scatter(
+                x=[league_x],
+                y=[league_y],
+                mode="markers+text",
+                marker=dict(size=11, color=league_color),
+                text=["League Avg"],
+                textposition="bottom center",
+                textfont=dict(size=10, color=league_color),
+                name="League Average",
+                hovertemplate="League Avg<br>X: %{x:.1f}<br>Y: %{y:.1f}<extra></extra>",
+            )
+        )
+    fig.add_trace(
+        go.Scatter(
+            x=[player_x],
+            y=[player_y],
+            mode="markers+text",
+            marker=dict(size=14, color=player_color, line=dict(color="#ffffff", width=1)),
+            text=[_last_name(player_name)],
+            textposition="top center",
+            textfont=dict(size=11, color=player_color),
+            name="Player",
+            hovertemplate="Player<br>X: %{x:.1f}<br>Y: %{y:.1f}<extra></extra>",
+        )
+    )
+    fig.update_xaxes(range=[-275, 275], visible=False, scaleanchor="y", scaleratio=1)
+    fig.update_yaxes(range=[-20, 430], visible=False)
+    fig.update_layout(
+        height=270,
+        margin=dict(l=0, r=0, t=4, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+    )
+    return fig
+
+
+def _render_positioning_card(title, positioning_values, league_positioning_values=None, player_name=""):
     with st.container(border=True):
         st.markdown(f"<div class='dash-card-title'>{html.escape(title)}</div>", unsafe_allow_html=True)
         if not positioning_values:
             st.caption("No positioning data available.")
             return
+        field_figure = _positioning_field_figure(positioning_values, league_positioning_values, player_name)
+        if field_figure is not None:
+            st.plotly_chart(field_figure, use_container_width=True, config={"displayModeBar": False})
         rows = []
         for label in ("Average Depth", "Average Angle", "Average X Position", "Average Y Position"):
             rows.append(
@@ -3879,13 +4028,14 @@ def _render_positioning_card(title, positioning_values):
         st.markdown(f"<div class='dash-grid'>{''.join(rows)}</div>", unsafe_allow_html=True)
 
 
-def render_outfield_information(batter_id):
+def render_outfield_information(batter_id, batter_name=""):
     position_group, primary_position = detect_player_defense_position(batter_id)
     metrics = load_defense_player_metrics(batter_id, position_group)
     oaa_row = metrics["oaa"]
     arm_row = metrics["arm"]
     fielding_run_value_row = metrics["fielding_run_value"]
     positioning = metrics["positioning"]
+    league_positioning = metrics.get("league_positioning", {})
     group_config = DEFENSE_POSITION_GROUPS.get(position_group, DEFENSE_POSITION_GROUPS["outfield"])
 
     has_defense_data = any(
@@ -3924,9 +4074,9 @@ def render_outfield_information(batter_id):
     st.markdown("<div class='section-title-strong'>Positioning</div>", unsafe_allow_html=True)
     left_col, right_col = st.columns(2)
     with left_col:
-        _render_positioning_card("vs Left-Handed Batters", positioning.get("L"))
+        _render_positioning_card("vs Left-Handed Batters", positioning.get("L"), league_positioning.get("L"), batter_name)
     with right_col:
-        _render_positioning_card("vs Right-Handed Batters", positioning.get("R"))
+        _render_positioning_card("vs Right-Handed Batters", positioning.get("R"), league_positioning.get("R"), batter_name)
 
 
 def render_selected_batter_view():
@@ -3976,7 +4126,7 @@ def render_selected_batter_view():
         if selected_view == "Batting":
             render_general_information(sb, batter_id, batter_name)
         elif selected_view == "Fielding":
-            render_outfield_information(batter_id)
+            render_outfield_information(batter_id, batter_name)
 
         st.stop()
 
