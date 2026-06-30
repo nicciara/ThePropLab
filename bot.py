@@ -9,13 +9,14 @@ from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 from matchup_engine import get_matchup_data
+import performance_profile
 
-# Load the .env file
-load_dotenv(dotenv_path=".env")
+# Load the .env file as the source of truth for bot startup flags.
+load_dotenv(dotenv_path=".env", override=True)
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 DISCORD_CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID")
-LINEUP_MONITOR_INTERVAL_SECONDS = int(os.getenv("LINEUP_MONITOR_INTERVAL_SECONDS", "300"))
+LINEUP_MONITOR_INTERVAL_SECONDS = 120
 TOP_HR_CANDIDATES_COUNT = int(os.getenv("TOP_HR_CANDIDATES_COUNT", "3"))
 TEST_MODE = os.getenv("TEST_MODE", "False").strip().lower() in {"1", "true", "yes", "on"}
 print("TOKEN FOUND:", TOKEN is not None)
@@ -29,7 +30,7 @@ bot = commands.Bot(
     intents=intents
 )
 
-PROCESSED_LINEUPS: set[str] = set()
+POSTED_GAME_KEYS: set[str] = set()
 LINEUP_MATCHUP_RESULTS: list[dict[str, Any]] = []
 CURRENT_MONITOR_DATE: date | None = None
 APP_FUNCTIONS: dict[str, Any] | None = None
@@ -81,6 +82,16 @@ def _game_value(game: Any, key: str, default: Any = "") -> Any:
 
 def _lineup_key(game: Any, side: str) -> str:
     return f"{_game_value(game, 'game_pk')}:{side}"
+
+
+def _game_key(game: Any) -> str:
+    return str(_game_value(game, "game_pk"))
+
+
+def _payload_game_key(payload: dict[str, Any]) -> str:
+    game = payload.get("game", {}) if isinstance(payload, dict) else {}
+    game_pk = game.get("game_pk") if isinstance(game, dict) else None
+    return str(game_pk or payload.get("lineup_key") or "")
 
 
 def _team_context(game: Any, side: str) -> dict[str, Any]:
@@ -141,7 +152,7 @@ def _build_lineup_matchup_payload(game: Any, side: str, lineup: list[dict[str, A
 
         batters.append(batter_payload)
 
-    return {
+    payload = {
         "lineup_key": _lineup_key(game, side),
         "processed_at_date": date.today().isoformat(),
         "game": {
@@ -160,6 +171,10 @@ def _build_lineup_matchup_payload(game: Any, side: str, lineup: list[dict[str, A
         # Rank-ready raw analysis payload. No scoring or ranking is done here.
         "batters": batters,
     }
+    profile = performance_profile.active_profile()
+    if profile is not None:
+        payload["_performance_profile"] = profile
+    return payload
 
 
 def _scan_confirmed_lineups_once() -> list[dict[str, Any]]:
@@ -167,30 +182,53 @@ def _scan_confirmed_lineups_once() -> list[dict[str, Any]]:
     load_schedule = app_functions["load_schedule"]
     get_game_lineups = app_functions["get_game_lineups"]
 
-    games = load_schedule(date.today())
+    scan_profile = performance_profile.start_profile("Lineup scan")
+    schedule_started_at = perf_counter()
+    try:
+        games = load_schedule(date.today())
+    finally:
+        schedule_elapsed = perf_counter() - schedule_started_at
+        performance_profile.record_timing("Load schedule", schedule_elapsed, profile=scan_profile)
+        performance_profile.set_active_profile(None)
     if games is None or games.empty:
         return []
 
     newly_processed = []
     for _, game in games.iterrows():
+        game_key = _game_key(game)
+        if game_key in POSTED_GAME_KEYS:
+            continue
+
+        lineup_profile = performance_profile.start_profile("Lineup lookup")
+        lineup_started_at = perf_counter()
         try:
             lineup_context = get_game_lineups(_game_value(game, "game_pk"), game)
         except Exception as exc:
+            performance_profile.set_active_profile(None)
             print(f"Lineup monitor warning: get_game_lineups failed for game {_game_value(game, 'game_pk')}: {exc}")
             continue
+        finally:
+            lineup_elapsed = perf_counter() - lineup_started_at
+            performance_profile.record_timing("Find lineup", lineup_elapsed, profile=lineup_profile)
+            performance_profile.set_active_profile(None)
 
         for side in ("away", "home"):
             lineup = lineup_context.get(side, [])
-            key = _lineup_key(game, side)
-            if key in PROCESSED_LINEUPS:
-                continue
             if not _lineup_is_confirmed(lineup):
                 continue
 
-            payload = _build_lineup_matchup_payload(game, side, lineup)
-            PROCESSED_LINEUPS.add(key)
+            profile = performance_profile.start_profile(
+                f"{_game_value(game, 'away_team')} @ {_game_value(game, 'home_team')}"
+            )
+            performance_profile.merge_profile_metrics(profile, scan_profile)
+            performance_profile.merge_profile_metrics(profile, lineup_profile)
+            try:
+                payload = _build_lineup_matchup_payload(game, side, lineup)
+            finally:
+                performance_profile.set_active_profile(None)
             LINEUP_MATCHUP_RESULTS.append(payload)
             newly_processed.append(payload)
+            break
 
     return newly_processed
 
@@ -632,7 +670,8 @@ def _lineup_message(payload: dict[str, Any]) -> str:
 
 
 def _top_candidates_text(payload: dict[str, Any], limit: int | None = None) -> str:
-    ranked = rank_home_run_candidates(payload, limit=limit or TOP_HR_CANDIDATES_COUNT)
+    with performance_profile.timed("Ranking", profile=payload.get("_performance_profile")):
+        ranked = rank_home_run_candidates(payload, limit=limit or TOP_HR_CANDIDATES_COUNT)
     if not ranked:
         return _lineup_message(payload)
 
@@ -936,7 +975,8 @@ def _build_candidate_embed_description(candidate: dict[str, Any]) -> str:
 
 def _build_top_candidates_embed(payload: dict[str, Any]) -> discord.Embed:
     game = payload.get("game", {})
-    ranked = rank_home_run_candidates(payload, limit=TOP_HR_CANDIDATES_COUNT)
+    with performance_profile.timed("Ranking", profile=payload.get("_performance_profile")):
+        ranked = rank_home_run_candidates(payload, limit=TOP_HR_CANDIDATES_COUNT)
 
     embed = discord.Embed(
         title=f"⚾ {game.get('away_team')} @ {game.get('home_team')}",
@@ -982,17 +1022,28 @@ def _embed_terminal_text(embed: discord.Embed) -> str:
     return "\n".join(lines)
 
 
-async def _send_lineup_message(payload: dict[str, Any]) -> None:
+async def _send_lineup_message(payload: dict[str, Any]) -> bool:
+    profile = payload.get("_performance_profile")
     if not DISCORD_CHANNEL_ID:
-        print(_top_candidates_text(payload))
-        return
+        with performance_profile.timed("Discord embed", profile=profile):
+            text = _top_candidates_text(payload)
+        with performance_profile.timed("Discord send", profile=profile):
+            print(text)
+        if profile is not None:
+            print(performance_profile.format_report(profile))
+        return True
 
     try:
         channel_id = int(DISCORD_CHANNEL_ID)
     except ValueError:
         print("Lineup monitor warning: DISCORD_CHANNEL_ID is not a valid integer.")
-        print(_top_candidates_text(payload))
-        return
+        with performance_profile.timed("Discord embed", profile=profile):
+            text = _top_candidates_text(payload)
+        with performance_profile.timed("Discord send", profile=profile):
+            print(text)
+        if profile is not None:
+            print(performance_profile.format_report(profile))
+        return True
 
     channel = bot.get_channel(channel_id)
     if channel is None:
@@ -1000,10 +1051,25 @@ async def _send_lineup_message(payload: dict[str, Any]) -> None:
             channel = await bot.fetch_channel(channel_id)
         except Exception as exc:
             print(f"Lineup monitor warning: could not fetch Discord channel {channel_id}: {exc}")
-            print(_top_candidates_text(payload))
-            return
+            with performance_profile.timed("Discord embed", profile=profile):
+                text = _top_candidates_text(payload)
+            with performance_profile.timed("Discord send", profile=profile):
+                print(text)
+            if profile is not None:
+                print(performance_profile.format_report(profile))
+            return True
 
-    await channel.send(embed=_build_top_candidates_embed(payload))
+    try:
+        with performance_profile.timed("Discord embed", profile=profile):
+            embed = _build_top_candidates_embed(payload)
+        with performance_profile.timed("Discord send", profile=profile):
+            await channel.send(embed=embed)
+    except Exception as exc:
+        print(f"Lineup monitor warning: could not send Discord embed: {exc}")
+        return False
+    if profile is not None:
+        print(performance_profile.format_report(profile))
+    return True
 
 
 async def _send_test_mode_message(payload: dict[str, Any], test_started_at: float | None = None) -> None:
@@ -1054,7 +1120,7 @@ async def monitor_confirmed_lineups():
     today = date.today()
     if CURRENT_MONITOR_DATE != today:
         CURRENT_MONITOR_DATE = today
-        PROCESSED_LINEUPS.clear()
+        POSTED_GAME_KEYS.clear()
         LINEUP_MATCHUP_RESULTS.clear()
         print(f"Lineup monitor reset for {today.isoformat()}.")
 
@@ -1065,7 +1131,11 @@ async def monitor_confirmed_lineups():
         return
 
     for payload in new_payloads:
-        await _send_lineup_message(payload)
+        game_key = _payload_game_key(payload)
+        if game_key in POSTED_GAME_KEYS:
+            continue
+        if await _send_lineup_message(payload):
+            POSTED_GAME_KEYS.add(game_key)
 
 
 @bot.event

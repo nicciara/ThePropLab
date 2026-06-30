@@ -18,6 +18,7 @@ from typing import Any, Callable
 import pandas as pd
 
 import strike_zone
+import performance_profile
 
 __all__ = ["get_matchup_data"]
 
@@ -90,6 +91,28 @@ def _call_existing(
     except Exception as exc:
         errors.append(f"{label} failed: {exc}")
         return default
+
+
+def _profiled_existing_call(
+    profile_label: str,
+    timer: _TimingLogger,
+    timing_label: str,
+    errors: list[str],
+    error_label: str,
+    function: Callable[..., Any],
+    args: tuple[Any, ...],
+    default: Any,
+) -> Any:
+    with performance_profile.timed(profile_label):
+        return timer.timed(
+            timing_label,
+            _call_existing,
+            errors,
+            error_label,
+            function,
+            *args,
+            default=default,
+        )
 
 
 def _load_app_module(errors: list[str]) -> Any | None:
@@ -1416,15 +1439,16 @@ def get_matchup_data(batter_id: Any, pitcher_id: Any) -> dict[str, Any]:
         return result
 
     player_ids = tuple(pid for pid in (batter_id_int, pitcher_id_int) if pid)
-    player_info = timer.timed(
-        "Player info",
-        _call_existing,
-        errors,
-        "app.get_players_info",
-        app.get_players_info,
-        player_ids,
-        default={},
-    )
+    with performance_profile.timed("Load handedness"):
+        player_info = timer.timed(
+            "Player info",
+            _call_existing,
+            errors,
+            "app.get_players_info",
+            app.get_players_info,
+            player_ids,
+            default={},
+        )
     result["source_functions"]["app.py"].append("get_players_info")
 
     batter_info = player_info.get(batter_id_int, {}) if batter_id_int else {}
@@ -1451,6 +1475,7 @@ def get_matchup_data(batter_id: Any, pitcher_id: Any) -> dict[str, Any]:
     app_data_started_at = perf_counter()
     app_load_tasks = {
         "pitcher_season_stats": (
+            "Load pitcher data",
             "app.load_pitcher_stats",
             "app.load_pitcher_stats",
             app.load_pitcher_stats,
@@ -1458,6 +1483,7 @@ def get_matchup_data(batter_id: Any, pitcher_id: Any) -> dict[str, Any]:
             {},
         ),
         "pitch_mix": (
+            "Load pitch mix",
             "Pitch mix",
             "app.load_regular_season_pitch_mix",
             app.load_regular_season_pitch_mix,
@@ -1465,6 +1491,7 @@ def get_matchup_data(batter_id: Any, pitcher_id: Any) -> dict[str, Any]:
             {"R": [], "L": [], "all": []},
         ),
         "batter_season_stats": (
+            "Load batter data",
             "Batter contact stats",
             "app.load_batter_overall_contact_stats",
             app.load_batter_overall_contact_stats,
@@ -1472,6 +1499,7 @@ def get_matchup_data(batter_id: Any, pitcher_id: Any) -> dict[str, Any]:
             {},
         ),
         "batter_run_value": (
+            "Load run values",
             "Batter run value",
             "app.load_batter_run_value_pitch_type_table",
             app.load_batter_run_value_pitch_type_table,
@@ -1479,6 +1507,7 @@ def get_matchup_data(batter_id: Any, pitcher_id: Any) -> dict[str, Any]:
             pd.DataFrame(),
         ),
         "batter_game_log": (
+            "Load game logs",
             "Game logs",
             "app.load_batter_prop_game_log",
             app.load_batter_prop_game_log,
@@ -1486,6 +1515,7 @@ def get_matchup_data(batter_id: Any, pitcher_id: Any) -> dict[str, Any]:
             pd.DataFrame(),
         ),
         "batter_hit_details": (
+            "Load game logs",
             "Hit details",
             "app.load_batter_hit_details_by_game",
             app.load_batter_hit_details_by_game,
@@ -1496,16 +1526,17 @@ def get_matchup_data(batter_id: Any, pitcher_id: Any) -> dict[str, Any]:
     with ThreadPoolExecutor(max_workers=len(app_load_tasks)) as executor:
         app_futures = {
             key: executor.submit(
-                timer.timed,
+                _profiled_existing_call,
+                profile_label,
+                timer,
                 timing_label,
-                _call_existing,
                 errors,
                 error_label,
                 function,
-                *args,
-                default=default,
+                args,
+                default,
             )
-            for key, (timing_label, error_label, function, args, default) in app_load_tasks.items()
+            for key, (profile_label, timing_label, error_label, function, args, default) in app_load_tasks.items()
         }
         app_loaded = {key: app_futures[key].result() for key in app_load_tasks}
     timer.log("Independent app data loads", app_data_started_at)
@@ -1539,42 +1570,43 @@ def get_matchup_data(batter_id: Any, pitcher_id: Any) -> dict[str, Any]:
     result["source_functions"]["app.py"].append("load_batter_hit_details_by_game")
 
     strike_zone_started_at = perf_counter()
-    batter_hr_zone_data = timer.timed(
-        "Batter HR strike zone data",
-        _batter_home_run_zone_data,
-        errors,
-        batter_id,
-        result["pitcher_handedness"] or "",
-    )
-    result["batter_strike_zone_home_run_data"] = timer.timed(
-        "_json_safe batter HR strike zone data",
-        _json_safe,
-        batter_hr_zone_data,
-    )
-    batter_plate_discipline = timer.timed(
-        "Batter plate discipline zone data",
-        _batter_plate_discipline_zone_data,
-        errors,
-        batter_id,
-        result["pitcher_handedness"] or "",
-    )
-    result["batter_plate_discipline_zone_data"] = timer.timed(
-        "_json_safe batter plate discipline zone data",
-        _json_safe,
-        batter_plate_discipline,
-    )
-    pitcher_zone_tendencies = timer.timed(
-        "Pitcher strike zone tendency data",
-        _pitcher_zone_tendency_data,
-        errors,
-        pitcher_id,
-        result["batter_handedness"] or "",
-    )
-    result["pitcher_strike_zone_tendency_data"] = timer.timed(
-        "_json_safe pitcher strike zone tendency data",
-        _json_safe,
-        pitcher_zone_tendencies,
-    )
+    with performance_profile.timed("Load strike zone"):
+        batter_hr_zone_data = timer.timed(
+            "Batter HR strike zone data",
+            _batter_home_run_zone_data,
+            errors,
+            batter_id,
+            result["pitcher_handedness"] or "",
+        )
+        result["batter_strike_zone_home_run_data"] = timer.timed(
+            "_json_safe batter HR strike zone data",
+            _json_safe,
+            batter_hr_zone_data,
+        )
+        batter_plate_discipline = timer.timed(
+            "Batter plate discipline zone data",
+            _batter_plate_discipline_zone_data,
+            errors,
+            batter_id,
+            result["pitcher_handedness"] or "",
+        )
+        result["batter_plate_discipline_zone_data"] = timer.timed(
+            "_json_safe batter plate discipline zone data",
+            _json_safe,
+            batter_plate_discipline,
+        )
+        pitcher_zone_tendencies = timer.timed(
+            "Pitcher strike zone tendency data",
+            _pitcher_zone_tendency_data,
+            errors,
+            pitcher_id,
+            result["batter_handedness"] or "",
+        )
+        result["pitcher_strike_zone_tendency_data"] = timer.timed(
+            "_json_safe pitcher strike zone tendency data",
+            _json_safe,
+            pitcher_zone_tendencies,
+        )
     timer.log("Strike zone data", strike_zone_started_at)
     result["source_functions"]["strike_zone.py"].extend(
         [
@@ -1608,6 +1640,7 @@ def get_matchup_data(batter_id: Any, pitcher_id: Any) -> dict[str, Any]:
         "and render_lineup_table. They are intentionally not called here."
     )
 
-    result["home_run_analysis"] = timer.timed("Home run analysis", _build_home_run_analysis, result)
+    with performance_profile.timed("HR analysis"):
+        result["home_run_analysis"] = timer.timed("Home run analysis", _build_home_run_analysis, result)
     timer.log("get_matchup_data complete")
     return result

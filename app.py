@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from urllib.parse import quote_plus
 
 import strike_zone
+import performance_profile
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -83,6 +84,28 @@ PROJECTION_STATE_KEYS = (
     "prizepicks_projections",
     "prop_projections",
 )
+
+
+def _request_profile_key(url, params=None):
+    if not params:
+        return str(url)
+    return f"{url}?{_freeze_request_params(params)}"
+
+
+def _profiled_requests_get(url, *, service, params=None, timeout=None, **kwargs):
+    started_at = time.perf_counter()
+    try:
+        if timeout is None:
+            return requests.get(url, params=params, **kwargs)
+        return requests.get(url, params=params, timeout=timeout, **kwargs)
+    finally:
+        performance_profile.record_request(
+            service,
+            _request_profile_key(url, params),
+            elapsed_seconds=time.perf_counter() - started_at,
+            cache_status="miss",
+        )
+
 
 def _render_page_header_and_styles():
     st.set_page_config(page_title="🧪 The Prop Lab", layout="wide")
@@ -950,7 +973,7 @@ def load_batter_first_inning_hrrrbi_by_game(batter_id, season_year):
     for game_key in sorted(set(game_pks)):
         url = f"https://statsapi.mlb.com/api/v1.1/game/{game_key}/feed/live"
         try:
-            feed = requests.get(url, timeout=20).json()
+            feed = _profiled_requests_get(url, service="mlb", timeout=20).json()
         except Exception as exc:
             logger.warning("First-inning game feed fetch failed for game_pk=%s batter_id=%s: %s", game_key, batter_id, exc)
             first_inning_by_game[game_key] = 0
@@ -1002,7 +1025,7 @@ def load_batter_prop_game_log(batter_id, season_year=2026, include_first_inning=
             return 0
 
     try:
-        data = requests.get(url, params=params, timeout=20).json()
+        data = _profiled_requests_get(url, service="mlb", params=params, timeout=20).json()
     except Exception as exc:
         logger.warning("MLB batter game log request failed for %s: %s", batter_id, exc)
         return pd.DataFrame()
@@ -1076,7 +1099,7 @@ def load_batter_prop_game_log_seasons(batter_id):
     url = f"https://statsapi.mlb.com/api/v1/people/{batter_id}/stats"
     params = {"stats": "yearByYear", "group": "hitting", "sportIds": 1}
     try:
-        data = requests.get(url, params=params, timeout=20).json()
+        data = _profiled_requests_get(url, service="mlb", params=params, timeout=20).json()
     except Exception as exc:
         logger.warning("MLB batter year-by-year request failed for %s: %s", batter_id, exc)
         return [date.today().year]
@@ -1193,8 +1216,12 @@ def _get_cached_response_text(url, params, timeout=45):
     with SAVANT_RESPONSE_SESSION_CACHE_LOCK:
         cached = SAVANT_RESPONSE_SESSION_CACHE.get(cache_key)
         if cached is not None:
+            performance_profile.record_request("savant", cache_key, cache_status="hit")
             return cached
+        started_at = time.perf_counter()
         response = requests.get(url, params=params, timeout=timeout)
+        elapsed = time.perf_counter() - started_at
+        performance_profile.record_request("savant", cache_key, elapsed_seconds=elapsed, cache_status="miss")
         cached_response = (response.status_code, response.text)
         SAVANT_RESPONSE_SESSION_CACHE[cache_key] = cached_response
         return cached_response
@@ -1303,7 +1330,7 @@ def load_game_starting_pitchers(game_pk):
 
     url = f"https://statsapi.mlb.com/api/v1.1/game/{game_key}/feed/live"
     try:
-        data = requests.get(url, timeout=20).json()
+        data = _profiled_requests_get(url, service="mlb", timeout=20).json()
     except Exception as exc:
         logger.warning("Game starter feed request failed for game_pk=%s: %s", game_key, exc)
         return {}
@@ -2576,7 +2603,7 @@ def load_savant_batter_season_summary_stats(season_year):
     }
     fetch_start = time.perf_counter()
     try:
-        response = requests.get(url, params=params, timeout=45)
+        response = _profiled_requests_get(url, service="savant", params=params, timeout=45)
     except Exception as exc:
         logger.warning("Savant batter summary fetch failed for season=%s: %s", season_year, exc)
         return {}
@@ -2746,12 +2773,17 @@ def get_players_info(player_ids):
 
     with PLAYER_INFO_SESSION_CACHE_LOCK:
         missing_ids = [pid for pid in sanitized_ids if pid not in PLAYER_INFO_SESSION_CACHE]
+        cached_ids = [pid for pid in sanitized_ids if pid in PLAYER_INFO_SESSION_CACHE]
+
+    for pid in cached_ids:
+        performance_profile.record_request("mlb", f"https://statsapi.mlb.com/api/v1/people:{pid}", cache_status="hit")
 
     if missing_ids:
         PLAYER_API_CALLS += 1
         logger.debug("Fetching handedness for player IDs: %s", missing_ids)
         url = "https://statsapi.mlb.com/api/v1/people"
-        data = requests.get(url, params={"personIds": ",".join(str(pid) for pid in missing_ids)}).json()
+        params = {"personIds": ",".join(str(pid) for pid in missing_ids)}
+        data = _profiled_requests_get(url, service="mlb", params=params).json()
         people = data.get("people", [])
         fetched = {}
         for person in people:
@@ -2779,7 +2811,7 @@ def load_schedule(game_date):
         "hydrate": "probablePitcher,team,venue"
     }
 
-    data = requests.get(url, params=params).json()
+    data = _profiled_requests_get(url, service="mlb", params=params).json()
     games = []
 
     pitcher_ids = []
@@ -2851,7 +2883,7 @@ def load_active_roster(team_id):
     if not team_id:
         return []
     url = f"https://statsapi.mlb.com/api/v1/teams/{team_id}/roster"
-    data = requests.get(url, params={"rosterType": "active"}, timeout=15).json()
+    data = _profiled_requests_get(url, service="mlb", params={"rosterType": "active"}, timeout=15).json()
     return data.get("roster", [])
 
 
@@ -3000,7 +3032,7 @@ def build_fangraphs_lineup_fallback(team_id, team_name):
 @st.cache_data(ttl=300)
 def load_lineups(game_pk):
     url = f"https://statsapi.mlb.com/api/v1.1/game/{game_pk}/feed/live"
-    data = requests.get(url).json()
+    data = _profiled_requests_get(url, service="mlb").json()
 
     boxscore = data.get("liveData", {}).get("boxscore", {}).get("teams", {})
     game_data_players = data.get("gameData", {}).get("players", {})
@@ -3368,7 +3400,7 @@ def load_pitcher_stats(player_id):
         "season": str(date.today().year),
         "group": "pitching",
     }
-    response = requests.get(stats_url, params=params, timeout=15)
+    response = _profiled_requests_get(stats_url, service="mlb", params=params, timeout=15)
     if response.status_code != 200:
         return {}
     payload = response.json()

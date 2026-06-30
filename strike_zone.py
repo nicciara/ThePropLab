@@ -2,9 +2,12 @@ import logging
 import threading
 from datetime import date
 from pathlib import Path
+from time import perf_counter
 
 import pandas as pd
 import streamlit as st
+
+import performance_profile
 
 logger = logging.getLogger(__name__)
 _PITCHER_LOCATION_SESSION_CACHE = {}
@@ -199,11 +202,19 @@ def load_pitcher_statcast_data(player_id, start_date, end_date):
     with _LOCATION_SESSION_CACHE_LOCK:
         cached = _PITCHER_STATCAST_SESSION_CACHE.get(cache_key)
         if cached is not None:
+            performance_profile.record_request("savant", f"statcast_pitcher:{cache_key}", cache_status="hit")
             return cached.copy()
 
         from pybaseball import statcast_pitcher
 
+        started_at = perf_counter()
         df = statcast_pitcher(start_date, end_date, int(player_id))
+        performance_profile.record_request(
+            "savant",
+            f"statcast_pitcher:{cache_key}",
+            elapsed_seconds=perf_counter() - started_at,
+            cache_status="miss",
+        )
         if df is None:
             df = pd.DataFrame()
         _PITCHER_STATCAST_SESSION_CACHE[cache_key] = df.copy()
@@ -215,11 +226,19 @@ def load_batter_statcast_data(batter_id, start_date, end_date):
     with _LOCATION_SESSION_CACHE_LOCK:
         cached = _BATTER_STATCAST_SESSION_CACHE.get(cache_key)
         if cached is not None:
+            performance_profile.record_request("savant", f"statcast_batter:{cache_key}", cache_status="hit")
             return cached.copy()
 
         from pybaseball import statcast_batter
 
+        started_at = perf_counter()
         df = statcast_batter(start_date, end_date, int(batter_id))
+        performance_profile.record_request(
+            "savant",
+            f"statcast_batter:{cache_key}",
+            elapsed_seconds=perf_counter() - started_at,
+            cache_status="miss",
+        )
         if df is None:
             df = pd.DataFrame()
         _BATTER_STATCAST_SESSION_CACHE[cache_key] = df.copy()
