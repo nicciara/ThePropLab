@@ -1940,10 +1940,27 @@ def batter_comparison_pitcher_stands(sb):
     return "All Batters"
 
 
-def comparison_pitch_type_for_pitcher(selected_pitch_type):
-    if str(selected_pitch_type).strip().lower() in {"all", "all pitches"}:
-        return "All Pitches"
-    return selected_pitch_type
+def get_pitcher_compare_pitch_type_options(pitcher_id):
+    if not pitcher_id:
+        return ["All Pitches"]
+
+    season_year = date.today().year
+    start_date = f"{season_year}-03-01"
+    end_date = date.today().isoformat()
+    raw_df = strike_zone.load_pitch_location_data(pitcher_id, start_date, end_date)
+    if raw_df.empty:
+        return ["All Pitches"]
+
+    pitch_col = "pitch_name" if "pitch_name" in raw_df.columns else "pitch_type"
+    if pitch_col not in raw_df.columns:
+        return ["All Pitches"]
+
+    options = [
+        str(val).strip()
+        for val in raw_df[pitch_col].dropna().astype(str).unique().tolist()
+        if str(val).strip()
+    ]
+    return ["All Pitches", *sorted(set(options))]
 
 
 def set_game_log_range_selection(range_key, h2h_key, sample_label):
@@ -3417,12 +3434,66 @@ def render_general_information(sb, batter_id, batter_name):
                     if pitcher_id:
                         pitcher_label = pitcher_name or "Opposing Pitcher"
                         st.caption(f"{pitcher_label} Location Tendencies")
+                        pitcher_pitch_type_options = get_pitcher_compare_pitch_type_options(pitcher_id)
+                        pitcher_pitch_type_key = f"batter_compare_pitcher_pitch_type_{batter_id}"
+                        if st.session_state.get(pitcher_pitch_type_key) not in pitcher_pitch_type_options:
+                            st.session_state[pitcher_pitch_type_key] = "All Pitches"
+
+                        pitcher_stands_key = f"batter_compare_pitcher_batter_stands_{batter_id}"
+                        if pitcher_stands_key not in st.session_state:
+                            st.session_state[pitcher_stands_key] = batter_comparison_pitcher_stands(sb)
+
+                        pitcher_metric_key = f"batter_compare_pitcher_metric_{batter_id}"
+                        if st.session_state.get(pitcher_metric_key) not in strike_zone.PITCHER_STRIKE_ZONE_METRICS:
+                            st.session_state[pitcher_metric_key] = "Pitch %"
+
+                        pitcher_heatmap_key = f"batter_compare_pitcher_heatmap_scale_{batter_id}"
+                        if st.session_state.get(pitcher_heatmap_key) not in {
+                            strike_zone.HEATMAP_SCALE_LEAGUE,
+                            strike_zone.HEATMAP_SCALE_SELF,
+                        }:
+                            st.session_state[pitcher_heatmap_key] = strike_zone.HEATMAP_SCALE_LEAGUE
+
+                        with st.expander("Pitcher Compare Settings", expanded=False):
+                            pitcher_control_cols_top = st.columns(2)
+                            with pitcher_control_cols_top[0]:
+                                selected_pitcher_pitch_type = st.selectbox(
+                                    "Pitch Type",
+                                    pitcher_pitch_type_options,
+                                    key=pitcher_pitch_type_key,
+                                )
+                            with pitcher_control_cols_top[1]:
+                                selected_pitcher_batter_stands = st.selectbox(
+                                    "Batter Side",
+                                    ["All Batters", "RHB", "LHB"],
+                                    key=pitcher_stands_key,
+                                )
+
+                            pitcher_control_cols_bottom = st.columns(2)
+                            with pitcher_control_cols_bottom[0]:
+                                selected_pitcher_metric = st.selectbox(
+                                    "Metric",
+                                    list(strike_zone.PITCHER_STRIKE_ZONE_METRICS),
+                                    key=pitcher_metric_key,
+                                )
+                            with pitcher_control_cols_bottom[1]:
+                                selected_pitcher_heatmap_scale = st.selectbox(
+                                    "Heatmap Scale",
+                                    [strike_zone.HEATMAP_SCALE_LEAGUE, strike_zone.HEATMAP_SCALE_SELF],
+                                    key=pitcher_heatmap_key,
+                                )
+
+                            st.markdown(
+                                pitcher_heatmap_legend_html(selected_pitcher_heatmap_scale),
+                                unsafe_allow_html=True,
+                            )
+
                         strike_zone.display_strike_zone(
                             pitcher_id,
-                            comparison_pitch_type_for_pitcher(selected_pitch_type),
-                            batter_comparison_pitcher_stands(sb),
-                            "Pitch %",
-                            selected_heatmap_scale,
+                            selected_pitcher_pitch_type,
+                            selected_pitcher_batter_stands,
+                            selected_pitcher_metric,
+                            selected_pitcher_heatmap_scale,
                         )
                     else:
                         st.caption("Opposing Pitcher")
