@@ -3989,14 +3989,14 @@ def _positioning_field_figure(positioning_values, league_positioning_values, pla
 
     player_label = _last_name(player_name)
     player_label_x, player_label_y = marker_label_point(player_x, player_y)
-    plot_x_values = [-164, 164, player_x, player_label_x]
-    plot_y_values = [-24, 326, player_y, player_label_y]
+    plot_x_values = [left_foul_end_x, right_foul_end_x, player_x, player_label_x]
+    plot_y_values = [-24, max(fence_y), player_y, player_label_y]
     if league_x is not None and league_y is not None:
         plot_x_values.append(league_x)
         plot_y_values.append(league_y)
 
-    x_range = [min(plot_x_values) - 6, max(plot_x_values) + 6]
-    y_range = [min(plot_y_values) - 6, max(plot_y_values) + 6]
+    x_range = [min(plot_x_values) - 8, max(plot_x_values) + 8]
+    y_range = [min(plot_y_values) - 6, max(plot_y_values) + 14]
 
     fig = go.Figure()
     fig.add_shape(type="rect", x0=-175, y0=-34, x1=175, y1=338, line_width=0, fillcolor=grass_color, layer="below")
