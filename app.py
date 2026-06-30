@@ -5456,7 +5456,7 @@ def render_homepage_props_tab():
     prototype_card_limit = 100
     prototype_rows = rows[:prototype_card_limit]
     legacy_rows = rows[prototype_card_limit:]
-    prototype_batch_size = 5
+    prototype_batch_size = 10
     prototype_batches = []
     for batch_start in range(0, len(prototype_rows), prototype_batch_size):
         batch_rows = prototype_rows[batch_start:batch_start + prototype_batch_size]
