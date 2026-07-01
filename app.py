@@ -82,6 +82,35 @@ PITCHER_GAME_LOG_PROP_COLUMNS = {
     "Walks Allowed": "walks_allowed",
     "Pitching Outs": "pitching_outs",
 }
+PITCHER_PRIZEPICKS_PROP_ALIASES = {
+    "pitcherstrikeouts": "pitcherstrikeouts",
+    "pitcherstrikeout": "pitcherstrikeouts",
+    "pitcherks": "pitcherstrikeouts",
+    "pitcherk": "pitcherstrikeouts",
+    "strikeouts": "pitcherstrikeouts",
+    "strikeout": "pitcherstrikeouts",
+    "ks": "pitcherstrikeouts",
+    "k": "pitcherstrikeouts",
+    "earnedruns": "earnedrunsallowed",
+    "earnedrun": "earnedrunsallowed",
+    "earnedrunsallowed": "earnedrunsallowed",
+    "earnedrunallowed": "earnedrunsallowed",
+    "er": "earnedrunsallowed",
+    "era": "earnedrunsallowed",
+    "hitsallowed": "hitsallowed",
+    "hitallowed": "hitsallowed",
+    "pitcherhitsallowed": "hitsallowed",
+    "walksallowed": "walksallowed",
+    "walkallowed": "walksallowed",
+    "pitcherwalksallowed": "walksallowed",
+    "baseonballsallowed": "walksallowed",
+    "basesonballsallowed": "walksallowed",
+    "pitchingouts": "pitchingouts",
+    "pitchingout": "pitchingouts",
+    "outs": "pitchingouts",
+    "outsrecorded": "pitchingouts",
+    "outrecorded": "pitchingouts",
+}
 
 
 def calculate_prizepicks_hitter_fantasy_score(
@@ -775,6 +804,92 @@ def get_prop_projection_lines(batter_id, selected_prop, batter_name=""):
             continue
         lines.append(record)
     return lines
+
+
+def pitcher_prizepicks_prop_match_key(value):
+    normalized = normalize_name(value).replace("+", " ")
+    compact = normalized.replace(" ", "")
+    return PITCHER_PRIZEPICKS_PROP_ALIASES.get(compact, _prop_match_key(value))
+
+
+def get_pitcher_prop_projection_lines(pitcher_id, selected_prop, pitcher_name=""):
+    selected_prop_key = pitcher_prizepicks_prop_match_key(selected_prop)
+    selected_pitcher_id = str(pitcher_id or "").strip()
+    selected_name_key = normalize_name(pitcher_name)
+    lines = []
+    for record in st.session_state.get("prizepicks_projections", []):
+        if not isinstance(record, dict):
+            continue
+
+        record_player_id = _projection_player_id(record)
+        player_name = normalize_name(record.get("player") or _projection_player_name(record))
+        if selected_pitcher_id and record_player_id:
+            if record_player_id != selected_pitcher_id:
+                continue
+        elif selected_name_key:
+            if player_name != selected_name_key:
+                continue
+        else:
+            continue
+
+        stat_type = record.get("stat_display_name") or _projection_stat_type(record)
+        if pitcher_prizepicks_prop_match_key(stat_type) != selected_prop_key:
+            continue
+        lines.append(record)
+    return lines
+
+
+def projection_lines_matching_value(projection_lines, selected_line_value):
+    exact_lines = []
+    for projection_line in projection_lines:
+        projection_line_value = _projection_line_value(projection_line)
+        try:
+            if float(projection_line_value) == float(selected_line_value):
+                exact_lines.append(projection_line)
+        except (TypeError, ValueError):
+            continue
+    return exact_lines
+
+
+def preferred_projection_line(projection_lines):
+    if not projection_lines:
+        return None
+    for projection_line in projection_lines:
+        odds_type = normalize_name(_projection_value(projection_line, "odds_type", "oddsType", default=""))
+        if odds_type not in {"goblin", "demon"}:
+            return projection_line
+    return projection_lines[0]
+
+
+def render_line_badge_for_projection_matches(line_value, exact_projection_lines):
+    if not exact_projection_lines:
+        return render_line_badge(line_value, show_book_badge=False)
+
+    try:
+        line_text = f"{float(line_value):.1f}"
+    except (TypeError, ValueError):
+        line_text = str(line_value)
+
+    modifier_html = []
+    seen_modifiers = set()
+    for projection_line in exact_projection_lines:
+        odds_type = normalize_name(_projection_value(projection_line, "odds_type", "oddsType", default=""))
+        if odds_type in seen_modifiers:
+            continue
+        if odds_type == "goblin":
+            modifier_html.append(badge_image_html(MODIFIER_BADGE_ASSETS.get("goblin"), "Goblin", "boost-badge", "modifier-badge-img"))
+            seen_modifiers.add(odds_type)
+        elif odds_type == "demon":
+            modifier_html.append(badge_image_html(MODIFIER_BADGE_ASSETS.get("demon"), "Demon", "boost-badge", "modifier-badge-img"))
+            seen_modifiers.add(odds_type)
+
+    return (
+        '<div class="line-badge">'
+        f'<span class="line-value">{html.escape(line_text)}</span>'
+        f'{badge_image_html(SPORTSBOOK_BADGE_ASSETS.get("prizepicks"), "PrizePicks", "book-badge", "book-badge-img")}'
+        f'{"".join(modifier_html)}'
+        '</div>'
+    )
 
 
 def prop_label_from_query(value, default="Hits"):
@@ -2705,6 +2820,13 @@ def adjust_pitcher_game_log_line_value(line_key, delta):
     st.session_state[line_key] = max(0.5, current_value + float(delta))
 
 
+def set_pitcher_game_log_line_value(line_key, value):
+    try:
+        st.session_state[line_key] = float(value)
+    except (TypeError, ValueError):
+        pass
+
+
 def set_pitcher_game_log_range_selection(range_key, h2h_key, sample_label):
     h2h_enabled = bool(st.session_state.get(h2h_key, False))
     if h2h_enabled and st.session_state.get(range_key) == sample_label:
@@ -2897,7 +3019,7 @@ def render_pitcher_game_log_sample_section(pitcher_id, prop_column, selected_pro
 
 
 @st.fragment
-def render_pitcher_prop_game_log_section(pitcher_id, current_opponent_context):
+def render_pitcher_prop_game_log_section(pitcher_id, current_opponent_context, pitcher_name=""):
     if st.session_state.get("selected_pitcher_prop") not in PITCHER_GAME_LOG_PROPS:
         st.session_state["selected_pitcher_prop"] = "Pitcher Strikeouts"
 
@@ -2924,9 +3046,17 @@ def render_pitcher_prop_game_log_section(pitcher_id, current_opponent_context):
         st.info("Data unavailable for this prop.")
         return
 
+    st.session_state["prizepicks_projections"] = load_prizepicks_mlb_projections()
+    projection_lines = get_pitcher_prop_projection_lines(pitcher_id, selected_prop, pitcher_name)
+    default_projection_line = preferred_projection_line(projection_lines)
+    default_projection_line_value = _projection_line_value(default_projection_line) if default_projection_line else None
+
     line_key = f"pitcher_{prop_column}_line_{pitcher_id}"
     if line_key not in st.session_state:
-        st.session_state[line_key] = 0.5
+        st.session_state[line_key] = default_projection_line_value if default_projection_line_value not in {None, ""} else 0.5
+
+    selected_line_value = float(st.session_state[line_key])
+    exact_projection_lines = projection_lines_matching_value(projection_lines, selected_line_value)
 
     st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
     line_cols = st.columns([0.34, 1.65, 0.34, 4.2])
@@ -2939,7 +3069,7 @@ def render_pitcher_prop_game_log_section(pitcher_id, current_opponent_context):
         )
     with line_cols[1]:
         st.markdown(
-            f"<div class='line-badge-wrap'>{render_line_badge(st.session_state[line_key], show_book_badge=False)}</div>",
+            f"<div class='line-badge-wrap'>{render_line_badge_for_projection_matches(st.session_state[line_key], exact_projection_lines)}</div>",
             unsafe_allow_html=True,
         )
     with line_cols[2]:
@@ -2949,6 +3079,22 @@ def render_pitcher_prop_game_log_section(pitcher_id, current_opponent_context):
             on_click=adjust_pitcher_game_log_line_value,
             args=(line_key, 1.0),
         )
+
+    if projection_lines:
+        with st.expander("Alt lines", expanded=False):
+            for idx, projection_line in enumerate(projection_lines):
+                projection_line_value = _projection_line_value(projection_line)
+                projection_exact_lines = projection_lines_matching_value(projection_lines, projection_line_value)
+                st.markdown(
+                    f"<div class='alt-line-row'>{render_line_badge_for_projection_matches(projection_line_value, projection_exact_lines)}</div>",
+                    unsafe_allow_html=True,
+                )
+                st.button(
+                    "Use",
+                    key=f"pitcher_{prop_slug}_alt_line_{pitcher_id}_{idx}",
+                    on_click=set_pitcher_game_log_line_value,
+                    args=(line_key, projection_line_value),
+                )
 
     selected_prop_line = float(st.session_state[line_key])
     render_pitcher_game_log_sample_section(
@@ -5607,7 +5753,7 @@ def render_selected_pitcher_view():
             st.markdown(f"{game.get('away_team')} @ {game.get('home_team')} • {game.get('game_time_et')}")
 
             with st.container(border=True):
-                render_pitcher_prop_game_log_section(pid, opponent_context)
+                render_pitcher_prop_game_log_section(pid, opponent_context, name)
 
             st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
