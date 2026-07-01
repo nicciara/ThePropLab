@@ -68,6 +68,20 @@ GAME_LOG_PROP_COLUMNS = {
     "Triples": "triples",
     "1st Inning Hits + Runs + RBIs": "first_inning_hrrrbi",
 }
+PITCHER_GAME_LOG_PROPS = [
+    "Pitcher Strikeouts",
+    "Earned Runs",
+    "Hits Allowed",
+    "Walks Allowed",
+    "Pitching Outs",
+]
+PITCHER_GAME_LOG_PROP_COLUMNS = {
+    "Pitcher Strikeouts": "strikeouts",
+    "Earned Runs": "earned_runs",
+    "Hits Allowed": "hits_allowed",
+    "Walks Allowed": "walks_allowed",
+    "Pitching Outs": "pitching_outs",
+}
 
 
 def calculate_prizepicks_hitter_fantasy_score(
@@ -1438,6 +1452,146 @@ def load_batter_prop_all_game_logs(batter_id, include_first_inning=False):
     return all_logs.reset_index(drop=True)
 
 
+def innings_pitched_to_outs(innings_pitched):
+    value = str(innings_pitched or "0").strip()
+    if not value:
+        return 0
+
+    if "." in value:
+        whole_text, partial_text = value.split(".", 1)
+    else:
+        whole_text, partial_text = value, "0"
+
+    try:
+        whole_innings = int(float(whole_text or 0))
+    except (TypeError, ValueError):
+        whole_innings = 0
+
+    partial_text = "".join(ch for ch in str(partial_text) if ch.isdigit())
+    try:
+        partial_outs = int(partial_text[:1] or 0)
+    except (TypeError, ValueError):
+        partial_outs = 0
+    partial_outs = min(max(partial_outs, 0), 2)
+    return whole_innings * 3 + partial_outs
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_pitcher_prop_game_log(pitcher_id, season_year=2026):
+    if not pitcher_id:
+        return pd.DataFrame()
+
+    url = f"https://statsapi.mlb.com/api/v1/people/{pitcher_id}/stats"
+    params = {"stats": "gameLog", "group": "pitching", "season": season_year, "sportIds": 1}
+
+    def _int_stat(stat, key):
+        try:
+            return int(stat.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    try:
+        data = _profiled_requests_get(url, service="mlb", params=params, timeout=20).json()
+    except Exception as exc:
+        logger.warning("MLB pitcher game log request failed for %s: %s", pitcher_id, exc)
+        return pd.DataFrame()
+
+    rows = []
+    splits = data.get("stats", [{}])[0].get("splits", []) if data.get("stats") else []
+    for split in splits:
+        stat = split.get("stat", {}) or {}
+        game_date = pd.to_datetime(split.get("date"), errors="coerce")
+        if pd.isna(game_date):
+            continue
+        opponent = split.get("opponent", {}) or {}
+        opponent_label = opponent.get("abbreviation") or opponent.get("teamName") or opponent.get("name", "")
+        opponent_name = opponent.get("name") or opponent.get("teamName") or opponent_label
+        raw_is_home = split.get("isHome", False)
+        is_home = raw_is_home if isinstance(raw_is_home, bool) else str(raw_is_home).lower() == "true"
+        prefix = "" if is_home else "@"
+        game = split.get("game", {}) or {}
+        innings_pitched = stat.get("inningsPitched", "0")
+        rows.append(
+            {
+                "game_pk": game.get("gamePk") or game.get("id") or "",
+                "season": int(season_year),
+                "game_date": game_date,
+                "opponent": f"{prefix}{opponent_label}" if opponent_label else "",
+                "opponent_team_id": opponent.get("id", ""),
+                "opponent_name": opponent_name,
+                "opponent_abbrev": opponent.get("abbreviation") or "",
+                "strikeouts": _int_stat(stat, "strikeOuts"),
+                "earned_runs": _int_stat(stat, "earnedRuns"),
+                "hits_allowed": _int_stat(stat, "hits"),
+                "walks_allowed": _int_stat(stat, "baseOnBalls"),
+                "innings_pitched": innings_pitched,
+                "pitching_outs": innings_pitched_to_outs(innings_pitched),
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame()
+
+    game_log = pd.DataFrame(rows).sort_values("game_date").reset_index(drop=True)
+    game_log["label"] = game_log.apply(
+        lambda row: f"{row['game_date'].strftime('%m/%d')} {row['opponent']}".strip(),
+        axis=1,
+    )
+    return game_log
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_pitcher_prop_game_log_seasons(pitcher_id):
+    if not pitcher_id:
+        return []
+
+    url = f"https://statsapi.mlb.com/api/v1/people/{pitcher_id}/stats"
+    params = {"stats": "yearByYear", "group": "pitching", "sportIds": 1}
+    try:
+        data = _profiled_requests_get(url, service="mlb", params=params, timeout=20).json()
+    except Exception as exc:
+        logger.warning("MLB pitcher year-by-year request failed for %s: %s", pitcher_id, exc)
+        return [date.today().year]
+
+    seasons = []
+    current_year = date.today().year
+    splits = data.get("stats", [{}])[0].get("splits", []) if data.get("stats") else []
+    for split in splits:
+        try:
+            season = int(split.get("season"))
+        except (TypeError, ValueError):
+            continue
+        if season <= current_year:
+            seasons.append(season)
+
+    return sorted(set(seasons))
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_pitcher_prop_all_game_logs(pitcher_id):
+    seasons = load_pitcher_prop_game_log_seasons(pitcher_id)
+    if not seasons:
+        seasons = [date.today().year]
+
+    frames = []
+    for season in seasons:
+        season_df = load_pitcher_prop_game_log(pitcher_id, season_year=season)
+        if not season_df.empty:
+            frames.append(season_df)
+
+    if not frames:
+        return pd.DataFrame()
+
+    all_logs = pd.concat(frames, ignore_index=True).sort_values("game_date").reset_index(drop=True)
+    if "game_pk" in all_logs.columns:
+        has_game_pk = all_logs["game_pk"].astype(str).str.strip() != ""
+        logs_with_game_pk = all_logs[has_game_pk].drop_duplicates(subset=["game_pk", "game_date"], keep="last")
+        logs_without_game_pk = all_logs[~has_game_pk]
+        all_logs = pd.concat([logs_without_game_pk, logs_with_game_pk], ignore_index=True)
+        all_logs = all_logs.sort_values("game_date").reset_index(drop=True)
+    return all_logs.reset_index(drop=True)
+
+
 def normalize_game_pk(value):
     if value is None:
         return ""
@@ -2530,6 +2684,275 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
     selected_prop_line = float(st.session_state[line_key])
     render_batter_game_log_sample_section(
         batter_id,
+        prop_column,
+        selected_prop,
+        selected_prop_line,
+        current_opponent_context,
+    )
+
+
+def set_selected_pitcher_prop(prop):
+    if prop in PITCHER_GAME_LOG_PROPS:
+        st.session_state["selected_pitcher_prop"] = prop
+
+
+def adjust_pitcher_game_log_line_value(line_key, delta):
+    current_value = st.session_state.get(line_key, 0.5)
+    try:
+        current_value = float(current_value)
+    except (TypeError, ValueError):
+        current_value = 0.5
+    st.session_state[line_key] = max(0.5, current_value + float(delta))
+
+
+def set_pitcher_game_log_range_selection(range_key, h2h_key, sample_label):
+    h2h_enabled = bool(st.session_state.get(h2h_key, False))
+    if h2h_enabled and st.session_state.get(range_key) == sample_label:
+        st.session_state[range_key] = None
+    else:
+        st.session_state[range_key] = sample_label
+
+
+def toggle_pitcher_game_log_h2h_selection(h2h_key, range_key):
+    h2h_enabled = bool(st.session_state.get(h2h_key, False))
+    st.session_state[h2h_key] = not h2h_enabled
+    if h2h_enabled:
+        if st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES:
+            st.session_state[range_key] = "L10"
+    else:
+        st.session_state[range_key] = None
+
+
+def add_pitcher_game_log_tooltip_columns(game_log_df, selected_prop):
+    if game_log_df.empty:
+        return game_log_df.copy()
+
+    enriched_df = game_log_df.copy()
+    enriched_df["tooltip_date"] = enriched_df["game_date"].apply(game_log_full_date_label)
+    enriched_df["tooltip_game"] = enriched_df.apply(game_log_matchup_tooltip, axis=1)
+    enriched_df["tooltip_prop_label"] = selected_prop
+    enriched_df["tooltip_prop_value"] = pd.to_numeric(enriched_df["prop_value"], errors="coerce").fillna(0)
+    enriched_df["tooltip_ip"] = enriched_df.get("innings_pitched", "").astype(str) if "innings_pitched" in enriched_df.columns else ""
+    return enriched_df
+
+
+def render_pitcher_game_log_chart(display_log_df, prop_column, selected_prop, selected_prop_line, game_log_range, h2h_enabled):
+    display_log_df = display_log_df.copy()
+    display_log_df["prop_value"] = pd.to_numeric(display_log_df[prop_column], errors="coerce").fillna(0)
+    display_log_df["result_color"] = display_log_df["prop_value"].apply(
+        lambda value: "#16a34a" if value >= selected_prop_line else "#dc2626"
+    )
+    display_log_df["bar_value"] = display_log_df["prop_value"].apply(lambda value: 0.12 if value == 0 else value)
+    display_log_df["label_y"] = display_log_df["bar_value"].apply(lambda value: value + 0.22)
+    display_log_df["chart_label"] = display_log_df.apply(
+        lambda row: game_log_chart_axis_label(row, h2h_active=h2h_enabled),
+        axis=1,
+    )
+    display_log_df = add_pitcher_game_log_tooltip_columns(display_log_df, selected_prop)
+    max_value = max(float(display_log_df["prop_value"].max()), selected_prop_line, 1.0)
+    if game_log_range == "L5":
+        bar_size = 128
+        x_step = 130
+    elif game_log_range == "L10":
+        bar_size = 74
+        x_step = 76
+    elif game_log_range == "L15":
+        bar_size = 52
+        x_step = 54
+    else:
+        bar_size = 11
+        x_step = 12
+
+    bars = (
+        alt.Chart(display_log_df)
+        .mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5, size=bar_size)
+        .encode(
+            x=alt.X(
+                "chart_label:N",
+                sort=None,
+                title=None,
+                axis=alt.Axis(labelAngle=0, labelFontSize=11, labelColor="#475569", labelPadding=8, ticks=False, domain=False),
+                scale=alt.Scale(paddingInner=0.04, paddingOuter=0.03),
+            ),
+            y=alt.Y(
+                "bar_value:Q",
+                title=None,
+                scale=alt.Scale(domain=[0, max_value + 0.8], nice=False),
+                axis=alt.Axis(grid=True, gridColor="#e2e8f0", gridOpacity=0.7, tickColor="#e2e8f0", domain=False, titleColor="#475569", labelColor="#64748b"),
+            ),
+            color=alt.Color("result_color:N", scale=None, legend=None),
+            tooltip=[
+                alt.Tooltip("tooltip_date:N", title="Full Date"),
+                alt.Tooltip("tooltip_game:N", title="Game"),
+                alt.Tooltip("tooltip_prop_value:Q", title=selected_prop, format=".0f"),
+                alt.Tooltip("tooltip_ip:N", title="IP"),
+            ],
+        )
+    )
+    labels = (
+        alt.Chart(display_log_df)
+        .mark_text(dy=-8, fontWeight=700, fontSize=12, color="#0f172a")
+        .encode(
+            x=alt.X("chart_label:N", sort=None),
+            y=alt.Y("label_y:Q"),
+            text=alt.Text("prop_value:Q", format=prop_chart_value_format(prop_column)),
+        )
+    )
+    line_df = pd.DataFrame({"line": [selected_prop_line]})
+    line = alt.Chart(line_df).mark_rule(strokeDash=[6, 4], color="#334155", opacity=0.8).encode(y="line:Q")
+    chart = (bars + labels + line).properties(height=230, width=alt.Step(x_step)).configure_view(stroke=None)
+    st.altair_chart(chart, use_container_width=True)
+
+
+def render_pitcher_game_log_sample_section(pitcher_id, prop_column, selected_prop, selected_prop_line, current_opponent_context):
+    game_log_df = load_pitcher_prop_game_log(pitcher_id)
+    range_key = f"pitcher_game_log_range_{pitcher_id}"
+    h2h_key = f"pitcher_game_log_h2h_{pitcher_id}"
+    h2h_enabled = bool(st.session_state.get(h2h_key, False))
+    if st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES and not h2h_enabled:
+        st.session_state[range_key] = "L10"
+    elif st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES:
+        st.session_state[range_key] = None
+
+    has_opponent_context = bool(current_opponent_context.get("id") or current_opponent_context.get("name"))
+    if h2h_enabled and not has_opponent_context:
+        st.session_state[h2h_key] = False
+        h2h_enabled = False
+        if st.session_state.get(range_key) not in GAME_LOG_SAMPLE_RANGES:
+            st.session_state[range_key] = "L10"
+    summary_opponent_context = current_opponent_context if h2h_enabled else None
+    sample_summaries = prop_hit_rate_sample_summaries(
+        game_log_df,
+        prop_column,
+        selected_prop_line,
+        opponent_context=summary_opponent_context,
+    )
+    active_sample_label = st.session_state.get(range_key)
+    if h2h_enabled and active_sample_label in GAME_LOG_SAMPLE_RANGES:
+        h2h_tile_df = filter_game_logs_vs_opponent(
+            game_log_sample_dataframe(game_log_df, active_sample_label),
+            current_opponent_context,
+        )
+    elif h2h_enabled:
+        all_game_log_df = load_pitcher_prop_all_game_logs(pitcher_id) if has_opponent_context else pd.DataFrame()
+        h2h_tile_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
+    else:
+        h2h_tile_df = filter_game_logs_vs_opponent(game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
+    h2h_summary = prop_hit_rate_summary_for_df(
+        h2h_tile_df,
+        prop_column,
+        selected_prop_line,
+        empty_hit_rate_text="N/A",
+        empty_avg_text="-",
+    )
+
+    st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
+    with st.container(key="game_log_range_tiles", horizontal=True, gap="small"):
+        for sample_label in GAME_LOG_SAMPLE_RANGES:
+            is_selected_sample = sample_label == st.session_state[range_key]
+            st.button(
+                prop_hit_rate_sample_label(sample_label, sample_summaries),
+                key=f"{range_key}_{sample_label}",
+                type="primary" if is_selected_sample else "secondary",
+                on_click=set_pitcher_game_log_range_selection,
+                args=(range_key, h2h_key, sample_label),
+            )
+        if has_opponent_context:
+            st.button(
+                prop_h2h_tile_label(h2h_summary),
+                key=f"{h2h_key}_tile",
+                type="primary" if h2h_enabled else "secondary",
+                on_click=toggle_pitcher_game_log_h2h_selection,
+                args=(h2h_key, range_key),
+            )
+
+    game_log_range = st.session_state[range_key]
+    if h2h_enabled:
+        if game_log_range in GAME_LOG_SAMPLE_RANGES:
+            display_log_df = filter_game_logs_vs_opponent(
+                game_log_sample_dataframe(game_log_df, game_log_range),
+                current_opponent_context,
+            )
+        else:
+            all_game_log_df = load_pitcher_prop_all_game_logs(pitcher_id) if has_opponent_context else pd.DataFrame()
+            display_log_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
+    else:
+        display_log_df = game_log_sample_dataframe(game_log_df, game_log_range)
+
+    if display_log_df.empty:
+        if h2h_enabled:
+            st.info("No previous games vs today's opponent.")
+        else:
+            st.info("Game log data is unavailable for this pitcher right now.")
+        return
+
+    render_pitcher_game_log_chart(
+        display_log_df,
+        prop_column,
+        selected_prop,
+        selected_prop_line,
+        game_log_range,
+        h2h_enabled,
+    )
+
+
+@st.fragment
+def render_pitcher_prop_game_log_section(pitcher_id, current_opponent_context):
+    if st.session_state.get("selected_pitcher_prop") not in PITCHER_GAME_LOG_PROPS:
+        st.session_state["selected_pitcher_prop"] = "Pitcher Strikeouts"
+
+    selected_prop = st.session_state.get("selected_pitcher_prop", "Pitcher Strikeouts")
+    with st.container(key="prop_tab_row", horizontal=True, gap="small"):
+        for prop in PITCHER_GAME_LOG_PROPS:
+            prop_column_key = PITCHER_GAME_LOG_PROP_COLUMNS.get(prop, "").replace("_", "-")
+            st.button(
+                prop,
+                key=f"pitcher_prop_tab_{pitcher_id}_{prop_column_key}",
+                type="primary" if prop == selected_prop else "secondary",
+                on_click=set_selected_pitcher_prop,
+                args=(prop,),
+            )
+
+    selected_prop = st.session_state.get("selected_pitcher_prop", "Pitcher Strikeouts")
+    if selected_prop not in PITCHER_GAME_LOG_PROPS:
+        selected_prop = "Pitcher Strikeouts"
+
+    prop_column = PITCHER_GAME_LOG_PROP_COLUMNS.get(selected_prop)
+    prop_slug = prop_column.replace("_", "-")
+    game_log_df = load_pitcher_prop_game_log(pitcher_id)
+    if prop_column not in game_log_df.columns:
+        st.info("Data unavailable for this prop.")
+        return
+
+    line_key = f"pitcher_{prop_column}_line_{pitcher_id}"
+    if line_key not in st.session_state:
+        st.session_state[line_key] = 0.5
+
+    st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
+    line_cols = st.columns([0.34, 1.65, 0.34, 4.2])
+    with line_cols[0]:
+        st.button(
+            "-",
+            key=f"pitcher_{prop_slug}_line_minus_{pitcher_id}",
+            on_click=adjust_pitcher_game_log_line_value,
+            args=(line_key, -1.0),
+        )
+    with line_cols[1]:
+        st.markdown(
+            f"<div class='line-badge-wrap'>{render_line_badge(st.session_state[line_key], show_book_badge=False)}</div>",
+            unsafe_allow_html=True,
+        )
+    with line_cols[2]:
+        st.button(
+            "+",
+            key=f"pitcher_{prop_slug}_line_plus_{pitcher_id}",
+            on_click=adjust_pitcher_game_log_line_value,
+            args=(line_key, 1.0),
+        )
+
+    selected_prop_line = float(st.session_state[line_key])
+    render_pitcher_game_log_sample_section(
+        pitcher_id,
         prop_column,
         selected_prop,
         selected_prop_line,
@@ -5148,12 +5571,22 @@ def render_selected_pitcher_view():
                 pid = sp.get("id", "")
                 hand = sp.get("hand", "")
                 opponent_team = game.get("home_team", "")
+                opponent_context = {
+                    "id": str(game.get("home_team_id") or "").strip(),
+                    "name": str(game.get("home_team") or "").strip(),
+                    "abbr": str(game.get("home_abbrev") or "").strip(),
+                }
                 opponent_lineup = home_lineup
             else:
                 name = sp.get("name")
                 pid = sp.get("id", "")
                 hand = sp.get("hand", "")
                 opponent_team = game.get("away_team", "")
+                opponent_context = {
+                    "id": str(game.get("away_team_id") or "").strip(),
+                    "name": str(game.get("away_team") or "").strip(),
+                    "abbr": str(game.get("away_abbrev") or "").strip(),
+                }
                 opponent_lineup = away_lineup
 
             opponent_count = len(opponent_lineup) if opponent_lineup else 0
@@ -5338,6 +5771,11 @@ def render_selected_pitcher_view():
             )
 
             # Keep Matchup Read fully separated from Strike Zone without changing section order.
+            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+
+            with st.container(border=True):
+                render_pitcher_prop_game_log_section(pid, opponent_context)
+
             st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
             pitch_type_options = ["All Pitches"]
