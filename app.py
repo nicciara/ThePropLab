@@ -7176,7 +7176,7 @@ def render_homepage_props_tab():
         })
         return row
 
-    props_card_batch_size = 20
+    props_card_batch_size = 12
     selected_date_key = st.session_state.get("selected_date", eastern_today()).isoformat()
     selected_line_type_key = normalize_name(selected_line_type).replace(" ", "-")
     props_loaded_card_limit_key = f"props_loaded_card_limit_{selected_date_key}_{selected_prop_key}_{selected_line_type_key}"
