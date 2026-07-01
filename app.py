@@ -32,7 +32,7 @@ GAME_LOG_PROPS = [
     "RBI",
     "H+R+RBI",
     "Total Bases",
-    "Fantasy Score",
+    "Batter Fantasy Score",
     "Home Runs",
     "Walks",
     "Strikeouts",
