@@ -424,6 +424,38 @@ def badge_image_html(asset_path, alt_text, wrapper_class, image_class):
     )
 
 
+def mlb_team_logo_url(team_id):
+    team_id_text = str(team_id or "").strip()
+    if not team_id_text:
+        return ""
+    return f"https://www.mlbstatic.com/team-logos/{team_id_text}.svg"
+
+
+def title_with_team_logo_html(title_text, team_id="", logo_size=24, font_size_px=None, font_weight=800, color="inherit", margin_bottom_px=0):
+    text = html.escape(str(title_text or ""))
+    if not text:
+        return ""
+
+    font_size_style = f"font-size:{int(font_size_px)}px;" if font_size_px else ""
+    logo_url = mlb_team_logo_url(team_id)
+    logo_html = ""
+    if logo_url:
+        safe_logo_url = html.escape(logo_url, quote=True)
+        logo_html = (
+            "<img "
+            f"src='{safe_logo_url}' alt='Team logo' "
+            f"style='display:block; width:auto; height:{int(logo_size)}px; object-fit:contain; flex:0 0 auto;' "
+            "loading='lazy' decoding='async' />"
+        )
+
+    return (
+        "<div style='display:flex; align-items:center; gap:8px; line-height:1.2; "
+        f"font-weight:{int(font_weight)}; color:{html.escape(str(color))}; margin-bottom:{int(margin_bottom_px)}px; {font_size_style}'>"
+        f"{logo_html}<span>{text}</span>"
+        "</div>"
+    )
+
+
 def render_line_badge(line_value, odds_type="", show_book_badge=True):
     try:
         line_text = f"{float(line_value):.1f}"
@@ -964,12 +996,21 @@ def compact_run_value_table_formatters(df):
     return formatters
 
 
-def opposing_pitcher_arsenal_card_html(pitcher_name, arsenal_rows):
+def opposing_pitcher_arsenal_card_html(pitcher_name, arsenal_rows, team_id=""):
     title = html.escape(str(pitcher_name or "Opposing Pitcher Arsenal"))
+    title_html = title_with_team_logo_html(
+        pitcher_name or "Opposing Pitcher Arsenal",
+        team_id=team_id,
+        logo_size=22,
+        font_size_px=21,
+        font_weight=900,
+        color="var(--dash-title)",
+        margin_bottom_px=12,
+    ) or f"<div class='dash-card-title'>{title}</div>"
     if not arsenal_rows:
         return (
             "<div class='dash-card'>"
-            f"<div class='dash-card-title'>{title}</div>"
+            f"{title_html}"
             "<div style='font-size:13px; color:var(--dash-muted); font-weight:700;'>No arsenal data available.</div>"
             "</div>"
         )
@@ -993,7 +1034,7 @@ def opposing_pitcher_arsenal_card_html(pitcher_name, arsenal_rows):
 
     return (
         "<div class='dash-card'>"
-        f"<div class='dash-card-title'>{title}</div>"
+        f"{title_html}"
         "<div style='display:grid; grid-template-columns:minmax(120px,1fr) 58px 52px 40px; gap:8px; align-items:end; "
         "font-size:11px; color:var(--dash-muted); font-weight:800; letter-spacing:0.02em; text-transform:uppercase; margin-bottom:2px;'>"
         "<div>Pitch Type</div><div style='text-align:right;'>Usage</div><div style='text-align:right;'>Velo</div><div style='text-align:right;'>Ct</div>"
@@ -3442,6 +3483,7 @@ def render_general_information(sb, batter_id, batter_name):
             pitcher_id = run_value_pitcher.get("id", "")
             pitcher_name = run_value_pitcher.get("name", "") or "Opposing Pitcher Arsenal"
             pitcher_hand = run_value_pitcher.get("hand", "")
+            opposing_pitcher_team_id = str(current_opponent_context.get("id") or "").strip()
             if pitcher_id:
                 arsenal_split_key = f"batter_opposing_pitcher_arsenal_split_{batter_id}_{pitcher_id}"
                 split_options = ["LHB", "Overall", "RHB"]
@@ -3471,6 +3513,7 @@ def render_general_information(sb, batter_id, batter_name):
                     opposing_pitcher_arsenal_card_html(
                         format_pitcher_name_with_hand(pitcher_name, pitcher_hand),
                         opposing_arsenal_rows,
+                        team_id=opposing_pitcher_team_id,
                     ),
                     unsafe_allow_html=True,
                 )
@@ -3535,6 +3578,11 @@ def render_general_information(sb, batter_id, batter_name):
             pitcher_heatmap_key,
             strike_zone.HEATMAP_SCALE_LEAGUE,
         )
+        batter_team_id = (
+            str(lineup_context.get(f"{lineup_side}_team_id") or "").strip()
+            if lineup_side else ""
+        ) or str(sb.get("team_id") or "").strip()
+        opposing_pitcher_team_id = str(current_opponent_context.get("id") or "").strip()
 
         batter_strike_zone_cols = st.columns([1.15, 4, 4, 1.15] if compare_enabled else [1.15, 4])
         with batter_strike_zone_cols[0]:
@@ -3574,7 +3622,18 @@ def render_general_information(sb, batter_id, batter_name):
                     unsafe_allow_html=True,
                 )
         with batter_strike_zone_cols[1]:
-            st.caption(f"{format_batter_name_with_hand(batter_name, sb.get('hand', ''))} Location Tendencies")
+            st.markdown(
+                title_with_team_logo_html(
+                    f"{format_batter_name_with_hand(batter_name, sb.get('hand', ''))} Location Tendencies",
+                    team_id=batter_team_id,
+                    logo_size=20,
+                    font_size_px=14,
+                    font_weight=700,
+                    color="var(--dash-muted)",
+                    margin_bottom_px=6,
+                ),
+                unsafe_allow_html=True,
+            )
             if not compare_enabled:
                 strike_zone.display_batter_metric_strike_zone(
                     batter_id,
@@ -3595,7 +3654,18 @@ def render_general_information(sb, batter_id, batter_name):
             with batter_strike_zone_cols[2]:
                 if compare_pitcher_id:
                     pitcher_label = format_pitcher_name_with_hand(compare_pitcher_name, run_value_pitcher.get("hand", ""))
-                    st.caption(f"{pitcher_label} Location Tendencies")
+                    st.markdown(
+                        title_with_team_logo_html(
+                            f"{pitcher_label} Location Tendencies",
+                            team_id=opposing_pitcher_team_id,
+                            logo_size=20,
+                            font_size_px=14,
+                            font_weight=700,
+                            color="var(--dash-muted)",
+                            margin_bottom_px=6,
+                        ),
+                        unsafe_allow_html=True,
+                    )
                     strike_zone.display_strike_zone(
                         compare_pitcher_id,
                         selected_pitcher_pitch_type,
@@ -4571,7 +4641,18 @@ def render_selected_batter_view():
 
         batter_name = sb.get("name") or "Batter Detail"
         batter_hand = sb.get("hand", "")
-        st.markdown(f"## {batter_name}{f' ({batter_hand})' if batter_hand else ''}")
+        st.markdown(
+            title_with_team_logo_html(
+                f"{batter_name}{f' ({batter_hand})' if batter_hand else ''}",
+                team_id=sb.get("team_id", ""),
+                logo_size=26,
+                font_size_px=30,
+                font_weight=800,
+                color="var(--dash-title)",
+                margin_bottom_px=8,
+            ),
+            unsafe_allow_html=True,
+        )
 
         batter_id = sb.get("id", "")
         batter_detail_view_key = f"batter_detail_view_{batter_id or 'unknown'}"
