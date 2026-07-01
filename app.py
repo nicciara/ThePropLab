@@ -3584,7 +3584,6 @@ def render_general_information(sb, batter_id, batter_name):
                     selected_heatmap_scale,
                 )
             else:
-                st.caption("Batter")
                 strike_zone.display_batter_metric_strike_zone(
                     batter_id,
                     selected_pitch_type,
@@ -3592,6 +3591,7 @@ def render_general_information(sb, batter_id, batter_name):
                     selected_metric,
                     selected_heatmap_scale,
                 )
+                st.caption(f"{format_batter_name_with_hand(batter_name, sb.get('hand', ''))} Location Tendencies")
         if compare_enabled:
             with batter_strike_zone_cols[2]:
                 if compare_pitcher_id:
