@@ -456,6 +456,87 @@ def title_with_team_logo_html(title_text, team_id="", logo_size=24, font_size_px
     )
 
 
+def short_weekday_with_period(date_value):
+    try:
+        parsed_date = pd.to_datetime(date_value).date()
+    except Exception:
+        return ""
+    weekday_labels = {
+        0: "Mon.",
+        1: "Tue.",
+        2: "Wed.",
+        3: "Thu.",
+        4: "Fri.",
+        5: "Sat.",
+        6: "Sun.",
+    }
+    return weekday_labels.get(parsed_date.weekday(), "")
+
+
+def batter_header_matchup_subtitle(sb):
+    game_pk = str(sb.get("return_game_pk") or st.session_state.get("selected_game", "") or "").strip()
+    if not game_pk:
+        return ""
+
+    games_df = st.session_state.get("games")
+    if games_df is None or (isinstance(games_df, pd.DataFrame) and games_df.empty):
+        try:
+            games_df = load_schedule(st.session_state.get("selected_date", eastern_today()))
+        except Exception:
+            games_df = pd.DataFrame()
+
+    if not isinstance(games_df, pd.DataFrame) or games_df.empty or "game_pk" not in games_df.columns:
+        return ""
+
+    game_match = games_df[games_df["game_pk"].astype(str) == game_pk]
+    if game_match.empty:
+        return ""
+
+    game = game_match.iloc[0]
+    away_team = str(game.get("away_team", "") or "").strip()
+    home_team = str(game.get("home_team", "") or "").strip()
+    away_abbrev = str(game.get("away_abbrev", "") or away_team).strip()
+    home_abbrev = str(game.get("home_abbrev", "") or home_team).strip()
+    if not away_abbrev or not home_abbrev:
+        return ""
+
+    batter_team_id = str(sb.get("team_id", "") or "").strip()
+    batter_team_name = normalize_name(sb.get("team", ""))
+    away_team_id = str(game.get("away_team_id", "") or "").strip()
+    home_team_id = str(game.get("home_team_id", "") or "").strip()
+
+    batter_is_away = False
+    batter_is_home = False
+    if batter_team_id and away_team_id and batter_team_id == away_team_id:
+        batter_is_away = True
+    elif batter_team_id and home_team_id and batter_team_id == home_team_id:
+        batter_is_home = True
+    elif batter_team_name and normalize_name(away_team) == batter_team_name:
+        batter_is_away = True
+    elif batter_team_name and normalize_name(home_team) == batter_team_name:
+        batter_is_home = True
+    elif sb.get("return_pitcher_side") == "away":
+        batter_is_home = True
+    elif sb.get("return_pitcher_side") == "home":
+        batter_is_away = True
+
+    if batter_is_away:
+        matchup_text = f"{away_abbrev} @ {home_abbrev}"
+    elif batter_is_home:
+        matchup_text = f"{home_abbrev} vs {away_abbrev}"
+    else:
+        return ""
+
+    game_time_text = str(game.get("game_time_et", "") or sb.get("game_time", "") or "").strip()
+    if not game_time_text or game_time_text.upper() == "TBD":
+        return matchup_text
+
+    weekday_text = short_weekday_with_period(st.session_state.get("selected_date", eastern_today()))
+    if not weekday_text:
+        return matchup_text
+    return f"{matchup_text} | {weekday_text} {game_time_text}"
+
+
 def render_line_badge(line_value, odds_type="", show_book_badge=True):
     try:
         line_text = f"{float(line_value):.1f}"
@@ -4653,6 +4734,17 @@ def render_selected_batter_view():
             ),
             unsafe_allow_html=True,
         )
+        matchup_subtitle = batter_header_matchup_subtitle(sb)
+        if matchup_subtitle:
+            st.markdown(
+                (
+                    "<div style='margin:-2px 0 10px 34px; font-size:13px; font-weight:600; "
+                    "line-height:1.2; color:var(--dash-muted);'>"
+                    f"{html.escape(matchup_subtitle)}"
+                    "</div>"
+                ),
+                unsafe_allow_html=True,
+            )
 
         batter_id = sb.get("id", "")
         batter_detail_view_key = f"batter_detail_view_{batter_id or 'unknown'}"
