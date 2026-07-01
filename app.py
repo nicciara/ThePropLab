@@ -57,6 +57,7 @@ GAME_LOG_PROP_COLUMNS = {
     "H+R+RBI": "hrrrbi",
     "Total Bases": "total_bases",
     "Fantasy Score": "fantasy_score",
+    "Batter Fantasy Score": "fantasy_score",
     "Home Runs": "home_runs",
     "Walks": "walks",
     "Strikeouts": "strikeouts",
@@ -768,6 +769,13 @@ def prop_label_from_query(value, default="Hits"):
         if _prop_match_key(prop) == target_key:
             return prop
     return default
+
+
+def game_log_prop_column(prop, default=None):
+    resolved_prop = prop_label_from_query(prop, default="")
+    if resolved_prop in GAME_LOG_PROP_COLUMNS:
+        return GAME_LOG_PROP_COLUMNS[resolved_prop]
+    return GAME_LOG_PROP_COLUMNS.get(prop, default)
 
 
 @st.cache_data(ttl=300)
@@ -2427,7 +2435,7 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
     selected_prop = st.session_state.get("selected_prop", "Hits")
     with st.container(key="prop_tab_row", horizontal=True, gap="small"):
         for prop in GAME_LOG_PROPS:
-            prop_key = GAME_LOG_PROP_COLUMNS[prop].replace("_", "-")
+            prop_key = game_log_prop_column(prop, default="").replace("_", "-")
             st.button(
                 prop,
                 key=f"batter_prop_tab_{batter_id}_{prop_key}",
@@ -2440,7 +2448,7 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
     if selected_prop not in GAME_LOG_PROPS:
         selected_prop = "Hits"
 
-    prop_column = GAME_LOG_PROP_COLUMNS[selected_prop]
+    prop_column = game_log_prop_column(selected_prop)
     prop_slug = prop_column.replace("_", "-")
     include_first_inning = prop_column == "first_inning_hrrrbi"
     game_log_df = load_batter_prop_game_log(batter_id, include_first_inning=include_first_inning)
@@ -3066,7 +3074,7 @@ def _initialize_page_state_from_query():
             "return_pitcher_name": _query_param_value("return_pitcher_name", ""),
             "return_pitcher_hand": _query_param_value("return_pitcher_hand", ""),
         }
-        requested_prop = _query_param_value("prop", "")
+        requested_prop = prop_label_from_query(_query_param_value("prop", ""), default="")
         if requested_prop in GAME_LOG_PROPS:
             st.session_state["selected_prop"] = requested_prop
 
@@ -5540,7 +5548,7 @@ def render_homepage_props_tab():
 
     with st.container(key="homepage_prop_tab_row", horizontal=True, gap="small"):
         for prop in GAME_LOG_PROPS:
-            prop_key = GAME_LOG_PROP_COLUMNS[prop].replace("_", "-")
+            prop_key = game_log_prop_column(prop, default="").replace("_", "-")
             st.button(
                 prop,
                 key=f"homepage_prop_tab_{prop_key}",
