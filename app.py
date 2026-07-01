@@ -24,6 +24,8 @@ PLAYER_INFO_SESSION_CACHE = {}
 PLAYER_INFO_SESSION_CACHE_LOCK = threading.Lock()
 SAVANT_RESPONSE_SESSION_CACHE = {}
 SAVANT_RESPONSE_SESSION_CACHE_LOCK = threading.Lock()
+PROPS_PERF_GAME_LOG_CONTEXT = {}
+PROPS_PERF_FRESH_GAME_LOG_EVENTS = []
 LINEUP_MIN_HEIGHT = 220
 GAME_LOG_PROPS = [
     "Hits",
@@ -1238,6 +1240,22 @@ def load_batter_first_inning_hrrrbi_by_game(batter_id, season_year):
 def load_batter_prop_game_log(batter_id, season_year=2026, include_first_inning=False):
     if not batter_id:
         return pd.DataFrame()
+
+    if PROPS_PERF_GAME_LOG_CONTEXT.get("active"):
+        PROPS_PERF_FRESH_GAME_LOG_EVENTS.append({
+            "player_id": str(batter_id),
+            "season_year": season_year,
+            "include_first_inning": include_first_inning,
+            "started_at": time.perf_counter(),
+        })
+        logger.info(
+            "PROPS_PERF: load_batter_prop_game_log fresh_compute run=%s batch=%s player_id=%s season=%s include_first_inning=%s",
+            PROPS_PERF_GAME_LOG_CONTEXT.get("run_id"),
+            PROPS_PERF_GAME_LOG_CONTEXT.get("batch_key"),
+            batter_id,
+            season_year,
+            include_first_inning,
+        )
 
     url = f"https://statsapi.mlb.com/api/v1/people/{batter_id}/stats"
     params = {"stats": "gameLog", "group": "hitting", "season": season_year, "sportIds": 1}
@@ -5464,10 +5482,26 @@ def homepage_slate_batter_map(games):
 def render_homepage_props_tab():
     props_render_run_id = int(st.session_state.get("props_render_run_id", 0) or 0) + 1
     st.session_state["props_render_run_id"] = props_render_run_id
+    props_perf_started_at = time.perf_counter()
+    props_perf_selected_date = st.session_state.get("selected_date", eastern_today()).isoformat()
+    logger.info(
+        "PROPS_PERF: entry run=%s date=%s",
+        props_render_run_id,
+        props_perf_selected_date,
+    )
     st.markdown("## Props")
+    schedule_started_at = time.perf_counter()
+    schedule_from_session = "games" in st.session_state
     if "games" not in st.session_state:
         st.session_state["games"] = load_schedule(st.session_state["selected_date"])
     games = st.session_state.get("games", pd.DataFrame())
+    logger.info(
+        "PROPS_PERF: schedule run=%s elapsed=%.3fs source=%s games=%s",
+        props_render_run_id,
+        time.perf_counter() - schedule_started_at,
+        "session_state" if schedule_from_session else "load_schedule",
+        len(games) if isinstance(games, pd.DataFrame) else "unknown",
+    )
 
     selected_prop = st.session_state.get("homepage_selected_prop", "Hits")
     if selected_prop not in GAME_LOG_PROPS:
@@ -5485,14 +5519,43 @@ def render_homepage_props_tab():
                 args=(prop,),
             )
 
+    projections_started_at = time.perf_counter()
     try:
         st.session_state["prizepicks_projections"] = load_prizepicks_mlb_projections()
     except Exception as exc:
         logger.warning("Unable to load PrizePicks projections for Props tab: %s", exc)
         st.info("Prop data is unavailable right now.")
         return
+    logger.info(
+        "PROPS_PERF: prizepicks run=%s elapsed=%.3fs projections=%s",
+        props_render_run_id,
+        time.perf_counter() - projections_started_at,
+        len(st.session_state.get("prizepicks_projections", []) or []),
+    )
 
     selected_prop_key = _prop_match_key(selected_prop)
+    props_perf_trace_key = f"props_perf_first_batch_trace_{props_perf_selected_date}_{selected_prop_key}"
+    props_perf_trace = st.session_state.get(props_perf_trace_key)
+    if not isinstance(props_perf_trace, dict) or props_perf_trace.get("completed"):
+        props_perf_trace = {
+            "started_at": props_perf_started_at,
+            "entry_run_id": props_render_run_id,
+            "rerun_count": 0,
+            "completed": False,
+        }
+        st.session_state[props_perf_trace_key] = props_perf_trace
+    elif props_perf_trace.get("entry_run_id") != props_render_run_id:
+        props_perf_trace["rerun_count"] = int(props_perf_trace.get("rerun_count", 0) or 0) + 1
+        props_perf_trace["entry_run_id"] = props_render_run_id
+        st.session_state[props_perf_trace_key] = props_perf_trace
+        logger.info(
+            "PROPS_PERF: full_app_rerun run=%s date=%s prop=%s rerun_count=%s first_batch_completed=%s",
+            props_render_run_id,
+            props_perf_selected_date,
+            selected_prop,
+            props_perf_trace.get("rerun_count"),
+            props_perf_trace.get("completed"),
+        )
 
     def _team_lookup_keys(value):
         normalized = normalize_name(value)
@@ -5539,6 +5602,7 @@ def render_homepage_props_tab():
                         team_lookup[key] = context
         return team_lookup
 
+    rows_build_started_at = time.perf_counter()
     team_context_lookup = _homepage_team_context_lookup(games)
     player_id_cache = {}
     lineup_fallback_cache = {}
@@ -5569,9 +5633,11 @@ def render_homepage_props_tab():
 
     rows = []
     seen = set()
+    projection_count = 0
     for record in st.session_state.get("prizepicks_projections", []):
         if not isinstance(record, dict):
             continue
+        projection_count += 1
         stat_type = record.get("stat_display_name") or _projection_stat_type(record)
         if _prop_match_key(stat_type) != selected_prop_key:
             continue
@@ -5630,6 +5696,15 @@ def render_homepage_props_tab():
             return 0.0
 
     rows.sort(key=lambda row: (str(row.get("team", "")), str(row.get("player", "")), _props_sort_line(row.get("line"))))
+    logger.info(
+        "PROPS_PERF: rows run=%s elapsed=%.3fs prop=%s projections_scanned=%s rows=%s teams=%s",
+        props_render_run_id,
+        time.perf_counter() - rows_build_started_at,
+        selected_prop,
+        projection_count,
+        len(rows),
+        len(team_context_lookup),
+    )
     if not rows:
         st.info(f"No available PrizePicks players found for {selected_prop} on the current slate.")
         return
@@ -5719,7 +5794,10 @@ def render_homepage_props_tab():
             return pd.Series(dtype="float64")
         return pd.to_numeric(sample_df[prop_column], errors="coerce").dropna()
 
-    def _build_props_stat_summary_cache(rows):
+    def _build_props_stat_summary_cache(rows, perf_context=None):
+        global PROPS_PERF_GAME_LOG_CONTEXT
+        perf_started_at = time.perf_counter()
+        perf_enabled = bool(perf_context and perf_context.get("first_batch"))
         stat_summary_cache = {}
         rows_by_game_log_key = {}
         for row in rows:
@@ -5730,11 +5808,49 @@ def render_homepage_props_tab():
             include_first_inning = prop_column == "first_inning_hrrrbi"
             rows_by_game_log_key.setdefault((player_id, include_first_inning), []).append((row, cache_key))
 
-        for (player_id, include_first_inning), player_rows in rows_by_game_log_key.items():
-            game_log_df = load_batter_prop_game_log(
-                player_id,
-                include_first_inning=include_first_inning,
+        if perf_enabled:
+            logger.info(
+                "PROPS_PERF: build_stat_summary_cache start run=%s batch=%s input_rows=%s game_log_groups=%s",
+                perf_context.get("run_id"),
+                perf_context.get("batch_key"),
+                len(rows),
+                len(rows_by_game_log_key),
             )
+
+        for (player_id, include_first_inning), player_rows in rows_by_game_log_key.items():
+            game_log_started_at = time.perf_counter()
+            fresh_events_before = len(PROPS_PERF_FRESH_GAME_LOG_EVENTS)
+            previous_game_log_context = PROPS_PERF_GAME_LOG_CONTEXT
+            if perf_enabled:
+                PROPS_PERF_GAME_LOG_CONTEXT = {
+                    "active": True,
+                    "run_id": perf_context.get("run_id"),
+                    "batch_key": perf_context.get("batch_key"),
+                    "player_id": player_id,
+                }
+            try:
+                game_log_df = load_batter_prop_game_log(
+                    player_id,
+                    include_first_inning=include_first_inning,
+                )
+            finally:
+                PROPS_PERF_GAME_LOG_CONTEXT = previous_game_log_context
+            game_log_elapsed = time.perf_counter() - game_log_started_at
+            fresh_compute = len(PROPS_PERF_FRESH_GAME_LOG_EVENTS) > fresh_events_before
+            if perf_enabled:
+                perf_context["game_log_calls"] = int(perf_context.get("game_log_calls", 0) or 0) + 1
+                if fresh_compute:
+                    perf_context["game_log_fresh_calls"] = int(perf_context.get("game_log_fresh_calls", 0) or 0) + 1
+                logger.info(
+                    "PROPS_PERF: game_log_call run=%s batch=%s player_id=%s include_first_inning=%s elapsed=%.3fs cache_status=%s rows=%s",
+                    perf_context.get("run_id"),
+                    perf_context.get("batch_key"),
+                    player_id,
+                    include_first_inning,
+                    game_log_elapsed,
+                    "fresh_compute" if fresh_compute else "cache_hit",
+                    len(game_log_df) if isinstance(game_log_df, pd.DataFrame) else "unknown",
+                )
             if game_log_df.empty:
                 for _, cache_key in player_rows:
                     stat_summary_cache[cache_key] = _props_blank_stat_values()
@@ -5794,6 +5910,17 @@ def render_homepage_props_tab():
                             stat_values["H2H"] = h2h_summary.get("hit_rate_text", "—")
 
                     stat_summary_cache[cache_key] = stat_values
+
+        if perf_enabled:
+            logger.info(
+                "PROPS_PERF: build_stat_summary_cache end run=%s batch=%s elapsed=%.3fs cache_entries=%s game_log_calls=%s fresh_game_log_calls=%s",
+                perf_context.get("run_id"),
+                perf_context.get("batch_key"),
+                time.perf_counter() - perf_started_at,
+                len(stat_summary_cache),
+                perf_context.get("game_log_calls", 0),
+                perf_context.get("game_log_fresh_calls", 0),
+            )
 
         return stat_summary_cache
 
@@ -5914,11 +6041,16 @@ def render_homepage_props_tab():
             "stat_values": dict(stat_values or _props_blank_stat_values()),
         }
 
-    def _enrich_props_card_identity(row):
+    def _enrich_props_card_identity(row, perf_context=None):
+        identity_started_at = time.perf_counter()
         player_name = row.get("player", "")
         team_id = row.get("team_id", "")
         team_context = row.get("team_context", {}) or {}
         player_id = row.get("projection_player_id", "")
+        had_projection_player_id = bool(player_id)
+        roster_lookup_called = False
+        roster_cache_hit = False
+        lineup_fallback_called = False
         hand = row.get("hand", "")
         team = row.get("team", "")
         opponent = row.get("opponent", "")
@@ -5929,10 +6061,14 @@ def render_homepage_props_tab():
         if not player_id:
             player_cache_key = (normalize_name(player_name), str(team_id or ""))
             if player_cache_key not in player_id_cache:
+                roster_lookup_called = True
                 player_id_cache[player_cache_key] = resolve_player_id_from_team_roster(player_name, team_id)
+            else:
+                roster_cache_hit = True
             player_id = player_id_cache[player_cache_key]
 
         if not player_id:
+            lineup_fallback_called = True
             lineup_info = _lineup_fallback_info(player_name, team_context)
             player_id = lineup_info.get("player_id", "")
             hand = lineup_info.get("hand", "")
@@ -5980,6 +6116,21 @@ def render_homepage_props_tab():
             "game_pk": game_pk,
             "game_time": game_time,
         })
+        if perf_context and perf_context.get("first_batch"):
+            logger.info(
+                "PROPS_PERF: identity_card run=%s batch=%s index=%s player=%s elapsed=%.3fs projection_id=%s roster_lookup_called=%s roster_cache_hit=%s lineup_fallback_called=%s resolved_player_id=%s has_headshot=%s",
+                perf_context.get("run_id"),
+                perf_context.get("batch_key"),
+                perf_context.get("index"),
+                player_name,
+                time.perf_counter() - identity_started_at,
+                had_projection_player_id,
+                roster_lookup_called,
+                roster_cache_hit,
+                lineup_fallback_called,
+                player_id,
+                bool(image_url),
+            )
         return row
 
     prototype_card_limit = 100
@@ -5996,6 +6147,15 @@ def render_homepage_props_tab():
         batch_rows = prototype_rows[batch_start:batch_start + prototype_batch_size]
         batch_key = f"{selected_prop_key}_{batch_start}"
         prototype_batches.append((batch_key, batch_rows))
+    first_batch_key = prototype_batches[0][0] if prototype_batches else ""
+    logger.info(
+        "PROPS_PERF: batches run=%s elapsed_since_entry=%.3fs prototype_rows=%s batch_size=%s first_batch=%s",
+        props_render_run_id,
+        time.perf_counter() - props_perf_started_at,
+        len(prototype_rows),
+        prototype_batch_size,
+        first_batch_key,
+    )
 
     def _props_fragment_signature(fragment_rows):
         signature_parts = [
@@ -6037,11 +6197,23 @@ def render_homepage_props_tab():
         return snapshot
 
     def _props_snapshot_batch(batch_key):
+        snapshot_read_started_at = time.perf_counter()
         snapshot = _props_snapshot_state()
         batch = snapshot.get("batches", {}).get(batch_key)
-        return batch if isinstance(batch, list) else []
+        batch_rows = batch if isinstance(batch, list) else []
+        if batch_key == first_batch_key:
+            logger.info(
+                "PROPS_PERF: snapshot_read run=%s batch=%s elapsed=%.3fs hit=%s rows=%s",
+                props_render_run_id,
+                batch_key,
+                time.perf_counter() - snapshot_read_started_at,
+                bool(batch_rows),
+                len(batch_rows),
+            )
+        return batch_rows
 
     def _save_props_snapshot_batch(batch_key, state):
+        snapshot_write_started_at = time.perf_counter()
         state_rows = state.get("rows", [])
         stat_values_by_index = state.get("stat_values", {})
         snapshot = _props_snapshot_state()
@@ -6053,6 +6225,14 @@ def render_homepage_props_tab():
             for index, row in enumerate(state_rows)
         ]
         st.session_state[_props_snapshot_state_key()] = snapshot
+        if batch_key == first_batch_key:
+            logger.info(
+                "PROPS_PERF: snapshot_write run=%s batch=%s elapsed=%.3fs rows=%s",
+                props_render_run_id,
+                batch_key,
+                time.perf_counter() - snapshot_write_started_at,
+                len(state_rows),
+            )
 
     def _props_fragment_batch_state(batch_key, batch_rows):
         state_key = _props_fragment_batch_state_key(batch_key)
@@ -6115,6 +6295,15 @@ def render_homepage_props_tab():
 
     @st.fragment(run_every=fragment_run_every)
     def _render_props_fragment_prototype():
+        fragment_started_at = time.perf_counter()
+        logger.info(
+            "PROPS_PERF: fragment_enter run=%s elapsed_since_entry=%.3fs run_every=%s first_batch=%s batches=%s",
+            props_render_run_id,
+            time.perf_counter() - props_perf_started_at,
+            fragment_run_every,
+            first_batch_key,
+            len(prototype_batches),
+        )
         if not prototype_rows:
             return
 
@@ -6123,13 +6312,23 @@ def render_homepage_props_tab():
             state = _props_fragment_batch_state(batch_key, batch_rows)
             state_rows = state.get("rows", [])
             stat_values_by_index = state.get("stat_values", {})
+            first_batch_render_started_at = time.perf_counter()
+            first_batch_loading_cards = 0
+            first_batch_full_cards = 0
+            first_batch_loading_render_elapsed = 0.0
+            first_batch_full_render_elapsed = 0.0
             for index, row in enumerate(state_rows):
                 if not state.get("done"):
+                    loading_html_started_at = time.perf_counter()
                     st.markdown(
                         _props_loading_card_html(row),
                         unsafe_allow_html=True,
                     )
+                    if batch_key == first_batch_key:
+                        first_batch_loading_cards += 1
+                        first_batch_loading_render_elapsed += time.perf_counter() - loading_html_started_at
                     continue
+                card_html_started_at = time.perf_counter()
                 st.markdown(
                     _props_card_html(
                         row,
@@ -6137,11 +6336,40 @@ def render_homepage_props_tab():
                     ),
                     unsafe_allow_html=True,
                 )
+                if batch_key == first_batch_key:
+                    first_batch_full_cards += 1
+                    first_batch_full_render_elapsed += time.perf_counter() - card_html_started_at
+            if batch_key == first_batch_key:
+                logger.info(
+                    "PROPS_PERF: first_batch_render run=%s batch=%s elapsed=%.3fs batch_done=%s loading_cards=%s full_cards=%s loading_render=%.3fs full_card_render=%.3fs waits_for_full_batch_before_full_cards=%s",
+                    props_render_run_id,
+                    batch_key,
+                    time.perf_counter() - first_batch_render_started_at,
+                    bool(state.get("done")),
+                    first_batch_loading_cards,
+                    first_batch_full_cards,
+                    first_batch_loading_render_elapsed,
+                    first_batch_full_render_elapsed,
+                    not bool(state.get("done")),
+                )
             if active_batch is None and not state.get("done"):
                 active_batch = (batch_key, state)
 
+        logger.info(
+            "PROPS_PERF: fragment_shells_rendered run=%s elapsed_since_entry=%.3fs fragment_render_elapsed=%.3fs active_batch=%s",
+            props_render_run_id,
+            time.perf_counter() - props_perf_started_at,
+            time.perf_counter() - fragment_started_at,
+            active_batch[0] if active_batch else "",
+        )
+
         if active_batch is None:
             if not st.session_state.get(fragment_schedule_refresh_key, False):
+                logger.info(
+                    "PROPS_PERF: fragment_complete_all_batches run=%s elapsed_since_entry=%.3fs scheduling_full_rerun=True",
+                    props_render_run_id,
+                    time.perf_counter() - props_perf_started_at,
+                )
                 st.session_state[fragment_schedule_refresh_key] = True
                 st.rerun()
             return
@@ -6150,15 +6378,58 @@ def render_homepage_props_tab():
         state_key = _props_fragment_batch_state_key(batch_key)
         state_rows = state.get("rows", [])
         stat_values_by_index = state.get("stat_values", {})
+        first_batch_active = batch_key == first_batch_key
+        active_started_at = time.perf_counter()
+        if first_batch_active:
+            logger.info(
+                "PROPS_PERF: first_batch_process_enter run=%s batch=%s rows=%s next_enrich_index=%s stat_groups_ready=%s next_stat_group_index=%s",
+                props_render_run_id,
+                batch_key,
+                len(state_rows),
+                state.get("next_enrich_index"),
+                state.get("stat_groups") is not None,
+                state.get("next_stat_group_index"),
+            )
 
         next_enrich_index = int(state.get("next_enrich_index", 0) or 0)
         if next_enrich_index < len(state_rows):
-            state_rows[next_enrich_index] = _enrich_props_card_identity(dict(state_rows[next_enrich_index]))
+            identity_started_at = time.perf_counter()
+            state_rows[next_enrich_index] = _enrich_props_card_identity(
+                dict(state_rows[next_enrich_index]),
+                perf_context={
+                    "first_batch": first_batch_active,
+                    "run_id": props_render_run_id,
+                    "batch_key": batch_key,
+                    "index": next_enrich_index,
+                },
+            )
+            identity_elapsed = time.perf_counter() - identity_started_at
+            state["props_perf_identity_total"] = float(state.get("props_perf_identity_total", 0.0) or 0.0) + identity_elapsed
+            state["props_perf_identity_count"] = int(state.get("props_perf_identity_count", 0) or 0) + 1
             state["next_enrich_index"] = next_enrich_index + 1
             st.session_state[state_key] = state
+            if first_batch_active:
+                logger.info(
+                    "PROPS_PERF: first_batch_identity_progress run=%s batch=%s processed=%s/%s card_elapsed=%.3fs identity_total=%.3fs",
+                    props_render_run_id,
+                    batch_key,
+                    state.get("next_enrich_index"),
+                    len(state_rows),
+                    identity_elapsed,
+                    state.get("props_perf_identity_total"),
+                )
+                if int(state.get("next_enrich_index", 0) or 0) >= len(state_rows):
+                    logger.info(
+                        "PROPS_PERF: first_batch_identity_done run=%s batch=%s total=%.3fs cards=%s",
+                        props_render_run_id,
+                        batch_key,
+                        state.get("props_perf_identity_total", 0.0),
+                        state.get("props_perf_identity_count", 0),
+                    )
             return
 
         if state.get("stat_groups") is None:
+            stat_group_build_started_at = time.perf_counter()
             rows_by_game_log_key = {}
             for index, row in enumerate(state_rows):
                 cache_key = _props_stat_cache_key(row)
@@ -6169,20 +6440,70 @@ def render_homepage_props_tab():
                 rows_by_game_log_key.setdefault((player_id, include_first_inning), []).append(index)
             state["stat_groups"] = list(rows_by_game_log_key.values())
             st.session_state[state_key] = state
+            if first_batch_active:
+                logger.info(
+                    "PROPS_PERF: first_batch_stat_groups_ready run=%s batch=%s elapsed=%.3fs groups=%s valid_rows=%s",
+                    props_render_run_id,
+                    batch_key,
+                    time.perf_counter() - stat_group_build_started_at,
+                    len(state.get("stat_groups", [])),
+                    sum(len(group) for group in state.get("stat_groups", [])),
+                )
 
         next_group_index = int(state.get("next_stat_group_index", 0) or 0)
         stat_groups = state.get("stat_groups") or []
+        stat_total_started_at = time.perf_counter()
+        first_batch_stat_context = {
+            "first_batch": first_batch_active,
+            "run_id": props_render_run_id,
+            "batch_key": batch_key,
+            "game_log_calls": 0,
+            "game_log_fresh_calls": 0,
+        }
         while next_group_index < len(stat_groups):
             group_indexes = stat_groups[next_group_index]
-            stat_summary_cache = _build_props_stat_summary_cache([state_rows[index] for index in group_indexes])
+            stat_group_started_at = time.perf_counter()
+            stat_summary_cache = _build_props_stat_summary_cache(
+                [state_rows[index] for index in group_indexes],
+                perf_context=first_batch_stat_context,
+            )
             for index in group_indexes:
                 stat_values_by_index[str(index)] = _props_card_stat_values(state_rows[index], stat_summary_cache)
+            if first_batch_active:
+                group_players = [
+                    str(state_rows[index].get("player_id") or state_rows[index].get("player") or "")
+                    for index in group_indexes
+                ]
+                logger.info(
+                    "PROPS_PERF: first_batch_stat_group run=%s batch=%s group_index=%s rows=%s players=%s elapsed=%.3fs",
+                    props_render_run_id,
+                    batch_key,
+                    next_group_index,
+                    len(group_indexes),
+                    ",".join(group_players),
+                    time.perf_counter() - stat_group_started_at,
+                )
             state["next_stat_group_index"] = next_group_index + 1
             next_group_index += 1
 
         state["done"] = True
         st.session_state[state_key] = state
         _save_props_snapshot_batch(batch_key, state)
+        if first_batch_active:
+            props_perf_trace["completed"] = True
+            props_perf_trace["completed_at"] = time.perf_counter()
+            st.session_state[props_perf_trace_key] = props_perf_trace
+            logger.info(
+                "PROPS_PERF: first_batch_done run=%s batch=%s process_elapsed=%.3fs stat_total=%.3fs identity_total=%.3fs game_log_calls=%s fresh_game_log_calls=%s waits_for_all_5_before_full_cards=True full_app_reruns=%s",
+                props_render_run_id,
+                batch_key,
+                time.perf_counter() - active_started_at,
+                time.perf_counter() - stat_total_started_at,
+                state.get("props_perf_identity_total", 0.0),
+                first_batch_stat_context.get("game_log_calls", 0),
+                first_batch_stat_context.get("game_log_fresh_calls", 0),
+                props_perf_trace.get("rerun_count", 0),
+            )
         logger.info("Props fragment batch complete: batch=%s rows=%s", batch_key, len(state_rows))
         if _all_props_fragment_batches_done() and not st.session_state.get(fragment_schedule_refresh_key, False):
             st.session_state[fragment_schedule_refresh_key] = True
@@ -6204,7 +6525,19 @@ def render_homepage_props_tab():
             )
             raise
 
+    logger.info(
+        "PROPS_PERF: fragment_call_start run=%s elapsed_since_entry=%.3fs",
+        props_render_run_id,
+        time.perf_counter() - props_perf_started_at,
+    )
+    fragment_call_started_at = time.perf_counter()
     _render_props_fragment_prototype()
+    logger.info(
+        "PROPS_PERF: fragment_call_return run=%s elapsed=%.3fs elapsed_since_entry=%.3fs",
+        props_render_run_id,
+        time.perf_counter() - fragment_call_started_at,
+        time.perf_counter() - props_perf_started_at,
+    )
 
     for row in legacy_rows:
         slot = st.empty()
