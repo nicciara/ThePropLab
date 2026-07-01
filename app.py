@@ -1011,6 +1011,19 @@ def format_pitcher_name_with_hand(pitcher_name, pitcher_hand=""):
     return name or "Opposing Pitcher Arsenal"
 
 
+def format_batter_name_with_hand(batter_name, batter_hand=""):
+    name = str(batter_name or "").strip()
+    hand_code = normalize_hand_code(batter_hand)
+    hand_label = {
+        "L": "LHB",
+        "R": "RHB",
+        "S": "Switch",
+    }.get(hand_code, "")
+    if name and hand_label:
+        return f"{name} ({hand_label})"
+    return name or "Batter"
+
+
 def default_opposing_pitcher_arsenal_split(batter_hand):
     normalized_hand = normalize_hand_code(batter_hand)
     if normalized_hand == "L":
@@ -3527,6 +3540,7 @@ def render_general_information(sb, batter_id, batter_name):
         with batter_strike_zone_cols[0]:
             pitch_type_options = strike_zone.get_batter_pitch_type_options(batter_id)
             # Streamlit selectbox options are plain text, so individual pitch names cannot be colored safely here.
+            st.caption(f"{format_batter_name_with_hand(batter_name, sb.get('hand', ''))} Location Tendencies")
             selected_pitch_type = st.selectbox(
                 "Pitch Type",
                 pitch_type_options,
@@ -3581,7 +3595,7 @@ def render_general_information(sb, batter_id, batter_name):
         if compare_enabled:
             with batter_strike_zone_cols[2]:
                 if compare_pitcher_id:
-                    pitcher_label = compare_pitcher_name or "Opposing Pitcher"
+                    pitcher_label = format_pitcher_name_with_hand(compare_pitcher_name, run_value_pitcher.get("hand", ""))
                     st.caption(f"{pitcher_label} Location Tendencies")
                     strike_zone.display_strike_zone(
                         compare_pitcher_id,
