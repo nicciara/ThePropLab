@@ -1620,24 +1620,6 @@ def display_batter_metric_strike_zone_fixed(
         heatmap_scale=heatmap_scale,
     )
     st.markdown(html, unsafe_allow_html=True)
-    inner_percent_sum = float(zone_df["pitch_pct"].sum()) if "pitch_pct" in zone_df.columns else 0.0
-    outer_percent_sum = sum(float(outer_stats[key]["pitch_pct"]) for key in ("tl", "tr", "bl", "br"))
-    total_percent_sum = inner_percent_sum + outer_percent_sum
-    if metric == "K%":
-        st.caption(
-            f"inner_sum={inner_percent_sum:.1f} "
-            f"outer_sum={outer_percent_sum:.1f} "
-            f"total_sum={total_percent_sum:.1f} "
-            f"denominator_used={k_denominator}"
-        )
-    else:
-        st.caption(
-            f"inner_sum={inner_percent_sum:.1f} "
-            f"outer_sum={outer_percent_sum:.1f} "
-            f"total_sum={total_percent_sum:.1f} "
-            f"inner_denominator={shared_denominator} "
-            f"outer_denominator_used={shared_denominator}"
-        )
 
 
 strike_zone.display_batter_metric_strike_zone = display_batter_metric_strike_zone_fixed
