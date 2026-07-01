@@ -2436,6 +2436,10 @@ def toggle_batter_strike_zone_compare(compare_key):
     st.session_state[compare_key] = not bool(st.session_state.get(compare_key, False))
 
 
+def toggle_pitcher_strike_zone_compare(compare_key):
+    st.session_state[compare_key] = not bool(st.session_state.get(compare_key, False))
+
+
 def selected_batter_comparison_pitcher_context(sb, game_pk, lineup_context, lineup_side):
     context = {
         "id": str(sb.get("return_pitcher_id") or "").strip(),
@@ -5929,11 +5933,69 @@ def render_selected_pitcher_view():
                 pitch_type_options.extend(row["name"] for row in actual_arsenal)
 
             with st.container(border=True):
-                st.markdown(
-                    "<div class='section-title-strong'>Strike Zone</div>",
-                    unsafe_allow_html=True,
+                pitcher_compare_key = f"pitcher_strike_zone_compare_{pid}"
+                pitcher_compare_enabled = bool(st.session_state.get(pitcher_compare_key, False))
+                strike_zone_header_cols = st.columns([5, 1.2])
+                with strike_zone_header_cols[0]:
+                    st.markdown(
+                        "<div class='section-title-strong'>Strike Zone</div>",
+                        unsafe_allow_html=True,
+                    )
+                with strike_zone_header_cols[1]:
+                    st.button(
+                        "Compare",
+                        key=f"{pitcher_compare_key}_button",
+                        type="primary" if pitcher_compare_enabled else "secondary",
+                        on_click=toggle_pitcher_strike_zone_compare,
+                        args=(pitcher_compare_key,),
+                        use_container_width=True,
+                    )
+
+                compare_batter_options = []
+                compare_batter_labels = {}
+                compare_batter_lookup = {}
+                for player in opponent_lineup or []:
+                    player_id = str(player.get("player_id") or "").strip()
+                    player_name = str(player.get("name") or "").strip()
+                    if not player_id or not player_name:
+                        continue
+                    batter_label = format_batter_name_with_hand(player_name, player.get("handedness", ""))
+                    compare_batter_options.append(player_id)
+                    compare_batter_labels[player_id] = batter_label
+                    compare_batter_lookup[player_id] = player
+
+                compare_batter_id_key = f"pitcher_compare_batter_id_{pid}"
+                if compare_batter_options and st.session_state.get(compare_batter_id_key) not in compare_batter_options:
+                    st.session_state[compare_batter_id_key] = compare_batter_options[0]
+
+                selected_compare_batter_id = st.session_state.get(compare_batter_id_key, "")
+                selected_compare_batter = compare_batter_lookup.get(selected_compare_batter_id, {})
+
+                compare_batter_pitch_type_key = f"pitcher_compare_batter_pitch_type_{pid}"
+                compare_batter_pitch_type_options = (
+                    strike_zone.get_batter_pitch_type_options(selected_compare_batter_id)
+                    if pitcher_compare_enabled and selected_compare_batter_id else ["All Pitches"]
                 )
-                strike_zone_cols = st.columns([1.15, 4])
+                if st.session_state.get(compare_batter_pitch_type_key) not in compare_batter_pitch_type_options:
+                    st.session_state[compare_batter_pitch_type_key] = "All Pitches"
+
+                compare_batter_pitcher_throws_key = f"pitcher_compare_batter_pitcher_throws_{pid}"
+                if st.session_state.get(compare_batter_pitcher_throws_key) not in {"All", "RHP", "LHP"}:
+                    st.session_state[compare_batter_pitcher_throws_key] = "All"
+
+                compare_batter_metric_key = f"pitcher_compare_batter_metric_{pid}"
+                compare_batter_metric_options = ["Pitch %", "Takes", "Batted Balls", "K%", "Home Runs"]
+                if st.session_state.get(compare_batter_metric_key) not in compare_batter_metric_options:
+                    st.session_state[compare_batter_metric_key] = "Pitch %"
+
+                compare_batter_heatmap_key = f"pitcher_compare_batter_heatmap_scale_{pid}"
+                if st.session_state.get(compare_batter_heatmap_key) not in {
+                    strike_zone.HEATMAP_SCALE_LEAGUE,
+                    strike_zone.HEATMAP_SCALE_SELF,
+                }:
+                    st.session_state[compare_batter_heatmap_key] = strike_zone.HEATMAP_SCALE_LEAGUE
+
+                strike_zone_cols = st.columns([1.15, 4, 4, 1.15] if pitcher_compare_enabled else [1.15, 4])
                 with strike_zone_cols[0]:
                     # Streamlit selectbox options are plain text, so individual pitch names cannot be colored safely here.
                     selected_pitch_type = st.selectbox(
@@ -5965,6 +6027,11 @@ def render_selected_pitcher_view():
                         unsafe_allow_html=True,
                     )
                 with strike_zone_cols[1]:
+                    if pitcher_compare_enabled:
+                        st.markdown(
+                            f"<div style='font-size:14px; font-weight:700; color:var(--dash-muted); margin-bottom:6px;'>{html.escape(format_pitcher_name_with_hand(name, hand))} Location Tendencies</div>",
+                            unsafe_allow_html=True,
+                        )
                     strike_zone.display_strike_zone(
                         pid,
                         selected_pitch_type,
@@ -5972,6 +6039,65 @@ def render_selected_pitcher_view():
                         selected_pitcher_metric,
                         selected_pitcher_heatmap_scale,
                     )
+                if pitcher_compare_enabled:
+                    with strike_zone_cols[2]:
+                        if selected_compare_batter_id:
+                            batter_title = format_batter_name_with_hand(
+                                selected_compare_batter.get("name", ""),
+                                selected_compare_batter.get("handedness", ""),
+                            )
+                            st.markdown(
+                                f"<div style='font-size:14px; font-weight:700; color:var(--dash-muted); margin-bottom:6px;'>{html.escape(batter_title)} Location Tendencies</div>",
+                                unsafe_allow_html=True,
+                            )
+                            strike_zone.display_batter_metric_strike_zone(
+                                selected_compare_batter_id,
+                                st.session_state.get(compare_batter_pitch_type_key, "All Pitches"),
+                                st.session_state.get(compare_batter_pitcher_throws_key, "All"),
+                                st.session_state.get(compare_batter_metric_key, "Pitch %"),
+                                st.session_state.get(compare_batter_heatmap_key, strike_zone.HEATMAP_SCALE_LEAGUE),
+                            )
+                        else:
+                            st.info("No opposing batters available for comparison.")
+                    with strike_zone_cols[3]:
+                        if compare_batter_options:
+                            st.selectbox(
+                                "Batter",
+                                compare_batter_options,
+                                key=compare_batter_id_key,
+                                format_func=lambda player_id: compare_batter_labels.get(player_id, str(player_id)),
+                            )
+                            st.selectbox(
+                                "Pitch Type",
+                                compare_batter_pitch_type_options,
+                                key=compare_batter_pitch_type_key,
+                            )
+                            selected_compare_batter_pitcher_throws = st.selectbox(
+                                "Pitcher Throws",
+                                ["All", "RHP", "LHP"],
+                                key=compare_batter_pitcher_throws_key,
+                            )
+                            selected_compare_batter_metric = st.selectbox(
+                                "Metric",
+                                compare_batter_metric_options,
+                                key=compare_batter_metric_key,
+                            )
+                            selected_compare_batter_heatmap_scale = st.selectbox(
+                                "Heatmap Scale",
+                                [strike_zone.HEATMAP_SCALE_LEAGUE, strike_zone.HEATMAP_SCALE_SELF],
+                                key=compare_batter_heatmap_key,
+                            )
+                            st.markdown(
+                                batter_heatmap_legend_html(selected_compare_batter_heatmap_scale),
+                                unsafe_allow_html=True,
+                            )
+                            if selected_compare_batter_metric == "K%":
+                                st.markdown(
+                                    "<div style='color:#b91c1c; font-size:12.5px; font-weight:600; line-height:1.35; text-align:left; margin:6px 0 0 0; padding:0 0 12px 12px;'>Note: K% shows the zone-touch distribution for plate appearances that ended in a strikeout.</div>",
+                                    unsafe_allow_html=True,
+                                )
+                        else:
+                            st.info("No opposing batters available for comparison.")
 
             with st.container(border=True):
                 st.markdown(
