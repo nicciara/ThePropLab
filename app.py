@@ -6660,12 +6660,14 @@ def render_homepage_props_tab():
             "Games",
             game_filter_options,
             key=games_filter_key,
+            placeholder="All games",
         )
     with filter_cols[3]:
         st.multiselect(
             "Teams",
             team_filter_options,
             key=teams_filter_key,
+            placeholder="All teams",
         )
 
     selected_props_filter = [
