@@ -78,7 +78,7 @@ PITCHER_GAME_LOG_PROPS = [
     "Pitches Thrown",
 ]
 HOMEPAGE_PROP_OPTIONS = [*GAME_LOG_PROPS, *PITCHER_GAME_LOG_PROPS]
-PROPS_LINE_TYPE_FILTER_OPTIONS = ("All", "Standard", "Goblin", "Demon")
+PROPS_LINE_TYPE_FILTER_OPTIONS = ("All", "PP Reg Line", "Goblin", "Demon")
 PITCHER_GAME_LOG_PROP_COLUMNS = {
     "Pitcher Strikeouts": "strikeouts",
     "Pitcher Fantasy Score": "pitcher_fantasy_score",
@@ -966,10 +966,32 @@ def homepage_prop_label_from_query(value, default="Hits"):
 
 def props_line_type_filter_label_from_query(value, default="All"):
     normalized = str(value or "").strip().lower()
+    if normalized in {"standard", "pp reg line", "ppregline", "ppreg", "reg line", "regline"}:
+        return "PP Reg Line"
     for option in PROPS_LINE_TYPE_FILTER_OPTIONS:
         if normalized == option.lower():
             return option
     return default
+
+
+def props_line_type_legend_html():
+    return (
+        "<div style='display:flex; flex-wrap:wrap; gap:10px; align-items:center; "
+        "font-size:11px; line-height:1.2; color:var(--dash-muted); margin-top:4px;'>"
+        "<span style='display:inline-flex; align-items:center; gap:5px;'>"
+        f"{badge_image_html(SPORTSBOOK_BADGE_ASSETS.get('prizepicks'), 'PrizePicks', 'book-badge', 'book-badge-img')}"
+        "<span>PP Reg Line</span>"
+        "</span>"
+        "<span style='display:inline-flex; align-items:center; gap:5px;'>"
+        f"{badge_image_html(MODIFIER_BADGE_ASSETS.get('goblin'), 'Goblin', 'boost-badge', 'modifier-badge-img')}"
+        "<span>Goblin</span>"
+        "</span>"
+        "<span style='display:inline-flex; align-items:center; gap:5px;'>"
+        f"{badge_image_html(MODIFIER_BADGE_ASSETS.get('demon'), 'Demon', 'boost-badge', 'modifier-badge-img')}"
+        "<span>Demon</span>"
+        "</span>"
+        "</div>"
+    )
 
 
 def game_log_prop_column(prop, default=None):
@@ -6593,6 +6615,7 @@ def render_homepage_props_tab():
             key="props_line_type_filter",
             on_change=set_homepage_props_line_type,
         )
+        st.markdown(props_line_type_legend_html(), unsafe_allow_html=True)
 
     selected_is_pitcher_prop = selected_prop in PITCHER_GAME_LOG_PROPS
     selected_prop_key = (
@@ -6724,7 +6747,7 @@ def render_homepage_props_tab():
         seen_labels = set()
         for projection_line in exact_projection_lines or []:
             odds_type = normalize_name(_projection_value(projection_line, "odds_type", "oddsType", default=""))
-            label = "Goblin" if odds_type == "goblin" else "Demon" if odds_type == "demon" else "Standard"
+            label = "Goblin" if odds_type == "goblin" else "Demon" if odds_type == "demon" else "PP Reg Line"
             if label not in seen_labels:
                 labels.append(label)
                 seen_labels.add(label)
@@ -6736,7 +6759,7 @@ def render_homepage_props_tab():
             return "Goblin"
         if odds_type == "demon":
             return "Demon"
-        return "Standard"
+        return "PP Reg Line"
 
     selected_prop_projection_records = []
     for record in st.session_state.get("prizepicks_projections", []):
@@ -6842,7 +6865,7 @@ def render_homepage_props_tab():
         if selected_line_type == "All":
             st.info(f"No lines found for {selected_prop}.")
         else:
-            st.info(f"No {selected_line_type.lower()} lines found for {selected_prop}.")
+            st.info(f"No {selected_line_type} lines found for {selected_prop}.")
         return
 
     def _prop_card_tile(label, value):
