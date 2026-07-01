@@ -6627,21 +6627,21 @@ def render_homepage_props_tab():
     game_filter_options, game_filter_lookup = _homepage_game_filter_options(games)
     team_filter_options, team_filter_lookup = _homepage_team_filter_options(games)
 
-    props_trend_filter_options = (
-        "All trends",
-        "L5 60%+",
-        "L10 60%+",
-        "L15 60%+",
-        "H2H 60%+",
-        "SZN 60%+",
+    props_trend_sort_options = (
+        "Default",
+        "L5 high to low",
+        "L10 high to low",
+        "L15 high to low",
+        "H2H high to low",
+        "SZN high to low",
         "AVG over line",
     )
     props_filter_key = "homepage_props_filter_props"
     games_filter_key = "homepage_props_filter_games"
     teams_filter_key = "homepage_props_filter_teams"
     trend_filter_key = "homepage_props_trend_filter"
-    if st.session_state.get(trend_filter_key) not in props_trend_filter_options:
-        st.session_state[trend_filter_key] = "All trends"
+    if st.session_state.get(trend_filter_key) not in props_trend_sort_options:
+        st.session_state[trend_filter_key] = "Default"
     st.session_state[props_filter_key] = [
         prop for prop in st.session_state.get(props_filter_key, []) if prop in available_props
     ]
@@ -6661,8 +6661,8 @@ def render_homepage_props_tab():
             on_change=set_homepage_props_line_type,
         )
         st.selectbox(
-            "Trend Filter",
-            props_trend_filter_options,
+            "Sort By Trend",
+            props_trend_sort_options,
             key=trend_filter_key,
         )
     with filter_cols[1]:
@@ -6696,7 +6696,7 @@ def render_homepage_props_tab():
     selected_team_filter_labels = [
         team for team in st.session_state.get(teams_filter_key, []) if team in team_filter_lookup
     ]
-    selected_trend_filter = st.session_state.get(trend_filter_key, "All trends")
+    selected_trend_sort = st.session_state.get(trend_filter_key, "Default")
     active_props = selected_props_filter or available_props
     active_prop_filter_key = (
         f"selected-{_homepage_filter_key(active_props)}"
@@ -7220,33 +7220,38 @@ def render_homepage_props_tab():
         except (TypeError, ValueError):
             return None
 
-    def _props_row_matches_trend_filter(row, stat_values):
-        if selected_trend_filter == "All trends":
-            return True
-
-        percent_filters = {
-            "L5 60%+": "L5",
-            "L10 60%+": "L10",
-            "L15 60%+": "L15",
-            "H2H 60%+": "H2H",
-            "SZN 60%+": "SZN",
+    def _props_trend_sort_value(row, stat_values):
+        percent_sorts = {
+            "L5 high to low": "L5",
+            "L10 high to low": "L10",
+            "L15 high to low": "L15",
+            "H2H high to low": "H2H",
+            "SZN high to low": "SZN",
         }
-        if selected_trend_filter in percent_filters:
-            pct_value = _props_stat_number(
-                stat_values.get(percent_filters[selected_trend_filter]),
+        if selected_trend_sort in percent_sorts:
+            return _props_stat_number(
+                stat_values.get(percent_sorts[selected_trend_sort]),
                 percent=True,
             )
-            return pct_value is not None and pct_value >= 60.0
 
-        if selected_trend_filter == "AVG over line":
+        if selected_trend_sort == "AVG over line":
             avg_value = _props_stat_number(stat_values.get("AVG"))
             try:
                 line_value = float(row.get("line"))
             except (TypeError, ValueError):
-                return False
-            return avg_value is not None and avg_value >= line_value
+                return None
+            if avg_value is None:
+                return None
+            return avg_value - line_value
 
-        return True
+        return None
+
+    def _props_trend_sort_key(indexed_row):
+        index, row, stat_values = indexed_row
+        sort_value = _props_trend_sort_value(row, stat_values)
+        if sort_value is None:
+            return (1, 0.0, index)
+        return (0, -sort_value, index)
 
     def _props_card_html(row, stat_values):
         player_text = html.escape(row["player"])
@@ -7407,10 +7412,10 @@ def render_homepage_props_tab():
     selected_line_type_key = normalize_name(selected_line_type).replace(" ", "-")
     selected_games_key = _homepage_filter_key(selected_game_filter_ids)
     selected_teams_key = _homepage_filter_key(selected_team_filter_labels)
-    selected_trend_filter_key = normalize_name(selected_trend_filter).replace(" ", "-")
+    selected_trend_sort_key = normalize_name(selected_trend_sort).replace(" ", "-")
     props_loaded_card_limit_key = (
         f"props_loaded_card_limit_{selected_date_key}_{active_prop_filter_key}_"
-        f"{selected_line_type_key}_{selected_games_key}_{selected_teams_key}_{selected_trend_filter_key}"
+        f"{selected_line_type_key}_{selected_games_key}_{selected_teams_key}_{selected_trend_sort_key}"
     )
     try:
         loaded_card_limit = int(st.session_state.get(props_loaded_card_limit_key, props_card_batch_size) or props_card_batch_size)
@@ -7427,16 +7432,15 @@ def render_homepage_props_tab():
         ]
         stat_summary_cache = _build_props_stat_summary_cache(enriched_visible_rows)
 
-    trend_filtered_visible_rows = []
-    for row in enriched_visible_rows:
+    trend_sorted_visible_rows = []
+    for index, row in enumerate(enriched_visible_rows):
         stat_values = _props_card_stat_values(row, stat_summary_cache)
-        if _props_row_matches_trend_filter(row, stat_values):
-            trend_filtered_visible_rows.append((row, stat_values))
+        trend_sorted_visible_rows.append((index, row, stat_values))
 
-    if not trend_filtered_visible_rows and selected_trend_filter != "All trends":
-        st.info("No cards match the selected trend filter.")
+    if selected_trend_sort != "Default":
+        trend_sorted_visible_rows.sort(key=_props_trend_sort_key)
 
-    for row, stat_values in trend_filtered_visible_rows:
+    for _, row, stat_values in trend_sorted_visible_rows:
         st.markdown(
             _props_card_html(row, stat_values),
             unsafe_allow_html=True,
@@ -7453,7 +7457,7 @@ def render_homepage_props_tab():
             f"Load more props ({remaining_row_count} remaining)",
             key=(
                 f"load_more_props_{selected_date_key}_{active_prop_filter_key}_"
-                f"{selected_line_type_key}_{selected_games_key}_{selected_teams_key}_{selected_trend_filter_key}"
+                f"{selected_line_type_key}_{selected_games_key}_{selected_teams_key}_{selected_trend_sort_key}"
             ),
             on_click=_load_more_props_rows,
         )
