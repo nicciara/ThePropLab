@@ -5606,6 +5606,11 @@ def render_selected_pitcher_view():
             st.markdown(f"## {name} {f'({hand})' if hand else ''}")
             st.markdown(f"{game.get('away_team')} @ {game.get('home_team')} • {game.get('game_time_et')}")
 
+            with st.container(border=True):
+                render_pitcher_prop_game_log_section(pid, opponent_context)
+
+            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+
             try:
                 mlb_stats = load_pitcher_stats(pid)
             except Exception as e:
@@ -5771,11 +5776,6 @@ def render_selected_pitcher_view():
             )
 
             # Keep Matchup Read fully separated from Strike Zone without changing section order.
-            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-
-            with st.container(border=True):
-                render_pitcher_prop_game_log_section(pid, opponent_context)
-
             st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
             pitch_type_options = ["All Pitches"]
