@@ -6619,10 +6619,6 @@ def render_homepage_props_tab():
         return options, {label: option_by_label[label] for label in options}
 
     available_props = _homepage_available_prop_options(st.session_state.get("prizepicks_projections", []))
-    selected_prop = st.session_state.get("homepage_selected_prop", "Hits")
-    if selected_prop not in available_props:
-        selected_prop = "Hits"
-        st.session_state["homepage_selected_prop"] = selected_prop
     selected_line_type = props_line_type_filter_label_from_query(
         st.session_state.get("props_line_type_filter", "All"),
         default="All",
@@ -6644,22 +6640,6 @@ def render_homepage_props_tab():
         team for team in st.session_state.get(teams_filter_key, []) if team in team_filter_options
     ]
 
-    with st.container(key="homepage_prop_tab_row", horizontal=True, gap="small"):
-        for prop in available_props:
-            if prop in PITCHER_GAME_LOG_PROPS:
-                prop_key = PITCHER_GAME_LOG_PROP_COLUMNS.get(prop, "").replace("_", "-")
-                key_prefix = "pitcher"
-            else:
-                prop_key = game_log_prop_column(prop, default="").replace("_", "-")
-                key_prefix = "batter"
-            st.button(
-                prop,
-                key=f"homepage_prop_tab_{key_prefix}_{prop_key}",
-                type="primary" if prop == selected_prop else "secondary",
-                on_click=set_homepage_props_prop,
-                args=(prop,),
-            )
-
     filter_cols = st.columns([1.1, 2.2, 2.1, 1.7])
     with filter_cols[0]:
         st.selectbox(
@@ -6673,6 +6653,7 @@ def render_homepage_props_tab():
             "Props",
             available_props,
             key=props_filter_key,
+            placeholder="All props",
         )
     with filter_cols[2]:
         st.multiselect(
@@ -6696,11 +6677,11 @@ def render_homepage_props_tab():
     selected_team_filter_labels = [
         team for team in st.session_state.get(teams_filter_key, []) if team in team_filter_lookup
     ]
-    active_props = selected_props_filter or [selected_prop]
+    active_props = selected_props_filter or available_props
     active_prop_filter_key = (
-        f"multi-{_homepage_filter_key(active_props)}"
+        f"selected-{_homepage_filter_key(active_props)}"
         if selected_props_filter
-        else f"single-{_homepage_filter_key(active_props)}"
+        else "all"
     )
     selected_game_filter_ids = {
         game_filter_lookup[label]
