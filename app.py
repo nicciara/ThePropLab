@@ -70,6 +70,7 @@ GAME_LOG_PROP_COLUMNS = {
 }
 PITCHER_GAME_LOG_PROPS = [
     "Pitcher Strikeouts",
+    "Pitcher Fantasy Score",
     "Earned Runs",
     "Hits Allowed",
     "Walks Allowed",
@@ -79,6 +80,7 @@ PITCHER_GAME_LOG_PROPS = [
 HOMEPAGE_PROP_OPTIONS = [*GAME_LOG_PROPS, *PITCHER_GAME_LOG_PROPS]
 PITCHER_GAME_LOG_PROP_COLUMNS = {
     "Pitcher Strikeouts": "strikeouts",
+    "Pitcher Fantasy Score": "pitcher_fantasy_score",
     "Earned Runs": "earned_runs",
     "Hits Allowed": "hits_allowed",
     "Walks Allowed": "walks_allowed",
@@ -94,6 +96,12 @@ PITCHER_PRIZEPICKS_PROP_ALIASES = {
     "strikeout": "pitcherstrikeouts",
     "ks": "pitcherstrikeouts",
     "k": "pitcherstrikeouts",
+    "pitcherfantasyscore": "pitcherfantasyscore",
+    "pitcherfantasy": "pitcherfantasyscore",
+    "pitcherfs": "pitcherfantasyscore",
+    "pfs": "pitcherfantasyscore",
+    "fantasyscorepitcher": "pitcherfantasyscore",
+    "fantasypointspitcher": "pitcherfantasyscore",
     "earnedruns": "earnedrunsallowed",
     "earnedrun": "earnedrunsallowed",
     "earnedrunsallowed": "earnedrunsallowed",
@@ -149,13 +157,31 @@ def calculate_prizepicks_hitter_fantasy_score(
     )
 
 
+def calculate_prizepicks_pitcher_fantasy_score(
+    wins,
+    earned_runs,
+    strikeouts,
+    pitching_outs,
+    quality_start=None,
+):
+    if quality_start is None:
+        quality_start = int(float(pitching_outs or 0) >= 18 and float(earned_runs or 0) <= 3)
+    return (
+        float(wins or 0) * 6
+        + float(quality_start or 0) * 4
+        - float(earned_runs or 0) * 3
+        + float(strikeouts or 0) * 3
+        + float(pitching_outs or 0)
+    )
+
+
 def prop_average_text(avg_value, prop_column):
-    precision = 1 if prop_column == "fantasy_score" else 2
+    precision = 1 if prop_column in {"fantasy_score", "pitcher_fantasy_score"} else 2
     return f"{float(avg_value):.{precision}f}"
 
 
 def prop_chart_value_format(prop_column):
-    return ".1f" if prop_column == "fantasy_score" else ".0f"
+    return ".1f" if prop_column in {"fantasy_score", "pitcher_fantasy_score"} else ".0f"
 
 
 SPORTSBOOK_BADGE_ASSETS = {
@@ -1679,6 +1705,18 @@ def load_pitcher_prop_game_log(pitcher_id, season_year=2026):
         prefix = "" if is_home else "@"
         game = split.get("game", {}) or {}
         innings_pitched = stat.get("inningsPitched", "0")
+        strikeouts = _int_stat(stat, "strikeOuts")
+        earned_runs = _int_stat(stat, "earnedRuns")
+        pitching_outs = innings_pitched_to_outs(innings_pitched)
+        wins = _int_stat(stat, "wins")
+        quality_start = int(pitching_outs >= 18 and earned_runs <= 3)
+        pitcher_fantasy_score = calculate_prizepicks_pitcher_fantasy_score(
+            wins,
+            earned_runs,
+            strikeouts,
+            pitching_outs,
+            quality_start=quality_start,
+        )
         rows.append(
             {
                 "game_pk": game.get("gamePk") or game.get("id") or "",
@@ -1688,12 +1726,15 @@ def load_pitcher_prop_game_log(pitcher_id, season_year=2026):
                 "opponent_team_id": opponent.get("id", ""),
                 "opponent_name": opponent_name,
                 "opponent_abbrev": opponent.get("abbreviation") or "",
-                "strikeouts": _int_stat(stat, "strikeOuts"),
-                "earned_runs": _int_stat(stat, "earnedRuns"),
+                "strikeouts": strikeouts,
+                "pitcher_fantasy_score": pitcher_fantasy_score,
+                "wins": wins,
+                "quality_starts": quality_start,
+                "earned_runs": earned_runs,
                 "hits_allowed": _int_stat(stat, "hits"),
                 "walks_allowed": _int_stat(stat, "baseOnBalls"),
                 "innings_pitched": innings_pitched,
-                "pitching_outs": innings_pitched_to_outs(innings_pitched),
+                "pitching_outs": pitching_outs,
                 "pitches_thrown": _int_stat(stat, "numberOfPitches"),
             }
         )
