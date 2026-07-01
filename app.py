@@ -974,26 +974,6 @@ def props_line_type_filter_label_from_query(value, default="All"):
     return default
 
 
-def props_line_type_legend_html():
-    return (
-        "<div style='display:flex; flex-wrap:wrap; gap:10px; align-items:center; "
-        "font-size:11px; line-height:1.2; color:var(--dash-muted); margin-top:4px;'>"
-        "<span style='display:inline-flex; align-items:center; gap:5px;'>"
-        f"{badge_image_html(SPORTSBOOK_BADGE_ASSETS.get('prizepicks'), 'PrizePicks', 'book-badge', 'book-badge-img')}"
-        "<span>PP Reg Line</span>"
-        "</span>"
-        "<span style='display:inline-flex; align-items:center; gap:5px;'>"
-        f"{badge_image_html(MODIFIER_BADGE_ASSETS.get('goblin'), 'Goblin', 'boost-badge', 'modifier-badge-img')}"
-        "<span>Goblin</span>"
-        "</span>"
-        "<span style='display:inline-flex; align-items:center; gap:5px;'>"
-        f"{badge_image_html(MODIFIER_BADGE_ASSETS.get('demon'), 'Demon', 'boost-badge', 'modifier-badge-img')}"
-        "<span>Demon</span>"
-        "</span>"
-        "</div>"
-    )
-
-
 def game_log_prop_column(prop, default=None):
     resolved_prop = prop_label_from_query(prop, default="")
     if resolved_prop in GAME_LOG_PROP_COLUMNS:
@@ -6615,7 +6595,6 @@ def render_homepage_props_tab():
             key="props_line_type_filter",
             on_change=set_homepage_props_line_type,
         )
-        st.markdown(props_line_type_legend_html(), unsafe_allow_html=True)
 
     selected_is_pitcher_prop = selected_prop in PITCHER_GAME_LOG_PROPS
     selected_prop_key = (
