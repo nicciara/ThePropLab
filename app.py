@@ -3540,7 +3540,6 @@ def render_general_information(sb, batter_id, batter_name):
         with batter_strike_zone_cols[0]:
             pitch_type_options = strike_zone.get_batter_pitch_type_options(batter_id)
             # Streamlit selectbox options are plain text, so individual pitch names cannot be colored safely here.
-            st.caption(f"{format_batter_name_with_hand(batter_name, sb.get('hand', ''))} Location Tendencies")
             selected_pitch_type = st.selectbox(
                 "Pitch Type",
                 pitch_type_options,
@@ -3575,6 +3574,7 @@ def render_general_information(sb, batter_id, batter_name):
                     unsafe_allow_html=True,
                 )
         with batter_strike_zone_cols[1]:
+            st.caption(f"{format_batter_name_with_hand(batter_name, sb.get('hand', ''))} Location Tendencies")
             if not compare_enabled:
                 strike_zone.display_batter_metric_strike_zone(
                     batter_id,
@@ -3591,7 +3591,6 @@ def render_general_information(sb, batter_id, batter_name):
                     selected_metric,
                     selected_heatmap_scale,
                 )
-                st.caption(f"{format_batter_name_with_hand(batter_name, sb.get('hand', ''))} Location Tendencies")
         if compare_enabled:
             with batter_strike_zone_cols[2]:
                 if compare_pitcher_id:
