@@ -5872,6 +5872,48 @@ def render_homepage_props_tab():
             "</div>"
         )
 
+    def _props_loading_card_html(row):
+        player_text = html.escape(str(row.get("player") or "Loading player"))
+        try:
+            line_text = f"{float(row.get('line')):.1f}"
+        except (TypeError, ValueError):
+            line_text = str(row.get("line") or "--")
+        matchup = f"{row.get('team') or '--'} vs {row.get('opponent') or '--'}"
+        if row.get("game_time"):
+            matchup = f"{matchup} - {row.get('game_time')}"
+        tile_html = "".join(
+            "<div style='min-width:88px; height:62px; border:1px solid var(--dash-border); border-radius:10px; "
+            "background:linear-gradient(90deg,var(--dash-surface),var(--dash-surface-2),var(--dash-surface)); opacity:.88;'></div>"
+            for _ in range(6)
+        )
+        return (
+            "<div style='border:1px solid var(--dash-border); border-radius:14px; background:var(--dash-card-bg); "
+            "box-shadow:0 2px 9px rgba(15,23,42,.10); padding:18px; margin:14px 0; color:var(--dash-text);'>"
+            "<div style='display:grid; grid-template-columns:auto minmax(220px,1fr) auto; align-items:center; gap:16px;'>"
+            "<div style='width:68px; height:68px; border-radius:999px; border:1px solid var(--dash-border); "
+            "background:var(--dash-surface-2); display:flex; align-items:center; justify-content:center;'>"
+            "<div style='width:34px; height:34px; border-radius:999px; background:var(--dash-surface);'></div>"
+            "</div>"
+            "<div style='min-width:0;'>"
+            f"<div style='font-size:21px; font-weight:950; line-height:1.1;'>{player_text}</div>"
+            f"<div style='font-size:16px; font-weight:950; margin-top:6px;'>O/U {html.escape(line_text)} {html.escape(str(row.get('prop') or ''))}</div>"
+            f"<div style='font-size:12px; color:var(--dash-muted); font-weight:800; margin-top:5px;'>{html.escape(matchup)}</div>"
+            "<div style='font-size:12px; color:var(--dash-muted); font-weight:800; margin-top:10px;'>Building card summary...</div>"
+            "</div>"
+            "<div style='width:86px; height:86px; border-radius:999px; border:2px solid var(--dash-border); "
+            "background:var(--dash-surface-2); display:flex; align-items:center; justify-content:center; "
+            "font-size:12px; font-weight:900; color:var(--dash-muted); text-align:center;'>O/U<br/>soon</div>"
+            "</div>"
+            f"<div style='display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;'>{tile_html}</div>"
+            "</div>"
+        )
+
+    def _props_card_summary(row, stat_values):
+        return {
+            "row": dict(row),
+            "stat_values": dict(stat_values or _props_blank_stat_values()),
+        }
+
     def _enrich_props_card_identity(row):
         player_name = row.get("player", "")
         team_id = row.get("team_id", "")
@@ -5978,23 +6020,72 @@ def render_homepage_props_tab():
     def _props_fragment_batch_state_key(batch_key):
         return f"props_fragment_batch_state_{batch_key}"
 
+    def _props_snapshot_state_key():
+        selected_date_key = st.session_state.get("selected_date", eastern_today()).isoformat()
+        return f"props_card_summary_snapshot_{selected_date_key}_{selected_prop_key}"
+
+    def _props_snapshot_state():
+        snapshot_key = _props_snapshot_state_key()
+        signature = _props_fragment_signature(prototype_rows)
+        snapshot = st.session_state.get(snapshot_key)
+        if not isinstance(snapshot, dict) or snapshot.get("signature") != signature:
+            snapshot = {
+                "signature": signature,
+                "batches": {},
+            }
+            st.session_state[snapshot_key] = snapshot
+        return snapshot
+
+    def _props_snapshot_batch(batch_key):
+        snapshot = _props_snapshot_state()
+        batch = snapshot.get("batches", {}).get(batch_key)
+        return batch if isinstance(batch, list) else []
+
+    def _save_props_snapshot_batch(batch_key, state):
+        state_rows = state.get("rows", [])
+        stat_values_by_index = state.get("stat_values", {})
+        snapshot = _props_snapshot_state()
+        snapshot.setdefault("batches", {})[batch_key] = [
+            _props_card_summary(
+                row,
+                stat_values_by_index.get(str(index), _props_blank_stat_values()),
+            )
+            for index, row in enumerate(state_rows)
+        ]
+        st.session_state[_props_snapshot_state_key()] = snapshot
+
     def _props_fragment_batch_state(batch_key, batch_rows):
         state_key = _props_fragment_batch_state_key(batch_key)
         signature = _props_fragment_signature(batch_rows)
         state = st.session_state.get(state_key)
         if not isinstance(state, dict) or state.get("signature") != signature:
-            state = {
-                "signature": signature,
-                "rows": [dict(row) for row in batch_rows],
-                "stat_values": {
-                    str(index): _props_blank_stat_values()
-                    for index in range(len(batch_rows))
-                },
-                "next_enrich_index": 0,
-                "stat_groups": None,
-                "next_stat_group_index": 0,
-                "done": False,
-            }
+            snapshot_batch = _props_snapshot_batch(batch_key)
+            if snapshot_batch:
+                state = {
+                    "signature": signature,
+                    "rows": [dict(summary.get("row", {})) for summary in snapshot_batch],
+                    "stat_values": {
+                        str(index): dict(summary.get("stat_values", _props_blank_stat_values()))
+                        for index, summary in enumerate(snapshot_batch)
+                    },
+                    "next_enrich_index": len(snapshot_batch),
+                    "stat_groups": [],
+                    "next_stat_group_index": 0,
+                    "done": True,
+                }
+            else:
+                state = {
+                    "signature": signature,
+                    "rows": [dict(row) for row in batch_rows],
+                    "stat_values": {
+                        str(index): _props_blank_stat_values()
+                        for index in range(len(batch_rows))
+                    },
+                    "next_enrich_index": 0,
+                    "stat_groups": None,
+                    "next_stat_group_index": 0,
+                    "done": False,
+                }
             st.session_state[state_key] = state
         return state
 
@@ -6005,8 +6096,12 @@ def render_homepage_props_tab():
             state = st.session_state.get(_props_fragment_batch_state_key(batch_key))
             signature = _props_fragment_signature(batch_rows)
             if not isinstance(state, dict):
+                if _props_snapshot_batch(batch_key):
+                    continue
                 return False
             if state.get("signature") != signature:
+                if _props_snapshot_batch(batch_key):
+                    continue
                 return False
             if not state.get("done"):
                 return False
@@ -6029,6 +6124,12 @@ def render_homepage_props_tab():
             state_rows = state.get("rows", [])
             stat_values_by_index = state.get("stat_values", {})
             for index, row in enumerate(state_rows):
+                if not state.get("done"):
+                    st.markdown(
+                        _props_loading_card_html(row),
+                        unsafe_allow_html=True,
+                    )
+                    continue
                 st.markdown(
                     _props_card_html(
                         row,
@@ -6071,17 +6172,17 @@ def render_homepage_props_tab():
 
         next_group_index = int(state.get("next_stat_group_index", 0) or 0)
         stat_groups = state.get("stat_groups") or []
-        if next_group_index < len(stat_groups):
+        while next_group_index < len(stat_groups):
             group_indexes = stat_groups[next_group_index]
             stat_summary_cache = _build_props_stat_summary_cache([state_rows[index] for index in group_indexes])
             for index in group_indexes:
                 stat_values_by_index[str(index)] = _props_card_stat_values(state_rows[index], stat_summary_cache)
             state["next_stat_group_index"] = next_group_index + 1
-            st.session_state[state_key] = state
-            return
+            next_group_index += 1
 
         state["done"] = True
         st.session_state[state_key] = state
+        _save_props_snapshot_batch(batch_key, state)
         logger.info("Props fragment batch complete: batch=%s rows=%s", batch_key, len(state_rows))
         if _all_props_fragment_batches_done() and not st.session_state.get(fragment_schedule_refresh_key, False):
             st.session_state[fragment_schedule_refresh_key] = True
