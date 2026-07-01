@@ -4738,7 +4738,7 @@ def render_selected_batter_view():
         if matchup_subtitle:
             st.markdown(
                 (
-                    "<div style='margin:-2px 0 10px 35px; font-size:13px; font-weight:600; "
+                    "<div style='margin:-2px 0 10px 34px; font-size:13px; font-weight:600; "
                     "line-height:1.2; color:var(--dash-muted);'>"
                     f"{html.escape(matchup_subtitle)}"
                     "</div>"
