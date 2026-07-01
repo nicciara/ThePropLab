@@ -2846,6 +2846,26 @@ def render_pitcher_game_log_sample_section(pitcher_id, prop_column, selected_pro
         empty_avg_text="-",
     )
 
+    st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
+    with st.container(key="game_log_range_tiles", horizontal=True, gap="small"):
+        for sample_label in GAME_LOG_SAMPLE_RANGES:
+            is_selected_sample = sample_label == st.session_state[range_key]
+            st.button(
+                prop_hit_rate_sample_label(sample_label, sample_summaries),
+                key=f"{range_key}_{sample_label}",
+                type="primary" if is_selected_sample else "secondary",
+                on_click=set_pitcher_game_log_range_selection,
+                args=(range_key, h2h_key, sample_label),
+            )
+        if has_opponent_context:
+            st.button(
+                prop_h2h_tile_label(h2h_summary),
+                key=f"{h2h_key}_tile",
+                type="primary" if h2h_enabled else "secondary",
+                on_click=toggle_pitcher_game_log_h2h_selection,
+                args=(h2h_key, range_key),
+            )
+
     game_log_range = st.session_state[range_key]
     if h2h_enabled:
         if game_log_range in GAME_LOG_SAMPLE_RANGES:
@@ -2874,26 +2894,6 @@ def render_pitcher_game_log_sample_section(pitcher_id, prop_column, selected_pro
         game_log_range,
         h2h_enabled,
     )
-
-    st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
-    with st.container(key="game_log_range_tiles", horizontal=True, gap="small"):
-        for sample_label in GAME_LOG_SAMPLE_RANGES:
-            is_selected_sample = sample_label == st.session_state[range_key]
-            st.button(
-                prop_hit_rate_sample_label(sample_label, sample_summaries),
-                key=f"{range_key}_{sample_label}",
-                type="primary" if is_selected_sample else "secondary",
-                on_click=set_pitcher_game_log_range_selection,
-                args=(range_key, h2h_key, sample_label),
-            )
-        if has_opponent_context:
-            st.button(
-                prop_h2h_tile_label(h2h_summary),
-                key=f"{h2h_key}_tile",
-                type="primary" if h2h_enabled else "secondary",
-                on_click=toggle_pitcher_game_log_h2h_selection,
-                args=(h2h_key, range_key),
-            )
 
 
 @st.fragment
