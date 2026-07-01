@@ -75,6 +75,7 @@ PITCHER_GAME_LOG_PROPS = [
     "Walks Allowed",
     "Pitching Outs",
 ]
+HOMEPAGE_PROP_OPTIONS = [*GAME_LOG_PROPS, *PITCHER_GAME_LOG_PROPS]
 PITCHER_GAME_LOG_PROP_COLUMNS = {
     "Pitcher Strikeouts": "strikeouts",
     "Earned Runs": "earned_runs",
@@ -96,6 +97,7 @@ PITCHER_PRIZEPICKS_PROP_ALIASES = {
     "earnedrunsallowed": "earnedrunsallowed",
     "earnedrunallowed": "earnedrunsallowed",
     "er": "earnedrunsallowed",
+    "erallowed": "earnedrunsallowed",
     "era": "earnedrunsallowed",
     "hitsallowed": "hitsallowed",
     "hitallowed": "hitsallowed",
@@ -103,6 +105,8 @@ PITCHER_PRIZEPICKS_PROP_ALIASES = {
     "walksallowed": "walksallowed",
     "walkallowed": "walksallowed",
     "pitcherwalksallowed": "walksallowed",
+    "bballowed": "walksallowed",
+    "bb": "walksallowed",
     "baseonballsallowed": "walksallowed",
     "basesonballsallowed": "walksallowed",
     "pitchingouts": "pitchingouts",
@@ -665,14 +669,18 @@ def _projection_stat_type(record):
 
 
 def _projection_player_id(record):
-    value = _projection_value(record, "player_id", "playerId", "mlbam_id", "mlbamId", "batter_id", "batterId")
+    value = _projection_value(
+        record,
+        "player_id", "playerId", "mlbam_id", "mlbamId",
+        "batter_id", "batterId", "pitcher_id", "pitcherId",
+    )
     return str(value or "")
 
 
 def _projection_player_mlbam_id(player_attributes):
     if not isinstance(player_attributes, dict):
         return ""
-    for key in ("mlbam_id", "mlbamId", "mlb_id", "mlbId", "batter_id", "batterId"):
+    for key in ("mlbam_id", "mlbamId", "mlb_id", "mlbId", "batter_id", "batterId", "pitcher_id", "pitcherId"):
         value = player_attributes.get(key)
         if value not in {None, ""}:
             return str(value)
@@ -897,6 +905,24 @@ def prop_label_from_query(value, default="Hits"):
     for prop in GAME_LOG_PROPS:
         if _prop_match_key(prop) == target_key:
             return prop
+    return default
+
+
+def pitcher_prop_label_from_query(value, default="Pitcher Strikeouts"):
+    target_key = pitcher_prizepicks_prop_match_key(value)
+    for prop in PITCHER_GAME_LOG_PROPS:
+        if pitcher_prizepicks_prop_match_key(prop) == target_key:
+            return prop
+    return default
+
+
+def homepage_prop_label_from_query(value, default="Hits"):
+    batter_prop = prop_label_from_query(value, default="")
+    if batter_prop:
+        return batter_prop
+    pitcher_prop = pitcher_prop_label_from_query(value, default="")
+    if pitcher_prop:
+        return pitcher_prop
     return default
 
 
@@ -3378,6 +3404,34 @@ def _build_batter_detail_href(
     return "?" + "&".join(f"{key}={quote_plus(value)}" for key, value in params)
 
 
+def _build_pitcher_detail_href(
+    pitcher_id,
+    pitcher_name="",
+    pitcher_hand="",
+    pitcher_side="",
+    game_pk="",
+    prop="",
+    line="",
+):
+    if not pitcher_id or not game_pk:
+        return ""
+    params = [("view", "pitcher_detail"), ("pitcher_id", str(pitcher_id)), ("game_pk", str(game_pk))]
+    if pitcher_name:
+        params.append(("pitcher_name", str(pitcher_name)))
+    if pitcher_hand:
+        params.append(("pitcher_hand", str(pitcher_hand)))
+    if pitcher_side:
+        params.append(("pitcher_side", str(pitcher_side)))
+    selected_date_value = st.session_state.get("selected_date")
+    if selected_date_value:
+        params.append(("date", selected_date_value.isoformat()))
+    if prop:
+        params.append(("prop", str(prop)))
+    if line not in {None, ""}:
+        params.append(("line", str(line)))
+    return "?" + "&".join(f"{key}={quote_plus(value)}" for key, value in params)
+
+
 @st.cache_data(ttl=1800)
 def load_batter_run_value_pitch_type_table(batter_id):
     if not batter_id:
@@ -3729,6 +3783,9 @@ def _initialize_page_state_from_query():
             "hand": _query_param_value("pitcher_hand", ""),
             "side": _query_param_value("pitcher_side", ""),
         }
+        requested_pitcher_prop = pitcher_prop_label_from_query(_query_param_value("prop", ""), default="")
+        if requested_pitcher_prop in PITCHER_GAME_LOG_PROPS:
+            st.session_state["selected_pitcher_prop"] = requested_pitcher_prop
         try:
             st.session_state["selected_game"] = int(str(requested_game_pk))
         except Exception:
@@ -3743,8 +3800,8 @@ def _initialize_page_state_from_query():
         requested_home_tab = "lineups"
     if st.session_state.get("home_tab") != requested_home_tab:
         st.session_state["home_tab"] = requested_home_tab
-    requested_home_prop = prop_label_from_query(_query_param_value("prop", "Hits"))
-    if st.session_state.get("homepage_selected_prop") not in GAME_LOG_PROPS:
+    requested_home_prop = homepage_prop_label_from_query(_query_param_value("prop", "Hits"))
+    if st.session_state.get("homepage_selected_prop") not in HOMEPAGE_PROP_OPTIONS:
         st.session_state["homepage_selected_prop"] = requested_home_prop
     elif requested_home_prop != st.session_state.get("homepage_selected_prop") and requested_home_tab == "props":
         st.session_state["homepage_selected_prop"] = requested_home_prop
@@ -6314,7 +6371,7 @@ def set_homepage_tab():
 
 
 def set_homepage_props_prop(prop):
-    if prop not in GAME_LOG_PROPS:
+    if prop not in HOMEPAGE_PROP_OPTIONS:
         return
     st.session_state["homepage_selected_prop"] = prop
     _set_query_params({
@@ -6378,22 +6435,6 @@ def render_homepage_props_tab():
         st.session_state["games"] = load_schedule(st.session_state["selected_date"])
     games = st.session_state.get("games", pd.DataFrame())
 
-    selected_prop = st.session_state.get("homepage_selected_prop", "Hits")
-    if selected_prop not in GAME_LOG_PROPS:
-        selected_prop = "Hits"
-        st.session_state["homepage_selected_prop"] = selected_prop
-
-    with st.container(key="homepage_prop_tab_row", horizontal=True, gap="small"):
-        for prop in GAME_LOG_PROPS:
-            prop_key = game_log_prop_column(prop, default="").replace("_", "-")
-            st.button(
-                prop,
-                key=f"homepage_prop_tab_{prop_key}",
-                type="primary" if prop == selected_prop else "secondary",
-                on_click=set_homepage_props_prop,
-                args=(prop,),
-            )
-
     try:
         st.session_state["prizepicks_projections"] = load_prizepicks_mlb_projections()
     except Exception as exc:
@@ -6401,7 +6442,50 @@ def render_homepage_props_tab():
         st.info("Prop data is unavailable right now.")
         return
 
-    selected_prop_key = _prop_match_key(selected_prop)
+    def _projection_matches_homepage_prop(record, prop):
+        stat_type = record.get("stat_display_name") or _projection_stat_type(record)
+        if prop in PITCHER_GAME_LOG_PROPS:
+            return pitcher_prizepicks_prop_match_key(stat_type) == pitcher_prizepicks_prop_match_key(prop)
+        return _prop_match_key(stat_type) == _prop_match_key(prop)
+
+    def _homepage_available_prop_options(projections):
+        options = list(GAME_LOG_PROPS)
+        for prop in PITCHER_GAME_LOG_PROPS:
+            if any(
+                isinstance(record, dict) and _projection_matches_homepage_prop(record, prop)
+                for record in projections
+            ):
+                options.append(prop)
+        return options
+
+    available_props = _homepage_available_prop_options(st.session_state.get("prizepicks_projections", []))
+    selected_prop = st.session_state.get("homepage_selected_prop", "Hits")
+    if selected_prop not in available_props:
+        selected_prop = "Hits"
+        st.session_state["homepage_selected_prop"] = selected_prop
+
+    with st.container(key="homepage_prop_tab_row", horizontal=True, gap="small"):
+        for prop in available_props:
+            if prop in PITCHER_GAME_LOG_PROPS:
+                prop_key = PITCHER_GAME_LOG_PROP_COLUMNS.get(prop, "").replace("_", "-")
+                key_prefix = "pitcher"
+            else:
+                prop_key = game_log_prop_column(prop, default="").replace("_", "-")
+                key_prefix = "batter"
+            st.button(
+                prop,
+                key=f"homepage_prop_tab_{key_prefix}_{prop_key}",
+                type="primary" if prop == selected_prop else "secondary",
+                on_click=set_homepage_props_prop,
+                args=(prop,),
+            )
+
+    selected_is_pitcher_prop = selected_prop in PITCHER_GAME_LOG_PROPS
+    selected_prop_key = (
+        pitcher_prizepicks_prop_match_key(selected_prop)
+        if selected_is_pitcher_prop
+        else _prop_match_key(selected_prop)
+    )
 
     def _team_lookup_keys(value):
         normalized = normalize_name(value)
@@ -6448,7 +6532,40 @@ def render_homepage_props_tab():
                         team_lookup[key] = context
         return team_lookup
 
+    def _homepage_pitcher_context_lookup(games_df):
+        pitcher_lookup = {}
+        if games_df is None or (isinstance(games_df, pd.DataFrame) and games_df.empty):
+            return pitcher_lookup
+        for _, game in games_df.iterrows():
+            for side in ("away", "home"):
+                pitcher_id = str(game.get(f"{side}_pitcher_id") or "").strip()
+                pitcher_name = str(game.get(f"{side}_pitcher") or "").strip()
+                if not pitcher_id and not pitcher_name:
+                    continue
+                opponent_side = "home" if side == "away" else "away"
+                context = {
+                    "team": game.get(f"{side}_team", ""),
+                    "team_id": game.get(f"{side}_team_id", ""),
+                    "opponent": game.get(f"{opponent_side}_team", ""),
+                    "opponent_id": game.get(f"{opponent_side}_team_id", ""),
+                    "opponent_abbr": game.get(f"{opponent_side}_abbrev", ""),
+                    "game_pk": game.get("game_pk", ""),
+                    "game_time": game.get("game_time_et", ""),
+                    "side": side,
+                    "hand": game.get(f"{side}_pitcher_hand", ""),
+                    "player_id": pitcher_id,
+                    "player": pitcher_name,
+                    "game": game,
+                }
+                if pitcher_id:
+                    pitcher_lookup[f"id:{pitcher_id}"] = context
+                pitcher_name_key = normalize_name(pitcher_name)
+                if pitcher_name_key and pitcher_name_key != "tbd":
+                    pitcher_lookup[f"name:{pitcher_name_key}"] = context
+        return pitcher_lookup
+
     team_context_lookup = _homepage_team_context_lookup(games)
+    pitcher_context_lookup = _homepage_pitcher_context_lookup(games)
     player_id_cache = {}
     lineup_fallback_cache = {}
 
@@ -6476,29 +6593,80 @@ def render_homepage_props_tab():
                     }
         return {}
 
-    rows = []
-    seen = set()
+    def _props_line_match_key(value):
+        try:
+            return f"{float(value):.4f}"
+        except (TypeError, ValueError):
+            return str(value or "").strip()
+
+    def _projection_identity_match_key(record, player_name):
+        projection_player_id = _projection_player_id(record)
+        if projection_player_id:
+            return f"id:{projection_player_id}"
+        return f"name:{normalize_name(player_name)}"
+
+    def _props_status_from_projection_matches(exact_projection_lines):
+        labels = []
+        seen_labels = set()
+        for projection_line in exact_projection_lines or []:
+            odds_type = normalize_name(_projection_value(projection_line, "odds_type", "oddsType", default=""))
+            label = "Goblin" if odds_type == "goblin" else "Demon" if odds_type == "demon" else "Standard"
+            if label not in seen_labels:
+                labels.append(label)
+                seen_labels.add(label)
+        return f"PrizePicks • {'/'.join(labels)}" if labels else "PrizePicks"
+
+    selected_projection_records = []
     for record in st.session_state.get("prizepicks_projections", []):
         if not isinstance(record, dict):
             continue
-        stat_type = record.get("stat_display_name") or _projection_stat_type(record)
-        if _prop_match_key(stat_type) != selected_prop_key:
+        if not _projection_matches_homepage_prop(record, selected_prop):
             continue
+        selected_projection_records.append(record)
 
+    records_by_exact_key = {}
+    for record in selected_projection_records:
+        player_name = str(record.get("player") or _projection_player_name(record) or "").strip()
+        line_value = _projection_line_value(record)
+        exact_key = (
+            _projection_identity_match_key(record, player_name),
+            selected_prop_key,
+            _props_line_match_key(line_value),
+        )
+        records_by_exact_key.setdefault(exact_key, []).append(record)
+
+    rows = []
+    seen = set()
+    for record in selected_projection_records:
         player_name = str(record.get("player") or _projection_player_name(record) or "").strip()
         if not player_name:
             continue
         line_value = _projection_line_value(record)
-        odds_type = _projection_value(record, "odds_type", "oddsType", default="")
-        unique_key = (normalize_name(player_name), selected_prop_key, str(line_value), normalize_name(odds_type))
+        exact_key = (
+            _projection_identity_match_key(record, player_name),
+            selected_prop_key,
+            _props_line_match_key(line_value),
+        )
+        unique_key = exact_key
         if unique_key in seen:
             continue
         seen.add(unique_key)
 
+        exact_projection_lines = records_by_exact_key.get(exact_key, [record])
+        preferred_line = preferred_projection_line(exact_projection_lines) or record
+        odds_type = _projection_value(preferred_line, "odds_type", "oddsType", default="")
+        projection_player_id = _projection_player_id(record)
+        pitcher_context = {}
+        if selected_is_pitcher_prop:
+            if projection_player_id:
+                pitcher_context = pitcher_context_lookup.get(f"id:{projection_player_id}", {})
+            if not pitcher_context:
+                pitcher_context = pitcher_context_lookup.get(f"name:{normalize_name(player_name)}", {})
+
         projection_team = _projection_value(record, "team", default="")
-        team_context = {}
+        team_context = pitcher_context if selected_is_pitcher_prop else {}
         for key in _team_lookup_keys(projection_team):
-            team_context = team_context_lookup.get(key, {})
+            team_context = team_context or team_context_lookup.get(key, {})
             if team_context:
                 break
         team = team_context.get("team") or projection_team
@@ -6508,9 +6676,6 @@ def render_homepage_props_tab():
         game_pk = team_context.get("game_pk", "")
         game_time = team_context.get("game_time", "")
 
-        modifier = str(odds_type or "").strip().title()
-        if modifier not in {"Goblin", "Demon"}:
-            modifier = "Standard"
         rows.append({
             "player": player_name,
             "href": "",
@@ -6518,16 +6683,20 @@ def render_homepage_props_tab():
             "team_id": team_id,
             "opponent": opponent,
             "opponent_id": opponent_id,
-            "hand": "",
+            "opponent_abbr": team_context.get("opponent_abbr", ""),
+            "hand": team_context.get("hand", "") if selected_is_pitcher_prop else "",
             "player_id": "",
-            "projection_player_id": _projection_player_id(record),
+            "projection_player_id": projection_player_id or team_context.get("player_id", ""),
             "projection_image_url": _projection_value(record, "image_url", "imageUrl", default=""),
             "team_context": team_context,
             "game_pk": game_pk,
+            "side": team_context.get("side", ""),
+            "player_type": "pitcher" if selected_is_pitcher_prop else "batter",
             "prop": selected_prop,
             "line": line_value,
             "odds_type": odds_type,
-            "status": f"PrizePicks • {modifier}",
+            "exact_projection_lines": exact_projection_lines,
+            "status": _props_status_from_projection_matches(exact_projection_lines),
             "image_url": _projection_value(record, "image_url", "imageUrl", default=""),
             "game_time": game_time,
         })
@@ -6581,7 +6750,11 @@ def render_homepage_props_tab():
         return {label: "—" for label in ("L5", "L10", "L15", "H2H", "AVG", "SZN")}
 
     def _props_stat_cache_key(row):
-        prop_column = GAME_LOG_PROP_COLUMNS.get(row.get("prop"))
+        player_type = row.get("player_type") or "batter"
+        if player_type == "pitcher":
+            prop_column = PITCHER_GAME_LOG_PROP_COLUMNS.get(row.get("prop"))
+        else:
+            prop_column = GAME_LOG_PROP_COLUMNS.get(row.get("prop"))
         player_id = row.get("player_id")
         if not player_id or not prop_column:
             return None
@@ -6590,6 +6763,7 @@ def render_homepage_props_tab():
         except (TypeError, ValueError):
             return None
         return (
+            player_type,
             str(player_id),
             prop_column,
             selected_prop_line,
@@ -6635,15 +6809,18 @@ def render_homepage_props_tab():
             cache_key = _props_stat_cache_key(row)
             if not cache_key:
                 continue
-            player_id, prop_column, _, _, _ = cache_key
-            include_first_inning = prop_column == "first_inning_hrrrbi"
-            rows_by_game_log_key.setdefault((player_id, include_first_inning), []).append((row, cache_key))
+            player_type, player_id, prop_column, _, _, _ = cache_key
+            include_first_inning = player_type == "batter" and prop_column == "first_inning_hrrrbi"
+            rows_by_game_log_key.setdefault((player_type, player_id, include_first_inning), []).append((row, cache_key))
 
-        for (player_id, include_first_inning), player_rows in rows_by_game_log_key.items():
-            game_log_df = load_batter_prop_game_log(
-                player_id,
-                include_first_inning=include_first_inning,
-            )
+        for (player_type, player_id, include_first_inning), player_rows in rows_by_game_log_key.items():
+            if player_type == "pitcher":
+                game_log_df = load_pitcher_prop_game_log(player_id)
+            else:
+                game_log_df = load_batter_prop_game_log(
+                    player_id,
+                    include_first_inning=include_first_inning,
+                )
             if game_log_df.empty:
                 for _, cache_key in player_rows:
                     stat_summary_cache[cache_key] = _props_blank_stat_values()
@@ -6651,7 +6828,7 @@ def render_homepage_props_tab():
 
             rows_by_prop = {}
             for row, cache_key in player_rows:
-                prop_column = cache_key[1]
+                prop_column = cache_key[2]
                 rows_by_prop.setdefault(prop_column, []).append((row, cache_key))
 
             for prop_column, prop_rows in rows_by_prop.items():
@@ -6666,7 +6843,7 @@ def render_homepage_props_tab():
                 }
                 h2h_values_cache = {}
                 for row, cache_key in prop_rows:
-                    _, _, selected_prop_line, opponent_id, opponent_name_key = cache_key
+                    _, _, _, selected_prop_line, opponent_id, opponent_name_key = cache_key
                     stat_values = _props_blank_stat_values()
 
                     for sample_label in ("L5", "L10", "L15"):
@@ -6715,7 +6892,11 @@ def render_homepage_props_tab():
 
     def _props_card_html(row, stat_values):
         player_text = html.escape(row["player"])
-        line_html = render_line_badge(row.get("line"), row.get("odds_type", ""), show_book_badge=True)
+        exact_projection_lines = row.get("exact_projection_lines") or []
+        if exact_projection_lines:
+            line_html = render_line_badge_for_projection_matches(row.get("line"), exact_projection_lines)
+        else:
+            line_html = render_line_badge(row.get("line"), row.get("odds_type", ""), show_book_badge=True)
         try:
             line_text = f"{float(row.get('line')):.1f}"
         except (TypeError, ValueError):
@@ -6784,6 +6965,7 @@ def render_homepage_props_tab():
 
     def _enrich_props_card_identity(row):
         player_name = row.get("player", "")
+        player_type = row.get("player_type") or "batter"
         team_id = row.get("team_id", "")
         team_context = row.get("team_context", {}) or {}
         player_id = row.get("projection_player_id", "")
@@ -6793,6 +6975,7 @@ def render_homepage_props_tab():
         opponent_id = row.get("opponent_id", "")
         game_pk = row.get("game_pk", "")
         game_time = row.get("game_time", "")
+        side = row.get("side", "")
 
         if not player_id:
             player_cache_key = (normalize_name(player_name), str(team_id or ""))
@@ -6800,7 +6983,7 @@ def render_homepage_props_tab():
                 player_id_cache[player_cache_key] = resolve_player_id_from_team_roster(player_name, team_id)
             player_id = player_id_cache[player_cache_key]
 
-        if not player_id:
+        if player_type == "batter" and not player_id:
             lineup_info = _lineup_fallback_info(player_name, team_context)
             player_id = lineup_info.get("player_id", "")
             hand = lineup_info.get("hand", "")
@@ -6811,11 +6994,28 @@ def render_homepage_props_tab():
             game_pk = lineup_info.get("game_pk") or game_pk
             game_time = lineup_info.get("game_time") or game_time
 
+        if player_type == "pitcher" and player_id and not hand:
+            try:
+                pitcher_info = get_players_info((int(float(player_id)),))
+                hand = format_pitcher_hand(normalize_hand_code(pitcher_info.get(int(float(player_id)), {}).get("pitchHand", "")))
+            except (TypeError, ValueError):
+                hand = hand or ""
+
         image_url = mlb_player_headshot_url(player_id) or row.get("projection_image_url", "")
 
-        batter_href = ""
-        if player_id:
-            batter_href = _build_batter_detail_href(
+        detail_href = ""
+        if player_type == "pitcher":
+            detail_href = _build_pitcher_detail_href(
+                player_id,
+                pitcher_name=player_name,
+                pitcher_hand=hand,
+                pitcher_side=side,
+                game_pk=game_pk,
+                prop=selected_prop,
+                line=row.get("line"),
+            )
+        elif player_id:
+            detail_href = _build_batter_detail_href(
                 player_id,
                 batter_name=player_name,
                 batter_hand=hand,
@@ -6829,7 +7029,7 @@ def render_homepage_props_tab():
             )
 
         row.update({
-            "href": batter_href,
+            "href": detail_href,
             "team": team,
             "team_id": team_id,
             "opponent": opponent,
@@ -6839,6 +7039,7 @@ def render_homepage_props_tab():
             "image_url": image_url,
             "game_pk": game_pk,
             "game_time": game_time,
+            "side": side,
         })
         return row
 
@@ -6867,9 +7068,11 @@ def render_homepage_props_tab():
                 "|".join(
                     [
                         str(index),
+                        str(row.get("player_type", "")),
                         normalize_name(row.get("player", "")),
                         str(row.get("line", "")),
                         normalize_name(row.get("odds_type", "")),
+                        normalize_name(row.get("status", "")),
                         normalize_name(row.get("team", "")),
                         normalize_name(row.get("opponent", "")),
                     ]
@@ -6965,9 +7168,9 @@ def render_homepage_props_tab():
                 cache_key = _props_stat_cache_key(row)
                 if not cache_key:
                     continue
-                player_id, prop_column, _, _, _ = cache_key
-                include_first_inning = prop_column == "first_inning_hrrrbi"
-                rows_by_game_log_key.setdefault((player_id, include_first_inning), []).append(index)
+                player_type, player_id, prop_column, _, _, _ = cache_key
+                include_first_inning = player_type == "batter" and prop_column == "first_inning_hrrrbi"
+                rows_by_game_log_key.setdefault((player_type, player_id, include_first_inning), []).append(index)
             state["stat_groups"] = list(rows_by_game_log_key.values())
             st.session_state[state_key] = state
 
