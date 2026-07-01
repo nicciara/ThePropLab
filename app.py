@@ -6558,6 +6558,66 @@ def render_homepage_props_tab():
                 options.append(prop)
         return options
 
+    def _homepage_filter_key(values):
+        parts = []
+        for value in values or []:
+            value_key = normalize_name(value).replace(" ", "-")
+            if value_key:
+                parts.append(value_key)
+        parts.sort()
+        return "all" if not parts else "--".join(parts)
+
+    def _homepage_game_filter_options(games_df):
+        if games_df is None or (isinstance(games_df, pd.DataFrame) and games_df.empty):
+            return [], {}
+
+        game_entries = []
+        base_counts = {}
+        for _, game in games_df.iterrows():
+            game_key = normalize_game_pk(game.get("game_pk"))
+            if not game_key:
+                continue
+            away = str(game.get("away_abbrev") or game.get("away_team") or "").strip()
+            home = str(game.get("home_abbrev") or game.get("home_team") or "").strip()
+            if not away or not home:
+                continue
+            base_label = f"{away} @ {home}"
+            game_time = str(game.get("game_time_et") or "").strip()
+            game_entries.append((base_label, game_time, game_key))
+            base_counts[base_label] = base_counts.get(base_label, 0) + 1
+
+        options = []
+        lookup = {}
+        for base_label, game_time, game_key in game_entries:
+            label = base_label
+            if base_counts.get(base_label, 0) > 1:
+                label = f"{base_label} {game_time or game_key}"
+            if label in lookup:
+                label = f"{label} {game_key}"
+            options.append(label)
+            lookup[label] = game_key
+        return options, lookup
+
+    def _homepage_team_filter_options(games_df):
+        if games_df is None or (isinstance(games_df, pd.DataFrame) and games_df.empty):
+            return [], {}
+
+        option_by_label = {}
+        for _, game in games_df.iterrows():
+            for side in ("away", "home"):
+                label = str(game.get(f"{side}_abbrev") or game.get(f"{side}_team") or "").strip()
+                team_name = str(game.get(f"{side}_team") or "").strip()
+                team_id = str(game.get(f"{side}_team_id") or "").strip()
+                if not label:
+                    continue
+                option_by_label[label] = {
+                    "id": team_id,
+                    "name": team_name,
+                    "label": label,
+                }
+        options = sorted(option_by_label)
+        return options, {label: option_by_label[label] for label in options}
+
     available_props = _homepage_available_prop_options(st.session_state.get("prizepicks_projections", []))
     selected_prop = st.session_state.get("homepage_selected_prop", "Hits")
     if selected_prop not in available_props:
@@ -6568,6 +6628,21 @@ def render_homepage_props_tab():
         default="All",
     )
     st.session_state["props_line_type_filter"] = selected_line_type
+    game_filter_options, game_filter_lookup = _homepage_game_filter_options(games)
+    team_filter_options, team_filter_lookup = _homepage_team_filter_options(games)
+
+    props_filter_key = "homepage_props_filter_props"
+    games_filter_key = "homepage_props_filter_games"
+    teams_filter_key = "homepage_props_filter_teams"
+    st.session_state[props_filter_key] = [
+        prop for prop in st.session_state.get(props_filter_key, []) if prop in available_props
+    ]
+    st.session_state[games_filter_key] = [
+        game for game in st.session_state.get(games_filter_key, []) if game in game_filter_options
+    ]
+    st.session_state[teams_filter_key] = [
+        team for team in st.session_state.get(teams_filter_key, []) if team in team_filter_options
+    ]
 
     with st.container(key="homepage_prop_tab_row", horizontal=True, gap="small"):
         for prop in available_props:
@@ -6585,21 +6660,58 @@ def render_homepage_props_tab():
                 args=(prop,),
             )
 
-    line_type_cols = st.columns([1.1, 4.4])
-    with line_type_cols[0]:
+    filter_cols = st.columns([1.1, 2.2, 2.1, 1.7])
+    with filter_cols[0]:
         st.selectbox(
             "Line Type",
             PROPS_LINE_TYPE_FILTER_OPTIONS,
             key="props_line_type_filter",
             on_change=set_homepage_props_line_type,
         )
+    with filter_cols[1]:
+        st.multiselect(
+            "Props",
+            available_props,
+            key=props_filter_key,
+        )
+    with filter_cols[2]:
+        st.multiselect(
+            "Games",
+            game_filter_options,
+            key=games_filter_key,
+        )
+    with filter_cols[3]:
+        st.multiselect(
+            "Teams",
+            team_filter_options,
+            key=teams_filter_key,
+        )
 
-    selected_is_pitcher_prop = selected_prop in PITCHER_GAME_LOG_PROPS
-    selected_prop_key = (
-        pitcher_prizepicks_prop_match_key(selected_prop)
-        if selected_is_pitcher_prop
-        else _prop_match_key(selected_prop)
+    selected_props_filter = [
+        prop for prop in st.session_state.get(props_filter_key, []) if prop in available_props
+    ]
+    selected_game_filter_labels = [
+        game for game in st.session_state.get(games_filter_key, []) if game in game_filter_lookup
+    ]
+    selected_team_filter_labels = [
+        team for team in st.session_state.get(teams_filter_key, []) if team in team_filter_lookup
+    ]
+    active_props = selected_props_filter or [selected_prop]
+    active_prop_filter_key = (
+        f"multi-{_homepage_filter_key(active_props)}"
+        if selected_props_filter
+        else f"single-{_homepage_filter_key(active_props)}"
     )
+    selected_game_filter_ids = {
+        game_filter_lookup[label]
+        for label in selected_game_filter_labels
+        if game_filter_lookup.get(label)
+    }
+    selected_team_filter_ids = {
+        str(team_filter_lookup[label].get("id") or "").strip()
+        for label in selected_team_filter_labels
+        if team_filter_lookup.get(label, {}).get("id")
+    }
 
     def _team_lookup_keys(value):
         normalized = normalize_name(value)
@@ -6621,6 +6733,12 @@ def render_homepage_props_tab():
         }
         return {normalized, *aliases.get(normalized, set())}
 
+    selected_team_filter_lookup_keys = set()
+    for label in selected_team_filter_labels:
+        team_info = team_filter_lookup.get(label, {})
+        selected_team_filter_lookup_keys.update(_team_lookup_keys(label))
+        selected_team_filter_lookup_keys.update(_team_lookup_keys(team_info.get("name", "")))
+
     def _homepage_team_context_lookup(games_df):
         team_lookup = {}
         if games_df is None or (isinstance(games_df, pd.DataFrame) and games_df.empty):
@@ -6633,9 +6751,11 @@ def render_homepage_props_tab():
                 opponent_side = "home" if side == "away" else "away"
                 context = {
                     "team": game.get(f"{side}_team", ""),
+                    "team_abbr": game.get(f"{side}_abbrev", ""),
                     "team_id": team_id,
                     "opponent": game.get(f"{opponent_side}_team", ""),
                     "opponent_id": game.get(f"{opponent_side}_team_id", ""),
+                    "opponent_abbr": game.get(f"{opponent_side}_abbrev", ""),
                     "game_pk": game.get("game_pk", ""),
                     "game_time": game.get("game_time_et", ""),
                     "side": side,
@@ -6659,6 +6779,7 @@ def render_homepage_props_tab():
                 opponent_side = "home" if side == "away" else "away"
                 context = {
                     "team": game.get(f"{side}_team", ""),
+                    "team_abbr": game.get(f"{side}_abbrev", ""),
                     "team_id": game.get(f"{side}_team_id", ""),
                     "opponent": game.get(f"{opponent_side}_team", ""),
                     "opponent_id": game.get(f"{opponent_side}_team_id", ""),
@@ -6738,43 +6859,81 @@ def render_homepage_props_tab():
             return "Demon"
         return "PP Reg Line"
 
+    def _homepage_prop_match_key(prop):
+        if prop in PITCHER_GAME_LOG_PROPS:
+            return pitcher_prizepicks_prop_match_key(prop)
+        return _prop_match_key(prop)
+
+    def _projection_looks_like_pitcher(record, player_name):
+        projection_player_id = _projection_player_id(record)
+        if projection_player_id and pitcher_context_lookup.get(f"id:{projection_player_id}"):
+            return True
+        return bool(pitcher_context_lookup.get(f"name:{normalize_name(player_name)}"))
+
+    def _projection_homepage_prop(record, candidate_props):
+        player_name = str(record.get("player") or _projection_player_name(record) or "").strip()
+        stat_type = record.get("stat_display_name") or _projection_stat_type(record)
+        pitcher_like = _projection_looks_like_pitcher(record, player_name)
+        pitcher_matches = [
+            prop for prop in candidate_props
+            if prop in PITCHER_GAME_LOG_PROPS
+            and pitcher_prizepicks_prop_match_key(stat_type) == pitcher_prizepicks_prop_match_key(prop)
+        ]
+        batter_matches = [
+            prop for prop in candidate_props
+            if prop not in PITCHER_GAME_LOG_PROPS
+            and _prop_match_key(stat_type) == _prop_match_key(prop)
+        ]
+        if pitcher_like and pitcher_matches:
+            return pitcher_matches[0]
+        if not pitcher_like and batter_matches:
+            return batter_matches[0]
+        if pitcher_matches:
+            return pitcher_matches[0]
+        if batter_matches:
+            return batter_matches[0]
+        return ""
+
     selected_prop_projection_records = []
     for record in st.session_state.get("prizepicks_projections", []):
         if not isinstance(record, dict):
             continue
-        if not _projection_matches_homepage_prop(record, selected_prop):
+        record_prop = _projection_homepage_prop(record, active_props)
+        if not record_prop:
             continue
-        selected_prop_projection_records.append(record)
+        selected_prop_projection_records.append((record, record_prop))
 
     if selected_line_type == "All":
         selected_projection_records = list(selected_prop_projection_records)
     else:
         selected_projection_records = [
-            record for record in selected_prop_projection_records
+            (record, record_prop) for record, record_prop in selected_prop_projection_records
             if _projection_line_type(record) == selected_line_type
         ]
 
     records_by_exact_key = {}
-    for record in selected_prop_projection_records:
+    for record, record_prop in selected_prop_projection_records:
         player_name = str(record.get("player") or _projection_player_name(record) or "").strip()
         line_value = _projection_line_value(record)
+        record_prop_key = _homepage_prop_match_key(record_prop)
         exact_key = (
             _projection_identity_match_key(record, player_name),
-            selected_prop_key,
+            record_prop_key,
             _props_line_match_key(line_value),
         )
         records_by_exact_key.setdefault(exact_key, []).append(record)
 
     rows = []
     seen = set()
-    for record in selected_projection_records:
+    for record, record_prop in selected_projection_records:
         player_name = str(record.get("player") or _projection_player_name(record) or "").strip()
         if not player_name:
             continue
         line_value = _projection_line_value(record)
+        record_prop_key = _homepage_prop_match_key(record_prop)
         exact_key = (
             _projection_identity_match_key(record, player_name),
-            selected_prop_key,
+            record_prop_key,
             _props_line_match_key(line_value),
         )
         unique_key = exact_key
@@ -6787,6 +6946,7 @@ def render_homepage_props_tab():
         odds_type = _projection_value(preferred_line, "odds_type", "oddsType", default="")
         projection_player_id = _projection_player_id(record)
         pitcher_context = {}
+        selected_is_pitcher_prop = record_prop in PITCHER_GAME_LOG_PROPS
         if selected_is_pitcher_prop:
             if projection_player_id:
                 pitcher_context = pitcher_context_lookup.get(f"id:{projection_player_id}", {})
@@ -6810,6 +6970,7 @@ def render_homepage_props_tab():
             "player": player_name,
             "href": "",
             "team": team,
+            "team_abbr": team_context.get("team_abbr", ""),
             "team_id": team_id,
             "opponent": opponent,
             "opponent_id": opponent_id,
@@ -6822,7 +6983,7 @@ def render_homepage_props_tab():
             "game_pk": game_pk,
             "side": team_context.get("side", ""),
             "player_type": "pitcher" if selected_is_pitcher_prop else "batter",
-            "prop": selected_prop,
+            "prop": record_prop,
             "line": line_value,
             "odds_type": odds_type,
             "exact_projection_lines": exact_projection_lines,
@@ -6830,6 +6991,30 @@ def render_homepage_props_tab():
             "image_url": _projection_value(record, "image_url", "imageUrl", default=""),
             "game_time": game_time,
         })
+
+    def _props_row_matches_multiselect_filters(row):
+        if selected_game_filter_ids:
+            row_game_key = normalize_game_pk(row.get("game_pk"))
+            if not row_game_key or row_game_key not in selected_game_filter_ids:
+                return False
+
+        if selected_team_filter_ids or selected_team_filter_lookup_keys:
+            row_team_id = str(row.get("team_id") or "").strip()
+            row_team_keys = set()
+            row_team_keys.update(_team_lookup_keys(row.get("team", "")))
+            row_team_keys.update(_team_lookup_keys(row.get("team_abbr", "")))
+            if row_team_id and row_team_id in selected_team_filter_ids:
+                return True
+            if row_team_keys and row_team_keys.intersection(selected_team_filter_lookup_keys):
+                return True
+            return False
+
+        return True
+
+    rows = [
+        row for row in rows
+        if _props_row_matches_multiselect_filters(row)
+    ]
 
     def _props_sort_line(value):
         try:
@@ -6840,9 +7025,9 @@ def render_homepage_props_tab():
     rows.sort(key=lambda row: (str(row.get("team", "")), str(row.get("player", "")), _props_sort_line(row.get("line"))))
     if not rows:
         if selected_line_type == "All":
-            st.info(f"No lines found for {selected_prop}.")
+            st.info("No lines found for the selected filters.")
         else:
-            st.info(f"No {selected_line_type} lines found for {selected_prop}.")
+            st.info(f"No {selected_line_type} lines found for the selected filters.")
         return
 
     def _prop_card_tile(label, value):
@@ -7099,6 +7284,7 @@ def render_homepage_props_tab():
     def _enrich_props_card_identity(row):
         player_name = row.get("player", "")
         player_type = row.get("player_type") or "batter"
+        row_prop = row.get("prop") or selected_prop
         team_id = row.get("team_id", "")
         team_context = row.get("team_context", {}) or {}
         player_id = row.get("projection_player_id", "")
@@ -7144,7 +7330,7 @@ def render_homepage_props_tab():
                 pitcher_hand=hand,
                 pitcher_side=side,
                 game_pk=game_pk,
-                prop=selected_prop,
+                prop=row_prop,
                 line=row.get("line"),
             )
         elif player_id:
@@ -7157,7 +7343,7 @@ def render_homepage_props_tab():
                 opponent=opponent,
                 opponent_id=opponent_id,
                 return_game_pk=game_pk,
-                prop=selected_prop,
+                prop=row_prop,
                 line=row.get("line"),
             )
 
@@ -7179,7 +7365,12 @@ def render_homepage_props_tab():
     props_card_batch_size = 12
     selected_date_key = st.session_state.get("selected_date", eastern_today()).isoformat()
     selected_line_type_key = normalize_name(selected_line_type).replace(" ", "-")
-    props_loaded_card_limit_key = f"props_loaded_card_limit_{selected_date_key}_{selected_prop_key}_{selected_line_type_key}"
+    selected_games_key = _homepage_filter_key(selected_game_filter_ids)
+    selected_teams_key = _homepage_filter_key(selected_team_filter_labels)
+    props_loaded_card_limit_key = (
+        f"props_loaded_card_limit_{selected_date_key}_{active_prop_filter_key}_"
+        f"{selected_line_type_key}_{selected_games_key}_{selected_teams_key}"
+    )
     try:
         loaded_card_limit = int(st.session_state.get(props_loaded_card_limit_key, props_card_batch_size) or props_card_batch_size)
     except (TypeError, ValueError):
@@ -7210,7 +7401,10 @@ def render_homepage_props_tab():
 
         st.button(
             f"Load more props ({remaining_row_count} remaining)",
-            key=f"load_more_props_{selected_date_key}_{selected_prop_key}_{selected_line_type_key}",
+            key=(
+                f"load_more_props_{selected_date_key}_{active_prop_filter_key}_"
+                f"{selected_line_type_key}_{selected_games_key}_{selected_teams_key}"
+            ),
             on_click=_load_more_props_rows,
         )
 
