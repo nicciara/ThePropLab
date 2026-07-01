@@ -5818,6 +5818,7 @@ def render_selected_pitcher_view():
                 name = sp.get("name")
                 pid = sp.get("id", "")
                 hand = sp.get("hand", "")
+                pitcher_team_id = str(game.get("away_team_id") or "").strip()
                 opponent_team = game.get("home_team", "")
                 opponent_context = {
                     "id": str(game.get("home_team_id") or "").strip(),
@@ -5829,6 +5830,7 @@ def render_selected_pitcher_view():
                 name = sp.get("name")
                 pid = sp.get("id", "")
                 hand = sp.get("hand", "")
+                pitcher_team_id = str(game.get("home_team_id") or "").strip()
                 opponent_team = game.get("away_team", "")
                 opponent_context = {
                     "id": str(game.get("away_team_id") or "").strip(),
@@ -5851,7 +5853,18 @@ def render_selected_pitcher_view():
                     pass
                 st.rerun()
 
-            st.markdown(f"## {name} {f'({hand})' if hand else ''}")
+            st.markdown(
+                title_with_team_logo_html(
+                    format_pitcher_name_with_hand(name, hand),
+                    team_id=pitcher_team_id,
+                    logo_size=24,
+                    font_size_px=28,
+                    font_weight=800,
+                    color="var(--dash-title)",
+                    margin_bottom_px=4,
+                ),
+                unsafe_allow_html=True,
+            )
             st.markdown(f"{game.get('away_team')} @ {game.get('home_team')} • {game.get('game_time_et')}")
 
             with st.container(border=True):
@@ -6127,7 +6140,15 @@ def render_selected_pitcher_view():
                 with strike_zone_cols[1]:
                     if pitcher_compare_enabled:
                         st.markdown(
-                            f"<div style='font-size:14px; font-weight:700; color:var(--dash-muted); margin-bottom:6px;'>{html.escape(format_pitcher_name_with_hand(name, hand))} Location Tendencies</div>",
+                            title_with_team_logo_html(
+                                f"{format_pitcher_name_with_hand(name, hand)} Location Tendencies",
+                                team_id=pitcher_team_id,
+                                logo_size=20,
+                                font_size_px=14,
+                                font_weight=700,
+                                color="var(--dash-muted)",
+                                margin_bottom_px=6,
+                            ),
                             unsafe_allow_html=True,
                         )
                     strike_zone.display_strike_zone(
@@ -6145,7 +6166,15 @@ def render_selected_pitcher_view():
                                 selected_compare_batter.get("handedness", ""),
                             )
                             st.markdown(
-                                f"<div style='font-size:14px; font-weight:700; color:var(--dash-muted); margin-bottom:6px;'>{html.escape(batter_title)} Location Tendencies</div>",
+                                title_with_team_logo_html(
+                                    f"{batter_title} Location Tendencies",
+                                    team_id=str(opponent_context.get("id") or "").strip(),
+                                    logo_size=20,
+                                    font_size_px=14,
+                                    font_weight=700,
+                                    color="var(--dash-muted)",
+                                    margin_bottom_px=6,
+                                ),
                                 unsafe_allow_html=True,
                             )
                             strike_zone.display_batter_metric_strike_zone(
