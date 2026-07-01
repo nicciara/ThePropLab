@@ -32,6 +32,7 @@ GAME_LOG_PROPS = [
     "RBI",
     "H+R+RBI",
     "Total Bases",
+    "Fantasy Score",
     "Home Runs",
     "Walks",
     "Strikeouts",
@@ -55,6 +56,7 @@ GAME_LOG_PROP_COLUMNS = {
     "RBI": "rbi",
     "H+R+RBI": "hrrrbi",
     "Total Bases": "total_bases",
+    "Fantasy Score": "fantasy_score",
     "Home Runs": "home_runs",
     "Walks": "walks",
     "Strikeouts": "strikeouts",
@@ -65,6 +67,41 @@ GAME_LOG_PROP_COLUMNS = {
     "Triples": "triples",
     "1st Inning Hits + Runs + RBIs": "first_inning_hrrrbi",
 }
+
+
+def calculate_prizepicks_hitter_fantasy_score(
+    singles,
+    doubles,
+    triples,
+    home_runs,
+    runs,
+    rbi,
+    walks,
+    hit_by_pitch,
+    stolen_bases,
+):
+    return (
+        float(singles or 0) * 3
+        + float(doubles or 0) * 5
+        + float(triples or 0) * 8
+        + float(home_runs or 0) * 10
+        + float(runs or 0) * 2
+        + float(rbi or 0) * 2
+        + float(walks or 0) * 2
+        + float(hit_by_pitch or 0) * 2
+        + float(stolen_bases or 0) * 5
+    )
+
+
+def prop_average_text(avg_value, prop_column):
+    precision = 1 if prop_column == "fantasy_score" else 2
+    return f"{float(avg_value):.{precision}f}"
+
+
+def prop_chart_value_format(prop_column):
+    return ".1f" if prop_column == "fantasy_score" else ".0f"
+
+
 SPORTSBOOK_BADGE_ASSETS = {
     "prizepicks": "app/static/badges/prizepicks.png",
 }
@@ -637,6 +674,14 @@ def _prop_match_key(value):
         "firstinninghitsrunsrbi": "firstinninghrrrbi",
         "totalbases": "totalbases",
         "tb": "totalbases",
+        "fantasy": "fantasyscore",
+        "fantasyscore": "fantasyscore",
+        "batterfantasy": "fantasyscore",
+        "batterfantasyscore": "fantasyscore",
+        "fantasypoints": "fantasyscore",
+        "fantasypts": "fantasyscore",
+        "hitterfantasy": "fantasyscore",
+        "hitterfantasyscore": "fantasyscore",
         "homeruns": "homeruns",
         "walks": "walks",
         "strikeouts": "strikeouts",
@@ -1275,6 +1320,21 @@ def load_batter_prop_game_log(batter_id, season_year=2026, include_first_inning=
         doubles = _int_stat(stat, "doubles")
         triples = _int_stat(stat, "triples")
         home_runs = _int_stat(stat, "homeRuns")
+        walks = _int_stat(stat, "baseOnBalls")
+        hit_by_pitch = _int_stat(stat, "hitByPitch")
+        stolen_bases = _int_stat(stat, "stolenBases")
+        singles = max(hits - doubles - triples - home_runs, 0)
+        fantasy_score = calculate_prizepicks_hitter_fantasy_score(
+            singles,
+            doubles,
+            triples,
+            home_runs,
+            runs,
+            rbi,
+            walks,
+            hit_by_pitch,
+            stolen_bases,
+        )
         rows.append(
             {
                 "game_pk": game.get("gamePk") or game.get("id") or "",
@@ -1289,12 +1349,14 @@ def load_batter_prop_game_log(batter_id, season_year=2026, include_first_inning=
                 "rbi": rbi,
                 "hrrrbi": hits + runs + rbi,
                 "total_bases": _int_stat(stat, "totalBases"),
+                "fantasy_score": fantasy_score,
                 "home_runs": home_runs,
-                "walks": _int_stat(stat, "baseOnBalls"),
+                "walks": walks,
+                "hit_by_pitch": hit_by_pitch,
                 "strikeouts": _int_stat(stat, "strikeOuts"),
                 "plate_appearances": _int_stat(stat, "plateAppearances"),
-                "stolen_bases": _int_stat(stat, "stolenBases"),
-                "singles": max(hits - doubles - triples - home_runs, 0),
+                "stolen_bases": stolen_bases,
+                "singles": singles,
                 "doubles": doubles,
                 "triples": triples,
             }
@@ -1872,7 +1934,7 @@ def prop_hit_rate_summary_for_df(sample_df, prop_column, selected_prop_line, emp
 
     return {
         "hit_rate_text": f"{hit_rate:.0f}%",
-        "avg_text": f"{avg_value:.2f}",
+        "avg_text": prop_average_text(avg_value, prop_column),
         "indicator": indicator,
         "games": int(len(values)),
     }
@@ -2341,13 +2403,14 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
             ],
         )
     )
+    chart_value_format = prop_chart_value_format(prop_column)
     labels = (
         alt.Chart(display_log_df)
         .mark_text(dy=-8, fontWeight=700, fontSize=12, color="#0f172a")
         .encode(
             x=alt.X("chart_label:N", sort=None),
             y=alt.Y("label_y:Q"),
-            text=alt.Text("prop_value:Q", format=".0f"),
+            text=alt.Text("prop_value:Q", format=chart_value_format),
         )
     )
     line_df = pd.DataFrame({"line": [selected_prop_line]})
@@ -5689,7 +5752,7 @@ def render_homepage_props_tab():
             normalize_name(row.get("opponent", "")),
         )
 
-    def _props_summary_from_values(values, selected_prop_line, empty_hit_rate_text="--", empty_avg_text="--"):
+    def _props_summary_from_values(values, selected_prop_line, prop_column, empty_hit_rate_text="--", empty_avg_text="--"):
         if values.empty:
             return {
                 "hit_rate_text": empty_hit_rate_text,
@@ -5709,7 +5772,7 @@ def render_homepage_props_tab():
 
         return {
             "hit_rate_text": f"{hit_rate:.0f}%",
-            "avg_text": f"{avg_value:.2f}",
+            "avg_text": prop_average_text(avg_value, prop_column),
             "indicator": indicator,
             "games": int(len(values)),
         }
@@ -5762,10 +5825,10 @@ def render_homepage_props_tab():
                     stat_values = _props_blank_stat_values()
 
                     for sample_label in ("L5", "L10", "L15"):
-                        summary = _props_summary_from_values(sample_values[sample_label], selected_prop_line)
+                        summary = _props_summary_from_values(sample_values[sample_label], selected_prop_line, prop_column)
                         stat_values[sample_label] = summary.get("hit_rate_text", "--")
 
-                    season_summary = _props_summary_from_values(sample_values["2026"], selected_prop_line)
+                    season_summary = _props_summary_from_values(sample_values["2026"], selected_prop_line, prop_column)
                     stat_values["AVG"] = season_summary.get("avg_text", "--")
                     stat_values["SZN"] = season_summary.get("hit_rate_text", "--")
 
@@ -5788,6 +5851,7 @@ def render_homepage_props_tab():
                         h2h_summary = _props_summary_from_values(
                             h2h_values_cache[h2h_cache_key],
                             selected_prop_line,
+                            prop_column,
                             empty_hit_rate_text="N/A",
                             empty_avg_text="—",
                         )
