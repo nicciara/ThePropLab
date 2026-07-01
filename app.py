@@ -2511,6 +2511,75 @@ def get_pitcher_compare_pitch_type_options(pitcher_id):
     return ["All Pitches", *sorted(set(options))]
 
 
+def get_batter_compare_pitcher_options(opponent_team_id, scheduled_pitcher):
+    options = []
+    seen_pitcher_ids = set()
+
+    def _add_pitcher(pitcher_id, pitcher_name, pitcher_hand=""):
+        pitcher_id = str(pitcher_id or "").strip()
+        pitcher_name = str(pitcher_name or "").strip()
+        pitcher_hand = str(pitcher_hand or "").strip()
+        if not pitcher_id or not pitcher_name or pitcher_id in seen_pitcher_ids:
+            return
+        options.append({
+            "id": pitcher_id,
+            "name": pitcher_name,
+            "hand": pitcher_hand,
+        })
+        seen_pitcher_ids.add(pitcher_id)
+
+    scheduled_pitcher = scheduled_pitcher or {}
+    _add_pitcher(
+        scheduled_pitcher.get("id", ""),
+        scheduled_pitcher.get("name", ""),
+        scheduled_pitcher.get("hand", ""),
+    )
+
+    if not opponent_team_id:
+        return options
+
+    try:
+        roster = load_active_roster(opponent_team_id)
+    except Exception as exc:
+        logger.warning("Unable to load opposing pitcher roster for team_id=%s: %s", opponent_team_id, exc)
+        return options
+
+    roster_pitchers = []
+    pitcher_ids = []
+    for row in roster or []:
+        person = row.get("person", {}) or {}
+        position = row.get("position", {}) or {}
+        position_abbr = str(position.get("abbreviation") or "").strip().upper()
+        position_name = normalize_name(position.get("name", ""))
+        position_type = normalize_name(position.get("type", ""))
+        if position_abbr != "P" and "pitcher" not in {position_name, position_type}:
+            continue
+
+        pitcher_id = str(person.get("id") or "").strip()
+        pitcher_name = str(person.get("fullName") or "").strip()
+        if not pitcher_id or not pitcher_name:
+            continue
+        roster_pitchers.append((pitcher_id, pitcher_name))
+        try:
+            pitcher_ids.append(int(float(pitcher_id)))
+        except (TypeError, ValueError):
+            continue
+
+    pitcher_info = get_players_info(tuple(pitcher_ids)) if pitcher_ids else {}
+    for pitcher_id, pitcher_name in sorted(roster_pitchers, key=lambda item: normalize_name(item[1])):
+        try:
+            pitcher_info_key = int(float(pitcher_id))
+        except (TypeError, ValueError):
+            pitcher_info_key = None
+        hand_code = ""
+        if pitcher_info_key is not None:
+            hand_code = pitcher_info.get(pitcher_info_key, {}).get("pitchHand", "")
+        pitcher_hand = format_pitcher_hand(normalize_hand_code(hand_code)) if hand_code else ""
+        _add_pitcher(pitcher_id, pitcher_name, pitcher_hand)
+
+    return options
+
+
 def set_game_log_range_selection(range_key, h2h_key, sample_label):
     h2h_enabled = bool(st.session_state.get(h2h_key, False))
     if h2h_enabled and st.session_state.get(range_key) == sample_label:
@@ -4274,6 +4343,29 @@ def render_general_information(sb, batter_id, batter_name):
             )
         compare_pitcher_id = comparison_pitcher.get("id", "")
         compare_pitcher_name = comparison_pitcher.get("name", "")
+        opposing_pitcher_team_id = str(current_opponent_context.get("id") or "").strip()
+        pitcher_options = (
+            get_batter_compare_pitcher_options(opposing_pitcher_team_id, comparison_pitcher)
+            if compare_enabled else []
+        )
+        pitcher_option_lookup = {option["id"]: option for option in pitcher_options}
+        pitcher_option_labels = {
+            option["id"]: format_pitcher_name_with_hand(option.get("name", ""), option.get("hand", ""))
+            for option in pitcher_options
+        }
+        pitcher_select_key = f"batter_compare_pitcher_id_{batter_id}"
+        if compare_enabled and pitcher_options and st.session_state.get(pitcher_select_key) not in pitcher_option_lookup:
+            scheduled_pitcher_id = str(comparison_pitcher.get("id") or "").strip()
+            st.session_state[pitcher_select_key] = (
+                scheduled_pitcher_id if scheduled_pitcher_id in pitcher_option_lookup else pitcher_options[0]["id"]
+            )
+
+        selected_compare_pitcher_id = st.session_state.get(pitcher_select_key, compare_pitcher_id) if compare_enabled else compare_pitcher_id
+        selected_compare_pitcher = pitcher_option_lookup.get(selected_compare_pitcher_id, {})
+        if selected_compare_pitcher:
+            compare_pitcher_id = selected_compare_pitcher.get("id", "")
+            compare_pitcher_name = selected_compare_pitcher.get("name", "")
+            comparison_pitcher = selected_compare_pitcher
         pitcher_pitch_type_options = get_pitcher_compare_pitch_type_options(compare_pitcher_id)
         pitcher_pitch_type_key = f"batter_compare_pitcher_pitch_type_{batter_id}"
         if st.session_state.get(pitcher_pitch_type_key) not in pitcher_pitch_type_options:
@@ -4308,7 +4400,6 @@ def render_general_information(sb, batter_id, batter_name):
             str(lineup_context.get(f"{lineup_side}_team_id") or "").strip()
             if lineup_side else ""
         ) or str(sb.get("team_id") or "").strip()
-        opposing_pitcher_team_id = str(current_opponent_context.get("id") or "").strip()
 
         batter_strike_zone_cols = st.columns([1.15, 4, 4, 1.15] if compare_enabled else [1.15, 4])
         with batter_strike_zone_cols[0]:
@@ -4379,7 +4470,7 @@ def render_general_information(sb, batter_id, batter_name):
         if compare_enabled:
             with batter_strike_zone_cols[2]:
                 if compare_pitcher_id:
-                    pitcher_label = format_pitcher_name_with_hand(compare_pitcher_name, run_value_pitcher.get("hand", ""))
+                    pitcher_label = format_pitcher_name_with_hand(compare_pitcher_name, comparison_pitcher.get("hand", ""))
                     st.markdown(
                         title_with_team_logo_html(
                             f"{pitcher_label} Location Tendencies",
@@ -4403,6 +4494,13 @@ def render_general_information(sb, batter_id, batter_name):
                     st.caption("Opposing Pitcher")
                     st.info("No pitcher selected for comparison.")
             with batter_strike_zone_cols[3]:
+                if pitcher_options:
+                    st.selectbox(
+                        "Pitcher",
+                        [option["id"] for option in pitcher_options],
+                        key=pitcher_select_key,
+                        format_func=lambda pitcher_id: pitcher_option_labels.get(pitcher_id, str(pitcher_id)),
+                    )
                 st.selectbox(
                     "Pitch Type",
                     pitcher_pitch_type_options,
