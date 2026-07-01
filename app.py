@@ -6627,9 +6627,21 @@ def render_homepage_props_tab():
     game_filter_options, game_filter_lookup = _homepage_game_filter_options(games)
     team_filter_options, team_filter_lookup = _homepage_team_filter_options(games)
 
+    props_trend_filter_options = (
+        "All trends",
+        "L5 60%+",
+        "L10 60%+",
+        "L15 60%+",
+        "H2H 60%+",
+        "SZN 60%+",
+        "AVG over line",
+    )
     props_filter_key = "homepage_props_filter_props"
     games_filter_key = "homepage_props_filter_games"
     teams_filter_key = "homepage_props_filter_teams"
+    trend_filter_key = "homepage_props_trend_filter"
+    if st.session_state.get(trend_filter_key) not in props_trend_filter_options:
+        st.session_state[trend_filter_key] = "All trends"
     st.session_state[props_filter_key] = [
         prop for prop in st.session_state.get(props_filter_key, []) if prop in available_props
     ]
@@ -6647,6 +6659,11 @@ def render_homepage_props_tab():
             PROPS_LINE_TYPE_FILTER_OPTIONS,
             key="props_line_type_filter",
             on_change=set_homepage_props_line_type,
+        )
+        st.selectbox(
+            "Trend Filter",
+            props_trend_filter_options,
+            key=trend_filter_key,
         )
     with filter_cols[1]:
         st.multiselect(
@@ -6679,6 +6696,7 @@ def render_homepage_props_tab():
     selected_team_filter_labels = [
         team for team in st.session_state.get(teams_filter_key, []) if team in team_filter_lookup
     ]
+    selected_trend_filter = st.session_state.get(trend_filter_key, "All trends")
     active_props = selected_props_filter or available_props
     active_prop_filter_key = (
         f"selected-{_homepage_filter_key(active_props)}"
@@ -7191,6 +7209,45 @@ def render_homepage_props_tab():
             return _props_blank_stat_values()
         return stat_summary_cache.get(cache_key, _props_blank_stat_values())
 
+    def _props_stat_number(value, *, percent=False):
+        value_text = str(value or "").strip()
+        if not value_text or value_text in {"—", "--", "N/A"}:
+            return None
+        if percent and not value_text.endswith("%"):
+            return None
+        try:
+            return float(value_text.replace("%", "").replace(",", ""))
+        except (TypeError, ValueError):
+            return None
+
+    def _props_row_matches_trend_filter(row, stat_values):
+        if selected_trend_filter == "All trends":
+            return True
+
+        percent_filters = {
+            "L5 60%+": "L5",
+            "L10 60%+": "L10",
+            "L15 60%+": "L15",
+            "H2H 60%+": "H2H",
+            "SZN 60%+": "SZN",
+        }
+        if selected_trend_filter in percent_filters:
+            pct_value = _props_stat_number(
+                stat_values.get(percent_filters[selected_trend_filter]),
+                percent=True,
+            )
+            return pct_value is not None and pct_value >= 60.0
+
+        if selected_trend_filter == "AVG over line":
+            avg_value = _props_stat_number(stat_values.get("AVG"))
+            try:
+                line_value = float(row.get("line"))
+            except (TypeError, ValueError):
+                return False
+            return avg_value is not None and avg_value >= line_value
+
+        return True
+
     def _props_card_html(row, stat_values):
         player_text = html.escape(row["player"])
         exact_projection_lines = row.get("exact_projection_lines") or []
@@ -7350,9 +7407,10 @@ def render_homepage_props_tab():
     selected_line_type_key = normalize_name(selected_line_type).replace(" ", "-")
     selected_games_key = _homepage_filter_key(selected_game_filter_ids)
     selected_teams_key = _homepage_filter_key(selected_team_filter_labels)
+    selected_trend_filter_key = normalize_name(selected_trend_filter).replace(" ", "-")
     props_loaded_card_limit_key = (
         f"props_loaded_card_limit_{selected_date_key}_{active_prop_filter_key}_"
-        f"{selected_line_type_key}_{selected_games_key}_{selected_teams_key}"
+        f"{selected_line_type_key}_{selected_games_key}_{selected_teams_key}_{selected_trend_filter_key}"
     )
     try:
         loaded_card_limit = int(st.session_state.get(props_loaded_card_limit_key, props_card_batch_size) or props_card_batch_size)
@@ -7369,9 +7427,18 @@ def render_homepage_props_tab():
         ]
         stat_summary_cache = _build_props_stat_summary_cache(enriched_visible_rows)
 
+    trend_filtered_visible_rows = []
     for row in enriched_visible_rows:
+        stat_values = _props_card_stat_values(row, stat_summary_cache)
+        if _props_row_matches_trend_filter(row, stat_values):
+            trend_filtered_visible_rows.append((row, stat_values))
+
+    if not trend_filtered_visible_rows and selected_trend_filter != "All trends":
+        st.info("No cards match the selected trend filter.")
+
+    for row, stat_values in trend_filtered_visible_rows:
         st.markdown(
-            _props_card_html(row, _props_card_stat_values(row, stat_summary_cache)),
+            _props_card_html(row, stat_values),
             unsafe_allow_html=True,
         )
 
@@ -7386,7 +7453,7 @@ def render_homepage_props_tab():
             f"Load more props ({remaining_row_count} remaining)",
             key=(
                 f"load_more_props_{selected_date_key}_{active_prop_filter_key}_"
-                f"{selected_line_type_key}_{selected_games_key}_{selected_teams_key}"
+                f"{selected_line_type_key}_{selected_games_key}_{selected_teams_key}_{selected_trend_filter_key}"
             ),
             on_click=_load_more_props_rows,
         )
