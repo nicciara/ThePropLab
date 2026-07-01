@@ -6530,8 +6530,6 @@ def homepage_slate_batter_map(games):
 
 
 def render_homepage_props_tab():
-    props_render_run_id = int(st.session_state.get("props_render_run_id", 0) or 0) + 1
-    st.session_state["props_render_run_id"] = props_render_run_id
     st.markdown("## Props")
     if "games" not in st.session_state:
         st.session_state["games"] = load_schedule(st.session_state["selected_date"])
@@ -7178,186 +7176,41 @@ def render_homepage_props_tab():
         })
         return row
 
-    prototype_card_limit = 100
-    prototype_rows = rows[:prototype_card_limit]
-    props_loaded_card_limit_key = f"props_loaded_card_limit_{selected_prop_key}"
-    loaded_card_limit = int(st.session_state.get(props_loaded_card_limit_key, prototype_card_limit) or prototype_card_limit)
-    loaded_card_limit = max(prototype_card_limit, loaded_card_limit)
-    rendered_rows = rows[:loaded_card_limit]
-    legacy_rows = rendered_rows[prototype_card_limit:]
+    props_card_batch_size = 20
+    selected_date_key = st.session_state.get("selected_date", eastern_today()).isoformat()
+    selected_line_type_key = normalize_name(selected_line_type).replace(" ", "-")
+    props_loaded_card_limit_key = f"props_loaded_card_limit_{selected_date_key}_{selected_prop_key}_{selected_line_type_key}"
+    try:
+        loaded_card_limit = int(st.session_state.get(props_loaded_card_limit_key, props_card_batch_size) or props_card_batch_size)
+    except (TypeError, ValueError):
+        loaded_card_limit = props_card_batch_size
+    loaded_card_limit = max(props_card_batch_size, loaded_card_limit)
+    visible_rows = rows[:loaded_card_limit]
     remaining_row_count = max(len(rows) - loaded_card_limit, 0)
-    prototype_batch_size = 5
-    prototype_batches = []
-    for batch_start in range(0, len(prototype_rows), prototype_batch_size):
-        batch_rows = prototype_rows[batch_start:batch_start + prototype_batch_size]
-        batch_key = f"{selected_prop_key}_{batch_start}"
-        prototype_batches.append((batch_key, batch_rows))
 
-    def _props_fragment_signature(fragment_rows):
-        signature_parts = [
-            st.session_state.get("selected_date", eastern_today()).isoformat(),
-            selected_prop,
+    with st.spinner("Loading prop cards..."):
+        enriched_visible_rows = [
+            _enrich_props_card_identity(dict(row))
+            for row in visible_rows
         ]
-        for index, row in enumerate(fragment_rows):
-            signature_parts.append(
-                "|".join(
-                    [
-                        str(index),
-                        str(row.get("player_type", "")),
-                        normalize_name(row.get("player", "")),
-                        str(row.get("line", "")),
-                        normalize_name(row.get("odds_type", "")),
-                        normalize_name(row.get("status", "")),
-                        normalize_name(row.get("team", "")),
-                        normalize_name(row.get("opponent", "")),
-                    ]
-                )
-            )
-        return "||".join(signature_parts)
+        stat_summary_cache = _build_props_stat_summary_cache(enriched_visible_rows)
 
-    def _props_fragment_batch_state_key(batch_key):
-        return f"props_fragment_batch_state_{batch_key}"
-
-    def _props_fragment_batch_state(batch_key, batch_rows):
-        state_key = _props_fragment_batch_state_key(batch_key)
-        signature = _props_fragment_signature(batch_rows)
-        state = st.session_state.get(state_key)
-        if not isinstance(state, dict) or state.get("signature") != signature:
-            state = {
-                "signature": signature,
-                "rows": [dict(row) for row in batch_rows],
-                "stat_values": {
-                    str(index): _props_blank_stat_values()
-                    for index in range(len(batch_rows))
-                },
-                "next_enrich_index": 0,
-                "stat_groups": None,
-                "next_stat_group_index": 0,
-                "done": False,
-            }
-            st.session_state[state_key] = state
-        return state
-
-    def _all_props_fragment_batches_done():
-        if not prototype_batches:
-            return True
-        for batch_key, batch_rows in prototype_batches:
-            state = st.session_state.get(_props_fragment_batch_state_key(batch_key))
-            signature = _props_fragment_signature(batch_rows)
-            if not isinstance(state, dict):
-                return False
-            if state.get("signature") != signature:
-                return False
-            if not state.get("done"):
-                return False
-        return True
-
-    prototype_signature = _props_fragment_signature(prototype_rows) if prototype_rows else ""
-    fragment_schedule_refresh_key = f"props_fragment_schedule_refresh_{selected_prop_key}_{prototype_signature}"
-    fragment_run_every = 1 if prototype_rows and not _all_props_fragment_batches_done() else None
-    if fragment_run_every is None:
-        st.session_state.pop(fragment_schedule_refresh_key, None)
-
-    @st.fragment(run_every=fragment_run_every)
-    def _render_props_fragment_prototype():
-        if not prototype_rows:
-            return
-
-        active_batch = None
-        for batch_key, batch_rows in prototype_batches:
-            state = _props_fragment_batch_state(batch_key, batch_rows)
-            state_rows = state.get("rows", [])
-            stat_values_by_index = state.get("stat_values", {})
-            for index, row in enumerate(state_rows):
-                st.markdown(
-                    _props_card_html(
-                        row,
-                        stat_values_by_index.get(str(index), _props_blank_stat_values()),
-                    ),
-                    unsafe_allow_html=True,
-                )
-            if active_batch is None and not state.get("done"):
-                active_batch = (batch_key, state)
-
-        if active_batch is None:
-            if not st.session_state.get(fragment_schedule_refresh_key, False):
-                st.session_state[fragment_schedule_refresh_key] = True
-                st.rerun()
-            return
-
-        batch_key, state = active_batch
-        state_key = _props_fragment_batch_state_key(batch_key)
-        state_rows = state.get("rows", [])
-        stat_values_by_index = state.get("stat_values", {})
-
-        next_enrich_index = int(state.get("next_enrich_index", 0) or 0)
-        if next_enrich_index < len(state_rows):
-            state_rows[next_enrich_index] = _enrich_props_card_identity(dict(state_rows[next_enrich_index]))
-            state["next_enrich_index"] = next_enrich_index + 1
-            st.session_state[state_key] = state
-            return
-
-        if state.get("stat_groups") is None:
-            rows_by_game_log_key = {}
-            for index, row in enumerate(state_rows):
-                cache_key = _props_stat_cache_key(row)
-                if not cache_key:
-                    continue
-                player_type, player_id, prop_column, _, _, _ = cache_key
-                include_first_inning = player_type == "batter" and prop_column == "first_inning_hrrrbi"
-                rows_by_game_log_key.setdefault((player_type, player_id, include_first_inning), []).append(index)
-            state["stat_groups"] = list(rows_by_game_log_key.values())
-            st.session_state[state_key] = state
-
-        next_group_index = int(state.get("next_stat_group_index", 0) or 0)
-        stat_groups = state.get("stat_groups") or []
-        while next_group_index < len(stat_groups):
-            group_indexes = stat_groups[next_group_index]
-            stat_summary_cache = _build_props_stat_summary_cache([state_rows[index] for index in group_indexes])
-            for index in group_indexes:
-                stat_values_by_index[str(index)] = _props_card_stat_values(state_rows[index], stat_summary_cache)
-            state["next_stat_group_index"] = next_group_index + 1
-            next_group_index += 1
-
-        state["done"] = True
-        st.session_state[state_key] = state
-        if _all_props_fragment_batches_done() and not st.session_state.get(fragment_schedule_refresh_key, False):
-            st.session_state[fragment_schedule_refresh_key] = True
-            st.rerun()
-
-    card_slots = []
-    def _render_props_card_slot(slot, row, stat_values, phase, index):
-        try:
-            slot.empty()
-            slot.markdown(_props_card_html(row, stat_values), unsafe_allow_html=True)
-        except Exception:
-            logger.exception(
-                "Props render run %s: slot render failed phase=%s index=%s player=%s slot_id=%s",
-                props_render_run_id,
-                phase,
-                index,
-                row.get("player", ""),
-                id(slot),
-            )
-            raise
-
-    _render_props_fragment_prototype()
-
-    for row in legacy_rows:
-        slot = st.empty()
-        _render_props_card_slot(slot, row, _props_blank_stat_values(), "placeholder", 0)
-        card_slots.append((slot, row))
+    for row in enriched_visible_rows:
+        st.markdown(
+            _props_card_html(row, _props_card_stat_values(row, stat_summary_cache)),
+            unsafe_allow_html=True,
+        )
 
     if remaining_row_count > 0:
         def _load_more_props_rows():
             st.session_state[props_loaded_card_limit_key] = min(
                 len(rows),
-                loaded_card_limit + prototype_card_limit,
+                loaded_card_limit + props_card_batch_size,
             )
 
         st.button(
             f"Load more props ({remaining_row_count} remaining)",
-            key=f"load_more_props_{selected_prop_key}",
+            key=f"load_more_props_{selected_date_key}_{selected_prop_key}_{selected_line_type_key}",
             on_click=_load_more_props_rows,
         )
 
