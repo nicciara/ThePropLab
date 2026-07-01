@@ -78,6 +78,7 @@ PITCHER_GAME_LOG_PROPS = [
     "Pitches Thrown",
 ]
 HOMEPAGE_PROP_OPTIONS = [*GAME_LOG_PROPS, *PITCHER_GAME_LOG_PROPS]
+PROPS_LINE_TYPE_FILTER_OPTIONS = ("All", "Standard", "Goblin", "Demon")
 PITCHER_GAME_LOG_PROP_COLUMNS = {
     "Pitcher Strikeouts": "strikeouts",
     "Pitcher Fantasy Score": "pitcher_fantasy_score",
@@ -960,6 +961,14 @@ def homepage_prop_label_from_query(value, default="Hits"):
     pitcher_prop = pitcher_prop_label_from_query(value, default="")
     if pitcher_prop:
         return pitcher_prop
+    return default
+
+
+def props_line_type_filter_label_from_query(value, default="All"):
+    normalized = str(value or "").strip().lower()
+    for option in PROPS_LINE_TYPE_FILTER_OPTIONS:
+        if normalized == option.lower():
+            return option
     return default
 
 
@@ -3874,6 +3883,11 @@ def _initialize_page_state_from_query():
         st.session_state["homepage_selected_prop"] = requested_home_prop
     elif requested_home_prop != st.session_state.get("homepage_selected_prop") and requested_home_tab == "props":
         st.session_state["homepage_selected_prop"] = requested_home_prop
+    requested_line_type = props_line_type_filter_label_from_query(_query_param_value("line_type", "All"))
+    if st.session_state.get("props_line_type_filter") not in PROPS_LINE_TYPE_FILTER_OPTIONS:
+        st.session_state["props_line_type_filter"] = requested_line_type
+    elif requested_line_type != st.session_state.get("props_line_type_filter") and requested_home_tab == "props":
+        st.session_state["props_line_type_filter"] = requested_line_type
     if "selected_date" not in st.session_state:
         st.session_state["selected_date"] = requested_date.date() if pd.notna(requested_date) else eastern_today()
     elif pd.notna(requested_date) and st.session_state.get("selected_date") != requested_date.date():
@@ -6413,6 +6427,7 @@ def set_homepage_date(new_date):
         "date": new_date.isoformat(),
         "home_tab": st.session_state.get("home_tab", "lineups"),
         "prop": st.session_state.get("homepage_selected_prop", "Hits") if st.session_state.get("home_tab") == "props" else "",
+        "line_type": st.session_state.get("props_line_type_filter", "All") if st.session_state.get("home_tab") == "props" else "",
     })
 
 
@@ -6436,6 +6451,7 @@ def set_homepage_tab():
         "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
         "home_tab": selected_tab,
         "prop": st.session_state.get("homepage_selected_prop", "Hits") if selected_tab == "props" else "",
+        "line_type": st.session_state.get("props_line_type_filter", "All") if selected_tab == "props" else "",
     })
 
 
@@ -6447,6 +6463,21 @@ def set_homepage_props_prop(prop):
         "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
         "home_tab": "props",
         "prop": prop,
+        "line_type": st.session_state.get("props_line_type_filter", "All"),
+    })
+
+
+def set_homepage_props_line_type():
+    selected_line_type = props_line_type_filter_label_from_query(
+        st.session_state.get("props_line_type_filter", "All"),
+        default="All",
+    )
+    st.session_state["props_line_type_filter"] = selected_line_type
+    _set_query_params({
+        "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
+        "home_tab": "props",
+        "prop": st.session_state.get("homepage_selected_prop", "Hits"),
+        "line_type": selected_line_type,
     })
 
 
@@ -6532,6 +6563,11 @@ def render_homepage_props_tab():
     if selected_prop not in available_props:
         selected_prop = "Hits"
         st.session_state["homepage_selected_prop"] = selected_prop
+    selected_line_type = props_line_type_filter_label_from_query(
+        st.session_state.get("props_line_type_filter", "All"),
+        default="All",
+    )
+    st.session_state["props_line_type_filter"] = selected_line_type
 
     with st.container(key="homepage_prop_tab_row", horizontal=True, gap="small"):
         for prop in available_props:
@@ -6548,6 +6584,15 @@ def render_homepage_props_tab():
                 on_click=set_homepage_props_prop,
                 args=(prop,),
             )
+
+    line_type_cols = st.columns([1.1, 4.4])
+    with line_type_cols[0]:
+        st.selectbox(
+            "Line Type",
+            PROPS_LINE_TYPE_FILTER_OPTIONS,
+            key="props_line_type_filter",
+            on_change=set_homepage_props_line_type,
+        )
 
     selected_is_pitcher_prop = selected_prop in PITCHER_GAME_LOG_PROPS
     selected_prop_key = (
@@ -6685,16 +6730,32 @@ def render_homepage_props_tab():
                 seen_labels.add(label)
         return f"PrizePicks • {'/'.join(labels)}" if labels else "PrizePicks"
 
-    selected_projection_records = []
+    def _projection_line_type(record):
+        odds_type = normalize_name(_projection_value(record, "odds_type", "oddsType", default=""))
+        if odds_type == "goblin":
+            return "Goblin"
+        if odds_type == "demon":
+            return "Demon"
+        return "Standard"
+
+    selected_prop_projection_records = []
     for record in st.session_state.get("prizepicks_projections", []):
         if not isinstance(record, dict):
             continue
         if not _projection_matches_homepage_prop(record, selected_prop):
             continue
-        selected_projection_records.append(record)
+        selected_prop_projection_records.append(record)
+
+    if selected_line_type == "All":
+        selected_projection_records = list(selected_prop_projection_records)
+    else:
+        selected_projection_records = [
+            record for record in selected_prop_projection_records
+            if _projection_line_type(record) == selected_line_type
+        ]
 
     records_by_exact_key = {}
-    for record in selected_projection_records:
+    for record in selected_prop_projection_records:
         player_name = str(record.get("player") or _projection_player_name(record) or "").strip()
         line_value = _projection_line_value(record)
         exact_key = (
@@ -6778,7 +6839,10 @@ def render_homepage_props_tab():
 
     rows.sort(key=lambda row: (str(row.get("team", "")), str(row.get("player", "")), _props_sort_line(row.get("line"))))
     if not rows:
-        st.info(f"No available PrizePicks players found for {selected_prop} on the current slate.")
+        if selected_line_type == "All":
+            st.info(f"No lines found for {selected_prop}.")
+        else:
+            st.info(f"No {selected_line_type.lower()} lines found for {selected_prop}.")
         return
 
     def _prop_card_tile(label, value):
@@ -7317,6 +7381,7 @@ def render_homepage():
             "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
             "home_tab": "props",
             "prop": st.session_state.get("homepage_selected_prop", "Hits"),
+            "line_type": st.session_state.get("props_line_type_filter", "All"),
         })
         render_homepage_props_tab()
         st.stop()
