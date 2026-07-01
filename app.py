@@ -6629,12 +6629,12 @@ def render_homepage_props_tab():
 
     props_trend_sort_options = (
         "Default",
-        "L5 high to low",
-        "L10 high to low",
-        "L15 high to low",
-        "H2H high to low",
-        "SZN high to low",
-        "AVG over line",
+        "L5",
+        "L10",
+        "L15",
+        "H2H",
+        "SZN",
+        "AVG",
     )
     props_filter_key = "homepage_props_filter_props"
     games_filter_key = "homepage_props_filter_games"
@@ -7222,11 +7222,11 @@ def render_homepage_props_tab():
 
     def _props_trend_sort_value(row, stat_values):
         percent_sorts = {
-            "L5 high to low": "L5",
-            "L10 high to low": "L10",
-            "L15 high to low": "L15",
-            "H2H high to low": "H2H",
-            "SZN high to low": "SZN",
+            "L5": "L5",
+            "L10": "L10",
+            "L15": "L15",
+            "H2H": "H2H",
+            "SZN": "SZN",
         }
         if selected_trend_sort in percent_sorts:
             return _props_stat_number(
@@ -7234,7 +7234,7 @@ def render_homepage_props_tab():
                 percent=True,
             )
 
-        if selected_trend_sort == "AVG over line":
+        if selected_trend_sort == "AVG":
             avg_value = _props_stat_number(stat_values.get("AVG"))
             try:
                 line_value = float(row.get("line"))
