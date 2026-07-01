@@ -19,11 +19,26 @@ import performance_profile
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+
+class _PropsNoiseFilter(logging.Filter):
+    def filter(self, record):
+        message = record.getMessage()
+        return not (
+            message.startswith("PROPS_PERF:")
+            or message.startswith("Props headshot debug")
+            or message.startswith("Props fragment batch complete")
+        )
+
+
+logger.addFilter(_PropsNoiseFilter())
 PLAYER_API_CALLS = 0
 PLAYER_INFO_SESSION_CACHE = {}
 PLAYER_INFO_SESSION_CACHE_LOCK = threading.Lock()
 SAVANT_RESPONSE_SESSION_CACHE = {}
 SAVANT_RESPONSE_SESSION_CACHE_LOCK = threading.Lock()
+PROPS_PERF_ENABLED = False
 PROPS_PERF_GAME_LOG_CONTEXT = {}
 PROPS_PERF_FRESH_GAME_LOG_EVENTS = []
 LINEUP_MIN_HEIGHT = 220
@@ -88,6 +103,11 @@ PROJECTION_STATE_KEYS = (
     "prizepicks_projections",
     "prop_projections",
 )
+
+
+def props_perf_log(*args, **kwargs):
+    if PROPS_PERF_ENABLED:
+        logger.info(*args, **kwargs)
 
 
 def _request_profile_key(url, params=None):
@@ -5797,7 +5817,7 @@ def render_homepage_props_tab():
     def _build_props_stat_summary_cache(rows, perf_context=None):
         global PROPS_PERF_GAME_LOG_CONTEXT
         perf_started_at = time.perf_counter()
-        perf_enabled = bool(perf_context and perf_context.get("first_batch"))
+        perf_enabled = bool(PROPS_PERF_ENABLED and perf_context and perf_context.get("first_batch"))
         stat_summary_cache = {}
         rows_by_game_log_key = {}
         for row in rows:
@@ -6116,7 +6136,7 @@ def render_homepage_props_tab():
             "game_pk": game_pk,
             "game_time": game_time,
         })
-        if perf_context and perf_context.get("first_batch"):
+        if PROPS_PERF_ENABLED and perf_context and perf_context.get("first_batch"):
             logger.info(
                 "PROPS_PERF: identity_card run=%s batch=%s index=%s player=%s elapsed=%.3fs projection_id=%s roster_lookup_called=%s roster_cache_hit=%s lineup_fallback_called=%s resolved_player_id=%s has_headshot=%s",
                 perf_context.get("run_id"),
@@ -6133,15 +6153,14 @@ def render_homepage_props_tab():
             )
         return row
 
-    prototype_card_limit = 100
-    prototype_rows = rows[:prototype_card_limit]
-    props_loaded_card_limit_key = f"props_loaded_card_limit_{selected_prop_key}"
-    loaded_card_limit = int(st.session_state.get(props_loaded_card_limit_key, prototype_card_limit) or prototype_card_limit)
-    loaded_card_limit = max(prototype_card_limit, loaded_card_limit)
-    rendered_rows = rows[:loaded_card_limit]
-    legacy_rows = rendered_rows[prototype_card_limit:]
-    remaining_row_count = max(len(rows) - loaded_card_limit, 0)
     prototype_batch_size = 5
+    props_unlocked_batch_count_key = f"props_unlocked_batch_count_{props_perf_selected_date}_{selected_prop_key}"
+    unlocked_batch_count = int(st.session_state.get(props_unlocked_batch_count_key, 1) or 1)
+    unlocked_batch_count = max(1, unlocked_batch_count)
+    unlocked_card_limit = min(len(rows), unlocked_batch_count * prototype_batch_size)
+    prototype_rows = rows[:unlocked_card_limit]
+    legacy_rows = []
+    remaining_row_count = max(len(rows) - unlocked_card_limit, 0)
     prototype_batches = []
     for batch_start in range(0, len(prototype_rows), prototype_batch_size):
         batch_rows = prototype_rows[batch_start:batch_start + prototype_batch_size]
@@ -6177,6 +6196,8 @@ def render_homepage_props_tab():
             )
         return "||".join(signature_parts)
 
+    snapshot_signature = _props_fragment_signature(rows) if rows else ""
+
     def _props_fragment_batch_state_key(batch_key):
         return f"props_fragment_batch_state_{batch_key}"
 
@@ -6186,7 +6207,7 @@ def render_homepage_props_tab():
 
     def _props_snapshot_state():
         snapshot_key = _props_snapshot_state_key()
-        signature = _props_fragment_signature(prototype_rows)
+        signature = snapshot_signature
         snapshot = st.session_state.get(snapshot_key)
         if not isinstance(snapshot, dict) or snapshot.get("signature") != signature:
             snapshot = {
@@ -6546,10 +6567,7 @@ def render_homepage_props_tab():
 
     if remaining_row_count > 0:
         def _load_more_props_rows():
-            st.session_state[props_loaded_card_limit_key] = min(
-                len(rows),
-                loaded_card_limit + prototype_card_limit,
-            )
+            st.session_state[props_unlocked_batch_count_key] = unlocked_batch_count + 1
 
         st.button(
             f"Load more props ({remaining_row_count} remaining)",
