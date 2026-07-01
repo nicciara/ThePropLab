@@ -74,6 +74,7 @@ PITCHER_GAME_LOG_PROPS = [
     "Hits Allowed",
     "Walks Allowed",
     "Pitching Outs",
+    "Pitches Thrown",
 ]
 HOMEPAGE_PROP_OPTIONS = [*GAME_LOG_PROPS, *PITCHER_GAME_LOG_PROPS]
 PITCHER_GAME_LOG_PROP_COLUMNS = {
@@ -82,6 +83,7 @@ PITCHER_GAME_LOG_PROP_COLUMNS = {
     "Hits Allowed": "hits_allowed",
     "Walks Allowed": "walks_allowed",
     "Pitching Outs": "pitching_outs",
+    "Pitches Thrown": "pitches_thrown",
 }
 PITCHER_PRIZEPICKS_PROP_ALIASES = {
     "pitcherstrikeouts": "pitcherstrikeouts",
@@ -111,9 +113,15 @@ PITCHER_PRIZEPICKS_PROP_ALIASES = {
     "basesonballsallowed": "walksallowed",
     "pitchingouts": "pitchingouts",
     "pitchingout": "pitchingouts",
+    "po": "pitchingouts",
     "outs": "pitchingouts",
     "outsrecorded": "pitchingouts",
     "outrecorded": "pitchingouts",
+    "pitchesthrown": "pitchesthrown",
+    "pitchesthrow": "pitchesthrown",
+    "pitches": "pitchesthrown",
+    "pitchcount": "pitchesthrown",
+    "numberofpitches": "pitchesthrown",
 }
 
 
@@ -730,10 +738,13 @@ def _prop_match_key(value):
         "fantasyscore": "fantasyscore",
         "batterfantasy": "fantasyscore",
         "batterfantasyscore": "fantasyscore",
+        "batterfs": "fantasyscore",
         "fantasypoints": "fantasyscore",
         "fantasypts": "fantasyscore",
         "hitterfantasy": "fantasyscore",
         "hitterfantasyscore": "fantasyscore",
+        "hitterfs": "fantasyscore",
+        "hfs": "fantasyscore",
         "homeruns": "homeruns",
         "walks": "walks",
         "strikeouts": "strikeouts",
@@ -944,6 +955,7 @@ def load_prizepicks_mlb_projections(debug_version=2):
     }
     parsed = []
     seen_projection_ids = set()
+    seen_projection_keys = set()
     league_counts = {}
     first_inning_counts = {}
 
@@ -1016,6 +1028,21 @@ def load_prizepicks_mlb_projections(debug_version=2):
             stat_display_name = attributes.get("stat_display_name")
             if _prop_match_key(stat_display_name) == "firstinninghrrrbi":
                 first_inning_counts[league_label] += 1
+            player_mlbam_id = _projection_player_mlbam_id(player_attributes)
+            line_value = _projection_line_value({"attributes": attributes})
+            try:
+                line_key = f"{float(line_value):.4f}"
+            except (TypeError, ValueError):
+                line_key = str(line_value or "").strip()
+            dedupe_key = (
+                player_mlbam_id or normalize_name(player_name),
+                normalize_name(stat_display_name),
+                line_key,
+                normalize_name(attributes.get("odds_type") or "standard"),
+            )
+            if dedupe_key in seen_projection_keys:
+                continue
+            seen_projection_keys.add(dedupe_key)
 
             parsed_projection = {
                 "id": projection.get("id"),
@@ -1039,7 +1066,7 @@ def load_prizepicks_mlb_projections(debug_version=2):
                 "rank": attributes.get("rank"),
                 "player": player_name,
                 "player_name": player_name,
-                "player_id": _projection_player_mlbam_id(player_attributes),
+                "player_id": player_mlbam_id,
                 "league": player_attributes.get("league"),
                 "team": player_attributes.get("team"),
             }
@@ -1667,6 +1694,7 @@ def load_pitcher_prop_game_log(pitcher_id, season_year=2026):
                 "walks_allowed": _int_stat(stat, "baseOnBalls"),
                 "innings_pitched": innings_pitched,
                 "pitching_outs": innings_pitched_to_outs(innings_pitched),
+                "pitches_thrown": _int_stat(stat, "numberOfPitches"),
             }
         )
 
