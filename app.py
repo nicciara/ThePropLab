@@ -8,10 +8,12 @@ import os
 import threading
 import altair as alt
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import requests
 import plotly.graph_objects as go
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 from urllib.parse import quote_plus
 
@@ -208,6 +210,10 @@ PROJECTION_STATE_KEYS = (
     "prizepicks_projection",
     "prizepicks_projections",
     "prop_projections",
+)
+PROPS_AUTOLOAD_SENTINEL = components.declare_component(
+    "props_autoload_sentinel",
+    path=str(Path(__file__).parent / "components" / "props_autoload_sentinel"),
 )
 
 
@@ -6552,12 +6558,49 @@ def _props_cache_mode():
     return "auto"
 
 
+def _props_autoload_enabled():
+    return _truthy_query_or_env(_query_param_value("props_autoload", ""))
+
+
 def _with_props_cache_query_param(params):
     updated = dict(params)
     query_value = str(_query_param_value("props_cache", "") or "").strip()
     if query_value in {"0", "1"}:
         updated["props_cache"] = query_value
     return updated
+
+
+def _render_props_autoload_sentinel(props_loaded_card_limit_key, loaded_card_limit, props_card_batch_size, total_count, button_key_parts):
+    if not _props_autoload_enabled() or loaded_card_limit >= total_count:
+        return
+
+    event = PROPS_AUTOLOAD_SENTINEL(
+        limit=int(loaded_card_limit),
+        total=int(total_count),
+        token=props_loaded_card_limit_key,
+        key=f"props_autoload_sentinel_{'_'.join(str(part) for part in button_key_parts)}_{loaded_card_limit}",
+        default=None,
+    )
+    if not isinstance(event, dict):
+        return
+    if event.get("token") != props_loaded_card_limit_key:
+        return
+    try:
+        triggered_limit = int(event.get("limit"))
+    except (TypeError, ValueError):
+        return
+    if triggered_limit != loaded_card_limit:
+        return
+
+    last_trigger_key = f"{props_loaded_card_limit_key}_autoload_last_limit"
+    if st.session_state.get(last_trigger_key) == loaded_card_limit:
+        return
+    st.session_state[last_trigger_key] = loaded_card_limit
+    st.session_state[props_loaded_card_limit_key] = min(
+        total_count,
+        loaded_card_limit + props_card_batch_size,
+    )
+    st.rerun()
 
 
 def _cached_record_value(record, *keys, default=""):
@@ -6995,6 +7038,23 @@ def _render_cached_homepage_props_tab(cache_payload):
         st.markdown(_cached_props_card_html(record), unsafe_allow_html=True)
 
     if remaining_record_count > 0:
+        st.caption(f"Showing {len(visible_records)} of {len(filtered_records)} props")
+        load_more_key_parts = (
+            selected_date_key,
+            active_prop_filter_key,
+            selected_line_type_key,
+            selected_games_key,
+            selected_teams_key,
+            selected_trend_sort_key,
+        )
+        _render_props_autoload_sentinel(
+            props_loaded_card_limit_key,
+            loaded_card_limit,
+            props_card_batch_size,
+            len(filtered_records),
+            load_more_key_parts,
+        )
+
         def _load_more_cached_props_rows():
             st.session_state[props_loaded_card_limit_key] = min(
                 len(filtered_records),
@@ -7002,7 +7062,7 @@ def _render_cached_homepage_props_tab(cache_payload):
             )
 
         st.button(
-            f"Load more props ({remaining_record_count} remaining)",
+            f"Load next {props_card_batch_size} props",
             key=(
                 f"load_more_cached_props_{selected_date_key}_{active_prop_filter_key}_"
                 f"{selected_line_type_key}_{selected_games_key}_{selected_teams_key}_{selected_trend_sort_key}"
@@ -7946,6 +8006,8 @@ def render_homepage_props_tab():
         )
 
     if remaining_row_count > 0:
+        st.caption(f"Showing {len(visible_rows)} of {len(rows)} props")
+
         def _load_more_props_rows():
             st.session_state[props_loaded_card_limit_key] = min(
                 len(rows),
@@ -7953,7 +8015,7 @@ def render_homepage_props_tab():
             )
 
         st.button(
-            f"Load more props ({remaining_row_count} remaining)",
+            f"Load next {props_card_batch_size} props",
             key=(
                 f"load_more_props_{selected_date_key}_{active_prop_filter_key}_"
                 f"{selected_line_type_key}_{selected_games_key}_{selected_teams_key}_{selected_trend_sort_key}"

@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+      }
+      #sentinel {
+        width: 100%;
+        height: 1px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="sentinel" aria-hidden="true"></div>
+    <script>
+      const Streamlit = {
+        READY: "streamlit:componentReady",
+        SET_VALUE: "streamlit:setComponentValue",
+        SET_FRAME_HEIGHT: "streamlit:setFrameHeight",
+        RENDER: "streamlit:render",
+        ready: function () {
+          window.parent.postMessage(
+            { isStreamlitMessage: true, type: Streamlit.READY, apiVersion: 1 },
+            "*"
+          );
+        },
+        setFrameHeight: function (height) {
+          window.parent.postMessage(
+            { isStreamlitMessage: true, type: Streamlit.SET_FRAME_HEIGHT, height },
+            "*"
+          );
+        },
+        setComponentValue: function (value) {
+          window.parent.postMessage(
+            {
+              isStreamlitMessage: true,
+              type: Streamlit.SET_VALUE,
+              value,
+              dataType: "json",
+            },
+            "*"
+          );
+        },
+      };
+
+      let observer = null;
+      let currentLimit = null;
+      let currentToken = "";
+      let sentForLimit = null;
+
+      function observe() {
+        if (observer) {
+          observer.disconnect();
+        }
+        const sentinel = document.getElementById("sentinel");
+        observer = new IntersectionObserver(
+          (entries) => {
+            const entry = entries[0];
+            if (!entry || !entry.isIntersecting || currentLimit === null) {
+              return;
+            }
+            const eventKey = `${currentToken}:${currentLimit}`;
+            if (sentForLimit === eventKey) {
+              return;
+            }
+            sentForLimit = eventKey;
+            Streamlit.setComponentValue({
+              token: currentToken,
+              limit: currentLimit,
+              reached: true,
+              ts: Date.now(),
+            });
+          },
+          { root: null, rootMargin: "600px 0px 600px 0px", threshold: 0 }
+        );
+        observer.observe(sentinel);
+      }
+
+      window.addEventListener("message", (event) => {
+        if (event.data.type !== Streamlit.RENDER) {
+          return;
+        }
+        const args = event.data.args || {};
+        currentLimit = Number.isFinite(Number(args.limit)) ? Number(args.limit) : null;
+        currentToken = String(args.token || "");
+        Streamlit.setFrameHeight(1);
+        observe();
+      });
+
+      Streamlit.ready();
+      Streamlit.setFrameHeight(1);
+    </script>
+  </body>
+</html>
