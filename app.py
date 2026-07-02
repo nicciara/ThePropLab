@@ -581,30 +581,30 @@ def _render_page_header_and_styles():
                 display:block!important;
                 width:100%;
                 max-width:100%;
-                margin:10px 0;
-                padding:12px;
+                margin:8px 0;
+                padding:9px 10px 10px 10px;
                 border:1px solid var(--dash-border);
-                border-radius:14px;
+                border-radius:12px;
                 background:var(--dash-card-bg);
-                box-shadow:0 2px 9px rgba(15,23,42,.10);
+                box-shadow:0 2px 7px rgba(15,23,42,.10);
                 color:var(--dash-text);
                 overflow:hidden;
             }
             .props-mobile-header{
                 display:grid;
-                grid-template-columns:52px minmax(0,1fr);
-                gap:10px;
+                grid-template-columns:42px minmax(0,1fr);
+                gap:9px;
                 align-items:start;
             }
             .props-mobile-avatar-wrap{
                 position:relative;
-                width:52px;
-                height:52px;
+                width:42px;
+                height:42px;
                 flex:0 0 auto;
             }
             .props-mobile-avatar{
-                width:52px;
-                height:52px;
+                width:42px;
+                height:42px;
                 border-radius:999px;
                 overflow:hidden;
                 border:1px solid var(--dash-border);
@@ -617,8 +617,8 @@ def _render_page_header_and_styles():
                 position:absolute;
                 right:-2px;
                 top:-3px;
-                width:18px;
-                height:18px;
+                width:16px;
+                height:16px;
                 border-radius:999px;
                 background:var(--dash-card-bg);
                 border:1px solid var(--dash-border);
@@ -626,105 +626,134 @@ def _render_page_header_and_styles():
                 align-items:center;
                 justify-content:center;
                 color:#f59e0b;
-                font-size:10px;
+                font-size:9px;
                 font-weight:900;
             }
             .props-mobile-title{min-width:0}
+            .props-mobile-player-row{
+                display:flex;
+                align-items:center;
+                gap:6px;
+                min-width:0;
+            }
             .props-mobile-player{
                 font-size:17px;
                 font-weight:950;
                 line-height:1.15;
                 overflow-wrap:anywhere;
             }
+            .props-mobile-league-badge{
+                display:inline-flex;
+                align-items:center;
+                justify-content:center;
+                flex:0 0 auto;
+                padding:2px 5px;
+                border:1px solid var(--dash-control-border);
+                border-radius:999px;
+                color:var(--dash-muted);
+                font-size:9px;
+                font-weight:900;
+                line-height:1;
+                letter-spacing:0.02em;
+            }
             .props-mobile-prop{
                 font-size:13px;
                 font-weight:950;
                 line-height:1.25;
-                margin-top:4px;
+                margin-top:2px;
                 overflow-wrap:anywhere;
             }
             .props-mobile-meta{
-                font-size:11px;
+                font-size:12px;
                 color:var(--dash-muted);
                 font-weight:800;
                 line-height:1.25;
-                margin-top:5px;
+                margin-top:7px;
                 overflow-wrap:anywhere;
             }
             .props-mobile-actions{
                 display:flex;
-                align-items:flex-start;
-                gap:7px;
+                align-items:center;
+                gap:6px;
                 flex-wrap:wrap;
-                margin-top:10px;
+                margin-top:7px;
             }
             .props-mobile-actions .line-badge{
                 min-width:0;
-                padding:5px 9px;
-                gap:6px;
+                padding:4px 8px;
+                gap:5px;
             }
-            .props-mobile-actions .line-value{font-size:18px}
-            .props-mobile-actions .book-badge-img{height:19px;max-width:30px}
-            .props-mobile-actions .modifier-badge-img{height:21px;max-width:26px}
+            .props-mobile-actions .line-value{font-size:16px}
+            .props-mobile-actions .book-badge-img{height:17px;max-width:27px}
+            .props-mobile-actions .modifier-badge-img{height:19px;max-width:23px}
             .props-mobile-status{
-                font-size:12px;
+                font-size:11px;
                 color:var(--dash-muted);
                 font-weight:800;
-                line-height:1.2;
-                padding-top:6px;
+                line-height:1;
+                padding:0 2px;
+                white-space:nowrap;
             }
             .props-mobile-open-player{
                 display:inline-flex;
                 align-items:center;
                 justify-content:center;
-                width:100%;
-                min-height:38px;
-                margin-top:2px;
-                padding:8px 12px;
+                width:auto;
+                min-height:28px;
+                padding:5px 10px;
                 border-radius:999px;
                 background:var(--dash-accent);
                 color:white!important;
-                font-size:12px;
+                font-size:11px;
                 font-weight:900;
                 text-decoration:none!important;
                 white-space:nowrap;
             }
             .props-mobile-unavailable{
                 display:block;
-                width:100%;
-                font-size:12px;
+                width:auto;
+                font-size:11px;
                 color:var(--dash-muted);
                 font-weight:700;
             }
             .props-mobile-ou{
-                display:flex;
-                flex-direction:row;
+                display:inline-flex;
                 align-items:center;
                 justify-content:center;
-                gap:16px;
-                width:100%;
-                min-height:38px;
-                margin-top:10px;
-                border:2px solid var(--dash-border);
-                border-radius:10px;
+                gap:5px;
+                min-height:26px;
+                padding:4px 8px;
+                border:1px solid var(--dash-border);
+                border-radius:999px;
                 background:var(--dash-surface-2);
                 color:var(--dash-text);
-                font-size:12px;
-                font-weight:950;
-                line-height:1.25;
+                font-size:11px;
+                font-weight:900;
+                line-height:1;
+                white-space:nowrap;
             }
             .props-mobile-stats{
                 display:grid;
-                grid-template-columns:repeat(2,minmax(0,1fr));
-                gap:7px;
-                margin-top:10px;
+                grid-template-columns:repeat(6,minmax(0,1fr));
+                gap:4px;
+                margin-top:8px;
+                width:100%;
             }
             .props-mobile-stats .props-stat-tile{
                 min-width:0!important;
-                padding:8px 6px!important;
+                padding:5px 3px!important;
+                border-radius:7px!important;
             }
-            .props-mobile-stats .props-stat-label{font-size:10px!important}
-            .props-mobile-stats .props-stat-value{font-size:14px!important}
+            .props-mobile-stats .props-stat-label{
+                font-size:9px!important;
+                letter-spacing:0!important;
+                line-height:1!important;
+            }
+            .props-mobile-stats .props-stat-value{
+                font-size:13px!important;
+                line-height:1.05!important;
+                margin-top:3px!important;
+            }
         }
         @media (max-width:768px){
             section[data-testid="stMain"] .block-container{
@@ -7712,19 +7741,22 @@ def _props_mobile_card_html(
         "<div class='props-mobile-star'>☆</div>"
         "</div>"
         "<div class='props-mobile-title'>"
+        "<div class='props-mobile-player-row'>"
         f"<div class='props-mobile-player'>{html.escape(str(player_name or ''))}</div>"
+        "<span class='props-mobile-league-badge'>MLB</span>"
+        "</div>"
         f"<div class='props-mobile-prop'>O/U {html.escape(str(line_text or '—'))} {html.escape(str(prop_label or ''))}</div>"
+        "</div>"
+        "</div>"
         f"<div class='props-mobile-meta'>{html.escape(str(matchup or '—'))}{html.escape(hand_text)}</div>"
-        "</div>"
-        "</div>"
         "<div class='props-mobile-actions'>"
         f"{line_badge_html}"
         f"<div class='props-mobile-status'>{html.escape(str(status_text or 'PrizePicks'))}</div>"
-        f"{open_link}"
-        "</div>"
         "<div class='props-mobile-ou'>"
-        "<div>O —</div>"
-        "<div>U —</div>"
+        "<span>O —</span>"
+        "<span>U —</span>"
+        "</div>"
+        f"{open_link}"
         "</div>"
         f"<div class='props-mobile-stats'>{stat_tiles_html}</div>"
         "</div>"
