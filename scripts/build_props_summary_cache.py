@@ -15,9 +15,7 @@ import app
 from props_cache import SCHEMA_VERSION, props_summary_cache_path, write_json_atomic
 
 
-SKIPPED_STAGE_1_PROPS = {
-    "1st Inning Hits + Runs + RBIs": "first-inning props are deferred in Stage 1",
-}
+SKIPPED_STAGE_1_PROPS = {}
 CACHE_TIMEZONE = "America/New_York"
 
 
@@ -190,6 +188,12 @@ def _projection_homepage_prop(record, candidate_props, pitcher_context_lookup):
     if batter_matches:
         return batter_matches[0]
     return ""
+
+
+def _projection_is_mlblive(record):
+    league_label = str(record.get("source_league") or "").strip().upper()
+    league_id = str(record.get("source_league_id") or "").strip()
+    return league_label == "MLBLIVE" or league_id == str(app.PRIZEPICKS_MLBLIVE_LEAGUE_ID)
 
 
 def _lineup_fallback_info(player_name, team_context, lineup_fallback_cache):
@@ -367,26 +371,27 @@ def _numeric_sample_values(game_log_df, prop_column, sample_label):
 def _build_props_stat_summary_cache(rows):
     stat_summary_cache = {}
     rows_by_game_log_key = {}
-    skipped_first_inning = 0
     for row in rows:
         cache_key = _props_stat_cache_key(row)
         if not cache_key:
             continue
         player_type, player_id, prop_column, _, _, _ = cache_key
-        include_first_inning = player_type == "batter" and prop_column == "first_inning_hrrrbi"
-        if include_first_inning:
-            skipped_first_inning += 1
-            stat_summary_cache[cache_key] = _blank_stat_values()
-            continue
-        rows_by_game_log_key.setdefault((player_type, player_id, include_first_inning), []).append((row, cache_key))
+        include_partial_props = (
+            (player_type == "batter" and prop_column in app.BATTER_PARTIAL_PROP_COLUMNS)
+            or (player_type == "pitcher" and prop_column in app.PITCHER_PARTIAL_PROP_COLUMNS)
+        )
+        rows_by_game_log_key.setdefault((player_type, player_id, include_partial_props), []).append((row, cache_key))
 
-    for (player_type, player_id, include_first_inning), player_rows in rows_by_game_log_key.items():
+    for (player_type, player_id, include_partial_props), player_rows in rows_by_game_log_key.items():
         if player_type == "pitcher":
-            game_log_df = app.load_pitcher_prop_game_log(player_id)
+            game_log_df = app.load_pitcher_prop_game_log(
+                player_id,
+                include_partial_props=include_partial_props,
+            )
         else:
             game_log_df = app.load_batter_prop_game_log(
                 player_id,
-                include_first_inning=include_first_inning,
+                include_partial_props=include_partial_props,
             )
         if game_log_df.empty:
             for _, cache_key in player_rows:
@@ -461,7 +466,7 @@ def _build_props_stat_summary_cache(rows):
 
                 stat_summary_cache[cache_key] = stat_values
 
-    return stat_summary_cache, skipped_first_inning
+    return stat_summary_cache
 
 
 def _props_card_stat_values(row, stat_summary_cache):
@@ -469,6 +474,22 @@ def _props_card_stat_values(row, stat_summary_cache):
     if not cache_key:
         return _blank_stat_values()
     return stat_summary_cache.get(cache_key, _blank_stat_values())
+
+
+def _row_uses_partial_prop(row):
+    prop_column = (
+        app.PITCHER_GAME_LOG_PROP_COLUMNS.get(row.get("prop"))
+        if row.get("player_type") == "pitcher"
+        else app.GAME_LOG_PROP_COLUMNS.get(row.get("prop"))
+    )
+    return prop_column in app.BATTER_PARTIAL_PROP_COLUMNS or prop_column in app.PITCHER_PARTIAL_PROP_COLUMNS
+
+
+def _row_has_mlblive_projection(row):
+    return any(
+        isinstance(projection_line, dict) and _projection_is_mlblive(projection_line)
+        for projection_line in row.get("exact_projection_lines", []) or []
+    )
 
 
 def _matchup_label(row):
@@ -546,20 +567,19 @@ def _build_candidate_rows(projections, games):
     ]
     selected_prop_projection_records = []
     skipped_records = {}
+    skipped_mlblive_records = {}
 
     for record in projections:
         if not isinstance(record, dict):
             skipped_records["invalid_projection"] = skipped_records.get("invalid_projection", 0) + 1
             continue
         stat_type = record.get("stat_display_name") or app._projection_stat_type(record)
-        if app._prop_match_key(stat_type) == "firstinninghrrrbi":
-            skipped_records[SKIPPED_STAGE_1_PROPS["1st Inning Hits + Runs + RBIs"]] = (
-                skipped_records.get(SKIPPED_STAGE_1_PROPS["1st Inning Hits + Runs + RBIs"], 0) + 1
-            )
-            continue
         record_prop = _projection_homepage_prop(record, candidate_props, pitcher_context_lookup)
         if not record_prop:
             skipped_records["unsupported prop or unmatched player type"] = skipped_records.get("unsupported prop or unmatched player type", 0) + 1
+            if _projection_is_mlblive(record):
+                skipped_key = str(stat_type or "unknown MLBLIVE stat").strip() or "unknown MLBLIVE stat"
+                skipped_mlblive_records[skipped_key] = skipped_mlblive_records.get(skipped_key, 0) + 1
             continue
         selected_prop_projection_records.append((record, record_prop))
 
@@ -581,6 +601,9 @@ def _build_candidate_rows(projections, games):
         player_name = str(record.get("player") or app._projection_player_name(record) or "").strip()
         if not player_name:
             skipped_records["missing player name"] = skipped_records.get("missing player name", 0) + 1
+            if _projection_is_mlblive(record):
+                skipped_key = str(record.get("stat_display_name") or app._projection_stat_type(record) or "unknown MLBLIVE stat").strip()
+                skipped_mlblive_records[skipped_key] = skipped_mlblive_records.get(skipped_key, 0) + 1
             continue
         line_value = app._projection_line_value(record)
         record_prop_key = _homepage_prop_match_key(record_prop)
@@ -639,14 +662,14 @@ def _build_candidate_rows(projections, games):
         })
 
     duplicate_exact_keys_merged = sum(max(len(lines) - 1, 0) for lines in records_by_exact_key.values())
-    return rows, skipped_records, duplicate_exact_keys_merged
+    return rows, skipped_records, skipped_mlblive_records, duplicate_exact_keys_merged
 
 
 def build_props_summary_cache(cache_date):
     started_at = time.perf_counter()
     games = app.load_schedule(cache_date)
     projections = app.load_prizepicks_mlb_projections()
-    rows, skipped_records, duplicate_exact_keys_merged = _build_candidate_rows(projections, games)
+    rows, skipped_records, skipped_mlblive_records, duplicate_exact_keys_merged = _build_candidate_rows(projections, games)
 
     player_id_cache = {}
     lineup_fallback_cache = {}
@@ -655,12 +678,17 @@ def build_props_summary_cache(cache_date):
         for row in rows
     ]
     missing_player_ids = sum(1 for row in enriched_rows if not row.get("player_id"))
-    stat_summary_cache, skipped_first_inning_summaries = _build_props_stat_summary_cache(enriched_rows)
+    stat_summary_cache = _build_props_stat_summary_cache(enriched_rows)
 
     records = [
         _record_from_row(row, _props_card_stat_values(row, stat_summary_cache))
         for row in enriched_rows
     ]
+    partial_mlblive_supported_records = sum(
+        1
+        for row in enriched_rows
+        if _row_uses_partial_prop(row) and _row_has_mlblive_projection(row)
+    )
     payload = {
         "schema_version": SCHEMA_VERSION,
         "date": cache_date.isoformat(),
@@ -677,10 +705,11 @@ def build_props_summary_cache(cache_date):
     summary = {
         "date": cache_date.isoformat(),
         "records_written": len(records),
+        "partial_mlblive_supported_records": partial_mlblive_supported_records,
         "skipped_records": skipped_records,
+        "skipped_mlblive_records": skipped_mlblive_records,
         "missing_player_ids": missing_player_ids,
         "duplicate_exact_keys_merged": duplicate_exact_keys_merged,
-        "skipped_first_inning_summaries": skipped_first_inning_summaries,
         "build_duration_seconds": round(build_duration, 2),
     }
     return payload, summary

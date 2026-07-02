@@ -45,7 +45,12 @@ GAME_LOG_PROPS = [
     "Singles",
     "Doubles",
     "Triples",
-    "1st Inning Hits + Runs + RBIs",
+    "1st Inn. H+R+RBI",
+    "1-3 Inn. H+R+RBI",
+    "1-5 Inn. H+R+RBI",
+    "1st Inn. Hitter Fantasy Score",
+    "1-3 Inn. Hitter Fantasy Score",
+    "1-5 Inn. Hitter Fantasy Score",
 ]
 GAME_LOG_SAMPLE_RANGES = ("L5", "L10", "L15", "2026")
 GAME_LOG_HIT_EVENT_LABELS = {
@@ -70,7 +75,12 @@ GAME_LOG_PROP_COLUMNS = {
     "Singles": "singles",
     "Doubles": "doubles",
     "Triples": "triples",
-    "1st Inning Hits + Runs + RBIs": "first_inning_hrrrbi",
+    "1st Inn. H+R+RBI": "first_inning_hrrrbi",
+    "1-3 Inn. H+R+RBI": "innings_1_3_hrrrbi",
+    "1-5 Inn. H+R+RBI": "innings_1_5_hrrrbi",
+    "1st Inn. Hitter Fantasy Score": "first_inning_hitter_fantasy_score",
+    "1-3 Inn. Hitter Fantasy Score": "innings_1_3_hitter_fantasy_score",
+    "1-5 Inn. Hitter Fantasy Score": "innings_1_5_hitter_fantasy_score",
 }
 PITCHER_GAME_LOG_PROPS = [
     "Pitcher Strikeouts",
@@ -80,6 +90,11 @@ PITCHER_GAME_LOG_PROPS = [
     "Walks Allowed",
     "Pitching Outs",
     "Pitches Thrown",
+    "1st Inn. Strikeouts",
+    "1-2 Inn. Strikeouts",
+    "1-3 Inn. Strikeouts",
+    "1st Inn. Hits Allowed",
+    "1st Inn. Pitches Thrown",
 ]
 HOMEPAGE_PROP_OPTIONS = [*GAME_LOG_PROPS, *PITCHER_GAME_LOG_PROPS]
 PROPS_LINE_TYPE_FILTER_OPTIONS = ("All", "PP Reg Line", "Goblin", "Demon")
@@ -91,6 +106,26 @@ PITCHER_GAME_LOG_PROP_COLUMNS = {
     "Walks Allowed": "walks_allowed",
     "Pitching Outs": "pitching_outs",
     "Pitches Thrown": "pitches_thrown",
+    "1st Inn. Strikeouts": "first_inning_strikeouts",
+    "1-2 Inn. Strikeouts": "innings_1_2_strikeouts",
+    "1-3 Inn. Strikeouts": "innings_1_3_strikeouts",
+    "1st Inn. Hits Allowed": "first_inning_hits_allowed",
+    "1st Inn. Pitches Thrown": "first_inning_pitches_thrown",
+}
+BATTER_PARTIAL_PROP_COLUMNS = {
+    "first_inning_hrrrbi",
+    "innings_1_3_hrrrbi",
+    "innings_1_5_hrrrbi",
+    "first_inning_hitter_fantasy_score",
+    "innings_1_3_hitter_fantasy_score",
+    "innings_1_5_hitter_fantasy_score",
+}
+PITCHER_PARTIAL_PROP_COLUMNS = {
+    "first_inning_strikeouts",
+    "innings_1_2_strikeouts",
+    "innings_1_3_strikeouts",
+    "first_inning_hits_allowed",
+    "first_inning_pitches_thrown",
 }
 PITCHER_PRIZEPICKS_PROP_ALIASES = {
     "pitcherstrikeouts": "pitcherstrikeouts",
@@ -135,6 +170,40 @@ PITCHER_PRIZEPICKS_PROP_ALIASES = {
     "pitches": "pitchesthrown",
     "pitchcount": "pitchesthrown",
     "numberofpitches": "pitchesthrown",
+    "1stinnks": "firstinningpitcherstrikeouts",
+    "1stinningks": "firstinningpitcherstrikeouts",
+    "1stinnk": "firstinningpitcherstrikeouts",
+    "1stinningk": "firstinningpitcherstrikeouts",
+    "1stinnstrikeouts": "firstinningpitcherstrikeouts",
+    "1stinningstrikeouts": "firstinningpitcherstrikeouts",
+    "firstinningks": "firstinningpitcherstrikeouts",
+    "firstinningstrikeouts": "firstinningpitcherstrikeouts",
+    "1-2innks": "innings1through2pitcherstrikeouts",
+    "1-2inningks": "innings1through2pitcherstrikeouts",
+    "1-2innstrikeouts": "innings1through2pitcherstrikeouts",
+    "1-2inningstrikeouts": "innings1through2pitcherstrikeouts",
+    "1through2innks": "innings1through2pitcherstrikeouts",
+    "innings1through2ks": "innings1through2pitcherstrikeouts",
+    "innings1through2strikeouts": "innings1through2pitcherstrikeouts",
+    "1-3innks": "innings1through3pitcherstrikeouts",
+    "1-3inningks": "innings1through3pitcherstrikeouts",
+    "1-3innstrikeouts": "innings1through3pitcherstrikeouts",
+    "1-3inningstrikeouts": "innings1through3pitcherstrikeouts",
+    "1through3innks": "innings1through3pitcherstrikeouts",
+    "innings1through3ks": "innings1through3pitcherstrikeouts",
+    "innings1through3strikeouts": "innings1through3pitcherstrikeouts",
+    "1stinnha": "firstinninghitsallowed",
+    "1stinningha": "firstinninghitsallowed",
+    "1stinnhitsallowed": "firstinninghitsallowed",
+    "1stinninghitsallowed": "firstinninghitsallowed",
+    "firstinningha": "firstinninghitsallowed",
+    "firstinninghitsallowed": "firstinninghitsallowed",
+    "1stinnpitchesthrown": "firstinningpitchesthrown",
+    "1stinningpitchesthrown": "firstinningpitchesthrown",
+    "1stinnpitches": "firstinningpitchesthrown",
+    "1stinningpitches": "firstinningpitchesthrown",
+    "firstinningpitchesthrown": "firstinningpitchesthrown",
+    "firstinningpitches": "firstinningpitchesthrown",
 }
 
 
@@ -181,12 +250,12 @@ def calculate_prizepicks_pitcher_fantasy_score(
 
 
 def prop_average_text(avg_value, prop_column):
-    precision = 1 if prop_column in {"fantasy_score", "pitcher_fantasy_score"} else 2
+    precision = 1 if "fantasy_score" in str(prop_column or "") else 2
     return f"{float(avg_value):.{precision}f}"
 
 
 def prop_chart_value_format(prop_column):
-    return ".1f" if prop_column in {"fantasy_score", "pitcher_fantasy_score"} else ".0f"
+    return ".1f" if "fantasy_score" in str(prop_column or "") else ".0f"
 
 
 SPORTSBOOK_BADGE_ASSETS = {
@@ -753,10 +822,15 @@ def _prop_match_key(value):
         "hitsrunsrbis": "hrrrbi",
         "hitsrunsrbi": "hrrrbi",
         "1stinnhrr": "firstinninghrrrbi",
+        "1stinnhrrbi": "firstinninghrrrbi",
+        "1stinnhrrbis": "firstinninghrrrbi",
+        "1stinnhrrrbi": "firstinninghrrrbi",
         "1stinninghrr": "firstinninghrrrbi",
         "1stinninghrrbi": "firstinninghrrrbi",
         "1stinninghrrbis": "firstinninghrrrbi",
         "1stinninghrrrbi": "firstinninghrrrbi",
+        "1stinnhitsrunsrbis": "firstinninghrrrbi",
+        "1stinnhitsrunsrbi": "firstinninghrrrbi",
         "1stinnhitsrunsrbis": "firstinninghrrrbi",
         "1stinnhitsrunsrbi": "firstinninghrrrbi",
         "1stinninghitsrunsrbis": "firstinninghrrrbi",
@@ -767,6 +841,69 @@ def _prop_match_key(value):
         "firstinninghrrrbi": "firstinninghrrrbi",
         "firstinninghitsrunsrbis": "firstinninghrrrbi",
         "firstinninghitsrunsrbi": "firstinninghrrrbi",
+        "1-3innhrr": "innings1through3hrrrbi",
+        "1-3innhrrbi": "innings1through3hrrrbi",
+        "1-3innhrrbis": "innings1through3hrrrbi",
+        "1-3innhrrrbi": "innings1through3hrrrbi",
+        "1-3inninghrr": "innings1through3hrrrbi",
+        "1-3inninghrrbi": "innings1through3hrrrbi",
+        "1-3inninghrrbis": "innings1through3hrrrbi",
+        "1-3inninghrrrbi": "innings1through3hrrrbi",
+        "1-3innhitsrunsrbis": "innings1through3hrrrbi",
+        "1-3innhitsrunsrbi": "innings1through3hrrrbi",
+        "1-3inninghitsrunsrbis": "innings1through3hrrrbi",
+        "1-3inninghitsrunsrbi": "innings1through3hrrrbi",
+        "innings1through3hrr": "innings1through3hrrrbi",
+        "innings1through3hrrbi": "innings1through3hrrrbi",
+        "innings1through3hrrbis": "innings1through3hrrrbi",
+        "innings1through3hrrrbi": "innings1through3hrrrbi",
+        "innings1through3hitsrunsrbis": "innings1through3hrrrbi",
+        "innings1through3hitsrunsrbi": "innings1through3hrrrbi",
+        "1-5innhrr": "innings1through5hrrrbi",
+        "1-5innhrrbi": "innings1through5hrrrbi",
+        "1-5innhrrbis": "innings1through5hrrrbi",
+        "1-5innhrrrbi": "innings1through5hrrrbi",
+        "1-5inninghrr": "innings1through5hrrrbi",
+        "1-5inninghrrbi": "innings1through5hrrrbi",
+        "1-5inninghrrbis": "innings1through5hrrrbi",
+        "1-5inninghrrrbi": "innings1through5hrrrbi",
+        "1-5innhitsrunsrbis": "innings1through5hrrrbi",
+        "1-5innhitsrunsrbi": "innings1through5hrrrbi",
+        "1-5inninghitsrunsrbis": "innings1through5hrrrbi",
+        "1-5inninghitsrunsrbi": "innings1through5hrrrbi",
+        "innings1through5hrr": "innings1through5hrrrbi",
+        "innings1through5hrrbi": "innings1through5hrrrbi",
+        "innings1through5hrrbis": "innings1through5hrrrbi",
+        "innings1through5hrrrbi": "innings1through5hrrrbi",
+        "innings1through5hitsrunsrbis": "innings1through5hrrrbi",
+        "innings1through5hitsrunsrbi": "innings1through5hrrrbi",
+        "1stinnhitterfs": "firstinninghitterfantasyscore",
+        "1stinninghitterfs": "firstinninghitterfantasyscore",
+        "1stinnhitterfantasy": "firstinninghitterfantasyscore",
+        "1stinnhitterfantasyscore": "firstinninghitterfantasyscore",
+        "1stinninghitterfantasy": "firstinninghitterfantasyscore",
+        "1stinninghitterfantasyscore": "firstinninghitterfantasyscore",
+        "firstinninghitterfs": "firstinninghitterfantasyscore",
+        "firstinninghitterfantasy": "firstinninghitterfantasyscore",
+        "firstinninghitterfantasyscore": "firstinninghitterfantasyscore",
+        "1-3innhitterfs": "innings1through3hitterfantasyscore",
+        "1-3inninghitterfs": "innings1through3hitterfantasyscore",
+        "1-3innhitterfantasy": "innings1through3hitterfantasyscore",
+        "1-3innhitterfantasyscore": "innings1through3hitterfantasyscore",
+        "1-3inninghitterfantasy": "innings1through3hitterfantasyscore",
+        "1-3inninghitterfantasyscore": "innings1through3hitterfantasyscore",
+        "innings1through3hitterfs": "innings1through3hitterfantasyscore",
+        "innings1through3hitterfantasy": "innings1through3hitterfantasyscore",
+        "innings1through3hitterfantasyscore": "innings1through3hitterfantasyscore",
+        "1-5innhitterfs": "innings1through5hitterfantasyscore",
+        "1-5inninghitterfs": "innings1through5hitterfantasyscore",
+        "1-5innhitterfantasy": "innings1through5hitterfantasyscore",
+        "1-5innhitterfantasyscore": "innings1through5hitterfantasyscore",
+        "1-5inninghitterfantasy": "innings1through5hitterfantasyscore",
+        "1-5inninghitterfantasyscore": "innings1through5hitterfantasyscore",
+        "innings1through5hitterfs": "innings1through5hitterfantasyscore",
+        "innings1through5hitterfantasy": "innings1through5hitterfantasyscore",
+        "innings1through5hitterfantasyscore": "innings1through5hitterfantasyscore",
         "totalbases": "totalbases",
         "tb": "totalbases",
         "fantasy": "fantasyscore",
@@ -1477,75 +1614,240 @@ def _game_log_season_type_label(game_type):
     return "Regular Season"
 
 
+def _empty_batter_partial_stats():
+    return {
+        "singles": 0,
+        "doubles": 0,
+        "triples": 0,
+        "home_runs": 0,
+        "hits": 0,
+        "runs": 0,
+        "rbi": 0,
+        "walks": 0,
+        "hit_by_pitch": 0,
+        "stolen_bases": 0,
+    }
+
+
+def _empty_pitcher_partial_stats():
+    return {
+        "strikeouts": 0,
+        "hits_allowed": 0,
+        "pitches_thrown": 0,
+    }
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
-def load_batter_first_inning_hrrrbi_by_game(batter_id, season_year):
-    if not batter_id or not season_year:
+def load_mlb_game_feed_live(game_pk):
+    game_key = normalize_game_pk(game_pk)
+    if not game_key:
+        return {}
+    url = f"https://statsapi.mlb.com/api/v1.1/game/{game_key}/feed/live"
+    try:
+        return _profiled_requests_get(url, service="mlb", timeout=20).json()
+    except Exception as exc:
+        logger.warning("MLB feed/live fetch failed for game_pk=%s: %s", game_key, exc)
         return {}
 
+
+def _batter_partial_output(stats_by_range):
+    output = {}
+    for prefix, stats in stats_by_range.items():
+        hrrrbi = int(stats["hits"] + stats["runs"] + stats["rbi"])
+        fantasy_score = calculate_prizepicks_hitter_fantasy_score(
+            stats["singles"],
+            stats["doubles"],
+            stats["triples"],
+            stats["home_runs"],
+            stats["runs"],
+            stats["rbi"],
+            stats["walks"],
+            stats["hit_by_pitch"],
+            stats["stolen_bases"],
+        )
+        output[f"{prefix}_hrrrbi"] = hrrrbi
+        output[f"{prefix}_hitter_fantasy_score"] = fantasy_score
+    return {
+        "first_inning_hrrrbi": output.get("first_inning_hrrrbi", 0),
+        "innings_1_3_hrrrbi": output.get("innings_1_3_hrrrbi", 0),
+        "innings_1_5_hrrrbi": output.get("innings_1_5_hrrrbi", 0),
+        "first_inning_hitter_fantasy_score": output.get("first_inning_hitter_fantasy_score", 0.0),
+        "innings_1_3_hitter_fantasy_score": output.get("innings_1_3_hitter_fantasy_score", 0.0),
+        "innings_1_5_hitter_fantasy_score": output.get("innings_1_5_hitter_fantasy_score", 0.0),
+    }
+
+
+def _pitcher_partial_output(stats_by_range):
+    return {
+        "first_inning_strikeouts": int(stats_by_range["first_inning"]["strikeouts"]),
+        "innings_1_2_strikeouts": int(stats_by_range["innings_1_2"]["strikeouts"]),
+        "innings_1_3_strikeouts": int(stats_by_range["innings_1_3"]["strikeouts"]),
+        "first_inning_hits_allowed": int(stats_by_range["first_inning"]["hits_allowed"]),
+        "first_inning_pitches_thrown": int(stats_by_range["first_inning"]["pitches_thrown"]),
+    }
+
+
+def _batter_partial_stats_from_feed(feed, batter_id):
+    selected_batter_id = _int_like(batter_id, default=-1)
+    hit_events = {
+        "single": "singles",
+        "double": "doubles",
+        "triple": "triples",
+        "home_run": "home_runs",
+    }
+    ranges = {
+        "first_inning": 1,
+        "innings_1_3": 3,
+        "innings_1_5": 5,
+    }
+    stats_by_range = {prefix: _empty_batter_partial_stats() for prefix in ranges}
+    plays = feed.get("liveData", {}).get("plays", {}).get("allPlays", []) if isinstance(feed, dict) else []
+    for play in plays:
+        if not isinstance(play, dict):
+            continue
+        inning = _int_like((play.get("about") or {}).get("inning"))
+        active_prefixes = [prefix for prefix, max_inning in ranges.items() if 1 <= inning <= max_inning]
+        if not active_prefixes:
+            continue
+
+        matchup = play.get("matchup", {}) if isinstance(play.get("matchup"), dict) else {}
+        batter = matchup.get("batter", {}) if isinstance(matchup.get("batter"), dict) else {}
+        result = play.get("result", {}) if isinstance(play.get("result"), dict) else {}
+        event_type = str(result.get("eventType") or "").lower().strip()
+        batter_matches = _int_like(batter.get("id"), default=-1) == selected_batter_id
+        if batter_matches:
+            hit_column = hit_events.get(event_type)
+            for prefix in active_prefixes:
+                stats = stats_by_range[prefix]
+                if hit_column:
+                    stats[hit_column] += 1
+                    stats["hits"] += 1
+                if event_type in {"walk", "intent_walk"}:
+                    stats["walks"] += 1
+                if event_type == "hit_by_pitch":
+                    stats["hit_by_pitch"] += 1
+                stats["rbi"] += _int_like(result.get("rbi"), default=0)
+
+        for runner in play.get("runners", []) or []:
+            if not isinstance(runner, dict):
+                continue
+            details = runner.get("details", {}) if isinstance(runner.get("details"), dict) else {}
+            runner_record = details.get("runner", {}) if isinstance(details.get("runner"), dict) else {}
+            if _int_like(runner_record.get("id"), default=-1) != selected_batter_id:
+                continue
+            movement = runner.get("movement", {}) if isinstance(runner.get("movement"), dict) else {}
+            runner_event_type = str(details.get("eventType") or "").lower().strip()
+            for prefix in active_prefixes:
+                if str(movement.get("end") or "").lower() == "score":
+                    stats_by_range[prefix]["runs"] += 1
+                if runner_event_type.startswith("stolen_base"):
+                    stats_by_range[prefix]["stolen_bases"] += 1
+
+    return _batter_partial_output(stats_by_range)
+
+
+def _pitcher_partial_stats_from_feed(feed, pitcher_id):
+    selected_pitcher_id = _int_like(pitcher_id, default=-1)
+    hit_events = {"single", "double", "triple", "home_run"}
+    ranges = {
+        "first_inning": 1,
+        "innings_1_2": 2,
+        "innings_1_3": 3,
+    }
+    stats_by_range = {prefix: _empty_pitcher_partial_stats() for prefix in ranges}
+    plays = feed.get("liveData", {}).get("plays", {}).get("allPlays", []) if isinstance(feed, dict) else []
+    for play in plays:
+        if not isinstance(play, dict):
+            continue
+        inning = _int_like((play.get("about") or {}).get("inning"))
+        active_prefixes = [prefix for prefix, max_inning in ranges.items() if 1 <= inning <= max_inning]
+        if not active_prefixes:
+            continue
+
+        matchup = play.get("matchup", {}) if isinstance(play.get("matchup"), dict) else {}
+        pitcher = matchup.get("pitcher", {}) if isinstance(matchup.get("pitcher"), dict) else {}
+        if _int_like(pitcher.get("id"), default=-1) != selected_pitcher_id:
+            continue
+
+        result = play.get("result", {}) if isinstance(play.get("result"), dict) else {}
+        event_type = str(result.get("eventType") or "").lower().strip()
+        pitch_count = 0
+        for play_event in play.get("playEvents", []) or []:
+            if not isinstance(play_event, dict):
+                continue
+            details = play_event.get("details", {}) if isinstance(play_event.get("details"), dict) else {}
+            if details.get("isPitch") is True:
+                pitch_count += 1
+
+        for prefix in active_prefixes:
+            stats = stats_by_range[prefix]
+            if event_type.startswith("strikeout"):
+                stats["strikeouts"] += 1
+            if event_type in hit_events:
+                stats["hits_allowed"] += 1
+            stats["pitches_thrown"] += pitch_count
+
+    return _pitcher_partial_output(stats_by_range)
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_batter_partial_props_by_game(batter_id, season_year):
+    if not batter_id or not season_year:
+        return {}
     try:
         season_year = int(season_year)
     except (TypeError, ValueError):
         return {}
-
-    try:
-        selected_batter_id = int(float(batter_id))
-    except (TypeError, ValueError):
-        return {}
-
-    season_log = load_batter_prop_game_log(batter_id, season_year=season_year, include_first_inning=False)
+    season_log = load_batter_prop_game_log(batter_id, season_year=season_year, include_partial_props=False)
     if season_log.empty or "game_pk" not in season_log.columns:
         return {}
 
-    hit_events = {"single", "double", "triple", "home_run"}
-    first_inning_by_game = {}
+    partial_by_game = {}
     game_pks = [
         normalize_game_pk(game_pk)
         for game_pk in season_log["game_pk"].tolist()
         if normalize_game_pk(game_pk)
     ]
-
     for game_key in sorted(set(game_pks)):
-        url = f"https://statsapi.mlb.com/api/v1.1/game/{game_key}/feed/live"
-        try:
-            feed = _profiled_requests_get(url, service="mlb", timeout=20).json()
-        except Exception as exc:
-            logger.warning("First-inning game feed fetch failed for game_pk=%s batter_id=%s: %s", game_key, batter_id, exc)
-            first_inning_by_game[game_key] = 0
-            continue
+        feed = load_mlb_game_feed_live(game_key)
+        partial_by_game[game_key] = _batter_partial_stats_from_feed(feed, batter_id)
+    return partial_by_game
 
-        plays = feed.get("liveData", {}).get("plays", {}).get("allPlays", [])
-        hits = 0
-        runs = 0
-        rbis = 0
-        for play in plays:
-            about = play.get("about", {}) if isinstance(play, dict) else {}
-            if _int_like(about.get("inning")) != 1:
-                continue
 
-            matchup = play.get("matchup", {}) if isinstance(play.get("matchup"), dict) else {}
-            batter = matchup.get("batter", {}) if isinstance(matchup.get("batter"), dict) else {}
-            result = play.get("result", {}) if isinstance(play.get("result"), dict) else {}
-            batter_matches = _int_like(batter.get("id"), default=-1) == selected_batter_id
-            event_type = str(result.get("eventType") or "").lower().strip()
-            if batter_matches:
-                if event_type in hit_events:
-                    hits += 1
-                rbis += _int_like(result.get("rbi"), default=0)
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_pitcher_partial_props_by_game(pitcher_id, season_year):
+    if not pitcher_id or not season_year:
+        return {}
+    try:
+        season_year = int(season_year)
+    except (TypeError, ValueError):
+        return {}
+    season_log = load_pitcher_prop_game_log(pitcher_id, season_year=season_year, include_partial_props=False)
+    if season_log.empty or "game_pk" not in season_log.columns:
+        return {}
 
-            for runner in play.get("runners", []) or []:
-                details = runner.get("details", {}) if isinstance(runner, dict) else {}
-                runner_record = details.get("runner", {}) if isinstance(details.get("runner"), dict) else {}
-                movement = runner.get("movement", {}) if isinstance(runner, dict) else {}
-                if _int_like(runner_record.get("id"), default=-1) == selected_batter_id and str(movement.get("end") or "").lower() == "score":
-                    runs += 1
+    partial_by_game = {}
+    game_pks = [
+        normalize_game_pk(game_pk)
+        for game_pk in season_log["game_pk"].tolist()
+        if normalize_game_pk(game_pk)
+    ]
+    for game_key in sorted(set(game_pks)):
+        feed = load_mlb_game_feed_live(game_key)
+        partial_by_game[game_key] = _pitcher_partial_stats_from_feed(feed, pitcher_id)
+    return partial_by_game
 
-        first_inning_by_game[game_key] = hits + runs + rbis
 
-    return first_inning_by_game
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_batter_first_inning_hrrrbi_by_game(batter_id, season_year):
+    return {
+        game_pk: int(values.get("first_inning_hrrrbi", 0))
+        for game_pk, values in load_batter_partial_props_by_game(batter_id, season_year).items()
+    }
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def load_batter_prop_game_log(batter_id, season_year=2026, include_first_inning=False):
+def load_batter_prop_game_log(batter_id, season_year=2026, include_first_inning=False, include_partial_props=False):
     if not batter_id:
         return pd.DataFrame()
 
@@ -1642,11 +1944,13 @@ def load_batter_prop_game_log(batter_id, season_year=2026, include_first_inning=
         return pd.DataFrame()
 
     game_log = pd.DataFrame(rows).sort_values("game_date").reset_index(drop=True)
-    if include_first_inning:
-        first_inning_values = load_batter_first_inning_hrrrbi_by_game(batter_id, season_year)
-        game_log["first_inning_hrrrbi"] = game_log["game_pk"].apply(
-            lambda game_pk: int(first_inning_values.get(normalize_game_pk(game_pk), 0))
-        )
+    include_partial_props = include_partial_props or include_first_inning
+    if include_partial_props:
+        partial_values = load_batter_partial_props_by_game(batter_id, season_year)
+        for prop_column in BATTER_PARTIAL_PROP_COLUMNS:
+            game_log[prop_column] = game_log["game_pk"].apply(
+                lambda game_pk, column=prop_column: partial_values.get(normalize_game_pk(game_pk), {}).get(column, 0)
+            )
     game_log["label"] = game_log.apply(
         lambda row: f"{row['game_date'].strftime('%m/%d')} {row['opponent']}".strip(),
         axis=1,
@@ -1682,14 +1986,19 @@ def load_batter_prop_game_log_seasons(batter_id):
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def load_batter_prop_all_game_logs(batter_id, include_first_inning=False):
+def load_batter_prop_all_game_logs(batter_id, include_first_inning=False, include_partial_props=False):
     seasons = load_batter_prop_game_log_seasons(batter_id)
     if not seasons:
         seasons = [date.today().year]
 
     frames = []
     for season in seasons:
-        season_df = load_batter_prop_game_log(batter_id, season_year=season, include_first_inning=include_first_inning)
+        season_df = load_batter_prop_game_log(
+            batter_id,
+            season_year=season,
+            include_first_inning=include_first_inning,
+            include_partial_props=include_partial_props,
+        )
         if not season_df.empty:
             frames.append(season_df)
 
@@ -1731,7 +2040,7 @@ def innings_pitched_to_outs(innings_pitched):
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def load_pitcher_prop_game_log(pitcher_id, season_year=2026):
+def load_pitcher_prop_game_log(pitcher_id, season_year=2026, include_partial_props=False):
     if not pitcher_id:
         return pd.DataFrame()
 
@@ -1815,6 +2124,12 @@ def load_pitcher_prop_game_log(pitcher_id, season_year=2026):
         return pd.DataFrame()
 
     game_log = pd.DataFrame(rows).sort_values("game_date").reset_index(drop=True)
+    if include_partial_props:
+        partial_values = load_pitcher_partial_props_by_game(pitcher_id, season_year)
+        for prop_column in PITCHER_PARTIAL_PROP_COLUMNS:
+            game_log[prop_column] = game_log["game_pk"].apply(
+                lambda game_pk, column=prop_column: partial_values.get(normalize_game_pk(game_pk), {}).get(column, 0)
+            )
     game_log["label"] = game_log.apply(
         lambda row: f"{row['game_date'].strftime('%m/%d')} {row['opponent']}".strip(),
         axis=1,
@@ -1850,14 +2165,18 @@ def load_pitcher_prop_game_log_seasons(pitcher_id):
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def load_pitcher_prop_all_game_logs(pitcher_id):
+def load_pitcher_prop_all_game_logs(pitcher_id, include_partial_props=False):
     seasons = load_pitcher_prop_game_log_seasons(pitcher_id)
     if not seasons:
         seasons = [date.today().year]
 
     frames = []
     for season in seasons:
-        season_df = load_pitcher_prop_game_log(pitcher_id, season_year=season)
+        season_df = load_pitcher_prop_game_log(
+            pitcher_id,
+            season_year=season,
+            include_partial_props=include_partial_props,
+        )
         if not season_df.empty:
             frames.append(season_df)
 
@@ -2861,8 +3180,8 @@ def toggle_game_log_h2h_selection(h2h_key, range_key):
 
 
 def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop, selected_prop_line, current_opponent_context, game_log_filters=None):
-    include_first_inning = prop_column == "first_inning_hrrrbi"
-    game_log_df = load_batter_prop_game_log(batter_id, include_first_inning=include_first_inning)
+    include_partial_props = prop_column in BATTER_PARTIAL_PROP_COLUMNS
+    game_log_df = load_batter_prop_game_log(batter_id, include_partial_props=include_partial_props)
     game_log_df = apply_game_log_filters(game_log_df, game_log_filters)
     range_key = f"batter_game_log_range_{batter_id}"
     h2h_key = f"batter_game_log_h2h_{batter_id}"
@@ -2894,7 +3213,11 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
             current_opponent_context,
         )
     elif h2h_enabled:
-        all_game_log_df = load_batter_prop_all_game_logs(batter_id, include_first_inning=include_first_inning) if has_opponent_context else pd.DataFrame()
+        all_game_log_df = (
+            load_batter_prop_all_game_logs(batter_id, include_partial_props=include_partial_props)
+            if has_opponent_context
+            else pd.DataFrame()
+        )
         all_game_log_df = apply_game_log_filters(all_game_log_df, game_log_filters)
         h2h_tile_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
     else:
@@ -2932,7 +3255,11 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
                 current_opponent_context,
             )
         else:
-            all_game_log_df = load_batter_prop_all_game_logs(batter_id, include_first_inning=include_first_inning) if has_opponent_context else pd.DataFrame()
+            all_game_log_df = (
+                load_batter_prop_all_game_logs(batter_id, include_partial_props=include_partial_props)
+                if has_opponent_context
+                else pd.DataFrame()
+            )
             all_game_log_df = apply_game_log_filters(all_game_log_df, game_log_filters)
             display_log_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
     else:
@@ -3047,8 +3374,8 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
 
     prop_column = game_log_prop_column(selected_prop)
     prop_slug = prop_column.replace("_", "-")
-    include_first_inning = prop_column == "first_inning_hrrrbi"
-    game_log_df = load_batter_prop_game_log(batter_id, include_first_inning=include_first_inning)
+    include_partial_props = prop_column in BATTER_PARTIAL_PROP_COLUMNS
+    game_log_df = load_batter_prop_game_log(batter_id, include_partial_props=include_partial_props)
     if prop_column not in game_log_df.columns:
         st.info("Data unavailable for this prop.")
         return
@@ -3259,7 +3586,8 @@ def render_pitcher_game_log_chart(display_log_df, prop_column, selected_prop, se
 
 
 def render_pitcher_game_log_sample_section(pitcher_id, prop_column, selected_prop, selected_prop_line, current_opponent_context, game_log_filters=None):
-    game_log_df = load_pitcher_prop_game_log(pitcher_id)
+    include_partial_props = prop_column in PITCHER_PARTIAL_PROP_COLUMNS
+    game_log_df = load_pitcher_prop_game_log(pitcher_id, include_partial_props=include_partial_props)
     game_log_df = apply_game_log_filters(game_log_df, game_log_filters)
     range_key = f"pitcher_game_log_range_{pitcher_id}"
     h2h_key = f"pitcher_game_log_h2h_{pitcher_id}"
@@ -3289,7 +3617,11 @@ def render_pitcher_game_log_sample_section(pitcher_id, prop_column, selected_pro
             current_opponent_context,
         )
     elif h2h_enabled:
-        all_game_log_df = load_pitcher_prop_all_game_logs(pitcher_id) if has_opponent_context else pd.DataFrame()
+        all_game_log_df = (
+            load_pitcher_prop_all_game_logs(pitcher_id, include_partial_props=include_partial_props)
+            if has_opponent_context
+            else pd.DataFrame()
+        )
         all_game_log_df = apply_game_log_filters(all_game_log_df, game_log_filters)
         h2h_tile_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
     else:
@@ -3330,7 +3662,11 @@ def render_pitcher_game_log_sample_section(pitcher_id, prop_column, selected_pro
                 current_opponent_context,
             )
         else:
-            all_game_log_df = load_pitcher_prop_all_game_logs(pitcher_id) if has_opponent_context else pd.DataFrame()
+            all_game_log_df = (
+                load_pitcher_prop_all_game_logs(pitcher_id, include_partial_props=include_partial_props)
+                if has_opponent_context
+                else pd.DataFrame()
+            )
             all_game_log_df = apply_game_log_filters(all_game_log_df, game_log_filters)
             display_log_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
     else:
@@ -3376,7 +3712,8 @@ def render_pitcher_prop_game_log_section(pitcher_id, current_opponent_context, p
 
     prop_column = PITCHER_GAME_LOG_PROP_COLUMNS.get(selected_prop)
     prop_slug = prop_column.replace("_", "-")
-    game_log_df = load_pitcher_prop_game_log(pitcher_id)
+    include_partial_props = prop_column in PITCHER_PARTIAL_PROP_COLUMNS
+    game_log_df = load_pitcher_prop_game_log(pitcher_id, include_partial_props=include_partial_props)
     if prop_column not in game_log_df.columns:
         st.info("Data unavailable for this prop.")
         return
@@ -7860,16 +8197,22 @@ def render_homepage_props_tab():
             if not cache_key:
                 continue
             player_type, player_id, prop_column, _, _, _ = cache_key
-            include_first_inning = player_type == "batter" and prop_column == "first_inning_hrrrbi"
-            rows_by_game_log_key.setdefault((player_type, player_id, include_first_inning), []).append((row, cache_key))
+            include_partial_props = (
+                (player_type == "batter" and prop_column in BATTER_PARTIAL_PROP_COLUMNS)
+                or (player_type == "pitcher" and prop_column in PITCHER_PARTIAL_PROP_COLUMNS)
+            )
+            rows_by_game_log_key.setdefault((player_type, player_id, include_partial_props), []).append((row, cache_key))
 
-        for (player_type, player_id, include_first_inning), player_rows in rows_by_game_log_key.items():
+        for (player_type, player_id, include_partial_props), player_rows in rows_by_game_log_key.items():
             if player_type == "pitcher":
-                game_log_df = load_pitcher_prop_game_log(player_id)
+                game_log_df = load_pitcher_prop_game_log(
+                    player_id,
+                    include_partial_props=include_partial_props,
+                )
             else:
                 game_log_df = load_batter_prop_game_log(
                     player_id,
-                    include_first_inning=include_first_inning,
+                    include_partial_props=include_partial_props,
                 )
             if game_log_df.empty:
                 for _, cache_key in player_rows:
