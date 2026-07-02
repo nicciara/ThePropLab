@@ -569,6 +569,241 @@ def _render_page_header_and_styles():
             background-color:var(--dash-surface-2)!important;
             color:var(--dash-control-text)!important;
         }
+        *, *:before, *:after{box-sizing:border-box}
+        section[data-testid="stMain"]{overflow-x:hidden}
+        section[data-testid="stMain"] img{max-width:100%}
+        @media (max-width:768px){
+            section[data-testid="stMain"] .block-container{
+                padding-left:0.7rem;
+                padding-right:0.7rem;
+                padding-top:0.65rem;
+                max-width:100vw;
+            }
+            section[data-testid="stMain"] [data-testid="stVerticalBlock"]{gap:0.42rem}
+            section[data-testid="stMain"] [data-testid="stHorizontalBlock"]{gap:0.45rem}
+            section[data-testid="stMain"] h1{font-size:1.65rem}
+            section[data-testid="stMain"] h2{font-size:1.32rem}
+            section[data-testid="stMain"] h3{font-size:1.05rem;margin-bottom:0.2rem}
+            .section-title-strong{font-size:19px;margin-bottom:7px}
+            .dash-card{border-radius:12px;padding:12px 12px}
+            .dash-card-title{font-size:18px;margin-bottom:8px}
+            .dash-grid{grid-template-columns:minmax(0,1fr);gap:6px;font-size:12px}
+            .dash-grid-compact{grid-template-columns:104px minmax(0,1fr);font-size:11px}
+            .st-key-homepage_props_filters [data-testid="stHorizontalBlock"],
+            [class*="st-key-batter_game_log_filters_"] [data-testid="stHorizontalBlock"],
+            [class*="st-key-pitcher_game_log_filters_"] [data-testid="stHorizontalBlock"]{
+                flex-direction:column;
+                gap:0.25rem;
+            }
+            .st-key-homepage_props_filters [data-testid="stHorizontalBlock"]>div,
+            [class*="st-key-batter_game_log_filters_"] [data-testid="stHorizontalBlock"]>div,
+            [class*="st-key-pitcher_game_log_filters_"] [data-testid="stHorizontalBlock"]>div{
+                width:100%!important;
+                flex:1 1 100%!important;
+            }
+            section[data-testid="stMain"] [data-baseweb="select"] > div{min-height:42px}
+            .props-card{
+                width:100%;
+                max-width:100%;
+                padding:12px!important;
+                margin:10px 0!important;
+                overflow:hidden;
+            }
+            .props-card-main{
+                grid-template-columns:52px minmax(0,1fr)!important;
+                align-items:start!important;
+                gap:10px!important;
+            }
+            .props-card-avatar-wrap,
+            .props-card-avatar{
+                width:52px!important;
+                height:52px!important;
+            }
+            .props-card-star{
+                width:18px!important;
+                height:18px!important;
+                font-size:10px!important;
+                right:-2px!important;
+                top:-3px!important;
+            }
+            .props-card-body{min-width:0!important}
+            .props-card-player{
+                font-size:17px!important;
+                line-height:1.15!important;
+                overflow-wrap:anywhere;
+            }
+            .props-card-prop{
+                font-size:13px!important;
+                line-height:1.25!important;
+                margin-top:4px!important;
+                overflow-wrap:anywhere;
+            }
+            .props-card-meta{font-size:11px!important;line-height:1.25!important}
+            .props-card-actions{
+                align-items:flex-start!important;
+                gap:7px!important;
+                margin-top:8px!important;
+            }
+            .line-badge{
+                min-width:0;
+                padding:5px 9px;
+                gap:6px;
+            }
+            .line-value{font-size:18px}
+            .book-badge-img{height:19px;max-width:30px}
+            .modifier-badge-img{height:21px;max-width:26px}
+            .props-open-player{
+                width:100%;
+                min-height:38px;
+                margin-top:2px;
+            }
+            .props-ou-bubble{
+                grid-column:1 / -1;
+                width:100%!important;
+                height:auto!important;
+                min-height:38px;
+                border-radius:10px!important;
+                flex-direction:row!important;
+                gap:16px;
+                justify-content:center!important;
+                font-size:12px!important;
+            }
+            .props-ou-bubble div{font-size:12px!important}
+            .props-stat-grid{
+                display:grid!important;
+                grid-template-columns:repeat(3,minmax(0,1fr));
+                gap:7px!important;
+                margin-top:10px!important;
+            }
+            .props-stat-tile{
+                min-width:0!important;
+                padding:8px 6px!important;
+            }
+            .props-stat-label{font-size:10px!important}
+            .props-stat-value{font-size:14px!important}
+            .game-card{padding:8px 8px 12px 8px}
+            .game-card .lineup-area{
+                min-height:0!important;
+                padding:6px 2px!important;
+                font-size:13px;
+                line-height:1.25;
+            }
+            .game-card .lineup-area>div{
+                margin-top:2px!important;
+                margin-bottom:2px!important;
+                line-height:1.25!important;
+            }
+            .game-card .lineup-area>div:first-child{
+                margin-bottom:6px!important;
+                padding:5px 7px!important;
+                font-size:12px!important;
+                line-height:1.25!important;
+            }
+            .game-card .stButton>button{
+                min-height:30px;
+                line-height:1.15;
+            }
+            .st-key-prop_tab_row [data-testid="stHorizontalBlock"],
+            .st-key-game_log_range_tiles [data-testid="stHorizontalBlock"]{
+                gap:6px;
+                padding:2px 2px 7px 2px;
+            }
+            .st-key-prop_tab_row .stButton>button{
+                min-height:36px;
+                padding:7px 11px;
+                font-size:12px;
+            }
+            .st-key-game_log_range_tiles .stButton>button{
+                min-width:112px;
+                min-height:72px;
+                padding:8px 10px;
+                font-size:12px;
+            }
+            [class*="st-key-batter_game_log_line_controls_"] [data-testid="stHorizontalBlock"],
+            [class*="st-key-pitcher_game_log_line_controls_"] [data-testid="stHorizontalBlock"]{
+                flex-wrap:wrap!important;
+                align-items:center;
+                gap:6px;
+            }
+            [class*="st-key-batter_game_log_line_controls_"] [data-testid="stHorizontalBlock"]>div,
+            [class*="st-key-pitcher_game_log_line_controls_"] [data-testid="stHorizontalBlock"]>div{
+                width:auto!important;
+                flex:0 0 auto!important;
+            }
+            [class*="st-key-batter_game_log_line_controls_"] [data-testid="stHorizontalBlock"]>div:nth-child(1),
+            [class*="st-key-batter_game_log_line_controls_"] [data-testid="stHorizontalBlock"]>div:nth-child(3),
+            [class*="st-key-pitcher_game_log_line_controls_"] [data-testid="stHorizontalBlock"]>div:nth-child(1),
+            [class*="st-key-pitcher_game_log_line_controls_"] [data-testid="stHorizontalBlock"]>div:nth-child(3){
+                width:42px!important;
+                flex-basis:42px!important;
+            }
+            [class*="st-key-batter_game_log_line_controls_"] [data-testid="stHorizontalBlock"]>div:nth-child(2),
+            [class*="st-key-pitcher_game_log_line_controls_"] [data-testid="stHorizontalBlock"]>div:nth-child(2){
+                flex:1 1 calc(100% - 96px)!important;
+                min-width:118px!important;
+            }
+            [class*="st-key-batter_game_log_line_controls_"] [data-testid="stHorizontalBlock"]>div:nth-child(4),
+            [class*="st-key-pitcher_game_log_line_controls_"] [data-testid="stHorizontalBlock"]>div:nth-child(4){
+                width:100%!important;
+                flex-basis:100%!important;
+            }
+            [class*="st-key-batter_game_log_line_controls_"] [data-testid="stHorizontalBlock"]>div:nth-child(5),
+            [class*="st-key-pitcher_game_log_line_controls_"] [data-testid="stHorizontalBlock"]>div:nth-child(5){
+                display:none;
+            }
+            [class*="st-key-batter_game_log_line_controls_"] .stButton>button,
+            [class*="st-key-pitcher_game_log_line_controls_"] .stButton>button{
+                min-height:38px;
+                width:100%;
+            }
+            .prop-control-spacer{height:1px}
+            .line-badge-wrap{justify-content:flex-start}
+            div[data-testid="stAltairChart"],
+            div[data-testid="stPlotlyChart"]{
+                max-width:100%;
+                overflow-x:auto;
+                -webkit-overflow-scrolling:touch;
+            }
+            .st-key-run_value_pitch_table div[data-testid="stDataFrame"],
+            .st-key-run_value_pitch_table [data-testid="stDataFrameResizable"]{
+                max-width:100%;
+                overflow-x:auto;
+                font-size:12px;
+            }
+            .lineup-table-scroll{
+                max-width:100%;
+                overflow-x:auto;
+                -webkit-overflow-scrolling:touch;
+                padding-bottom:3px;
+            }
+            .lineup-table-grid,
+            .lineup-table-row{
+                min-width:610px!important;
+                font-size:11px!important;
+            }
+        }
+        @media (max-width:480px){
+            section[data-testid="stMain"] .block-container{
+                padding-left:0.55rem;
+                padding-right:0.55rem;
+            }
+            .props-card-main{grid-template-columns:46px minmax(0,1fr)!important}
+            .props-card-avatar-wrap,
+            .props-card-avatar{
+                width:46px!important;
+                height:46px!important;
+            }
+            .props-card-player{font-size:16px!important}
+            .props-card-prop{font-size:12px!important}
+            .props-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+            .line-badge{padding:5px 8px}
+            .line-value{font-size:17px}
+            .lineup-table-grid,
+            .lineup-table-row{
+                min-width:560px!important;
+                font-size:10.5px!important;
+            }
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -2817,15 +3052,16 @@ def render_game_log_filter_controls(game_log_df, key_prefix):
     _coerce_selectbox_state(opponent_key, opponent_options)
     _coerce_selectbox_state(result_key, result_options)
 
-    filter_cols = st.columns([1.35, 1.0, 1.55, 1.0])
-    with filter_cols[0]:
-        season = st.selectbox("Season", season_options, key=season_key)
-    with filter_cols[1]:
-        home_away = st.selectbox("Home/Away", home_away_options, key=home_away_key)
-    with filter_cols[2]:
-        opponent = st.selectbox("Opponent", opponent_options, key=opponent_key)
-    with filter_cols[3]:
-        result = st.selectbox("Win/Loss", result_options, key=result_key)
+    with st.container(key=f"{key_prefix}_filters"):
+        filter_cols = st.columns([1.35, 1.0, 1.55, 1.0])
+        with filter_cols[0]:
+            season = st.selectbox("Season", season_options, key=season_key)
+        with filter_cols[1]:
+            home_away = st.selectbox("Home/Away", home_away_options, key=home_away_key)
+        with filter_cols[2]:
+            opponent = st.selectbox("Opponent", opponent_options, key=opponent_key)
+        with filter_cols[3]:
+            result = st.selectbox("Win/Loss", result_options, key=result_key)
 
     return {
         "season": season,
@@ -3460,48 +3696,49 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
     has_exact_prizepicks_line = isinstance(selected_projection_line, dict)
 
     st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
-    line_cols = st.columns([0.34, 1.35, 0.34, 1.15, 5.2])
-    with line_cols[0]:
-        st.button(
-            "-",
-            key=f"batter_{prop_slug}_line_minus_{batter_id}",
-            on_click=adjust_game_log_line_value,
-            args=(line_key, -1.0),
-        )
-    with line_cols[1]:
-        selected_odds_type = (
-            _projection_value(selected_projection_line, "odds_type", "oddsType", default="")
-            if has_exact_prizepicks_line
-            else ""
-        )
-        st.markdown(
-            f"<div class='line-badge-wrap'>{render_line_badge(st.session_state[line_key], selected_odds_type, show_book_badge=has_exact_prizepicks_line)}</div>",
-            unsafe_allow_html=True,
-        )
-    with line_cols[2]:
-        st.button(
-            "+",
-            key=f"batter_{prop_slug}_line_plus_{batter_id}",
-            on_click=adjust_game_log_line_value,
-            args=(line_key, 1.0),
-        )
+    with st.container(key=f"batter_game_log_line_controls_{batter_id}"):
+        line_cols = st.columns([0.34, 1.35, 0.34, 1.15, 5.2])
+        with line_cols[0]:
+            st.button(
+                "-",
+                key=f"batter_{prop_slug}_line_minus_{batter_id}",
+                on_click=adjust_game_log_line_value,
+                args=(line_key, -1.0),
+            )
+        with line_cols[1]:
+            selected_odds_type = (
+                _projection_value(selected_projection_line, "odds_type", "oddsType", default="")
+                if has_exact_prizepicks_line
+                else ""
+            )
+            st.markdown(
+                f"<div class='line-badge-wrap'>{render_line_badge(st.session_state[line_key], selected_odds_type, show_book_badge=has_exact_prizepicks_line)}</div>",
+                unsafe_allow_html=True,
+            )
+        with line_cols[2]:
+            st.button(
+                "+",
+                key=f"batter_{prop_slug}_line_plus_{batter_id}",
+                on_click=adjust_game_log_line_value,
+                args=(line_key, 1.0),
+            )
 
-    with line_cols[3]:
-        if projection_lines:
-            with st.expander("Alt lines", expanded=False):
-                for idx, projection_line in enumerate(projection_lines):
-                    projection_line_value = _projection_line_value(projection_line)
-                    projection_odds_type = _projection_value(projection_line, "odds_type", "oddsType", default="")
-                    st.markdown(
-                        f"<div class='alt-line-row'>{render_line_badge(projection_line_value, projection_odds_type)}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    st.button(
-                        "Use",
-                        key=f"batter_{prop_slug}_alt_line_{batter_id}_{idx}",
-                        on_click=set_game_log_line_value,
-                        args=(line_key, projection_line_value),
-                    )
+        with line_cols[3]:
+            if projection_lines:
+                with st.expander("Alt lines", expanded=False):
+                    for idx, projection_line in enumerate(projection_lines):
+                        projection_line_value = _projection_line_value(projection_line)
+                        projection_odds_type = _projection_value(projection_line, "odds_type", "oddsType", default="")
+                        st.markdown(
+                            f"<div class='alt-line-row'>{render_line_badge(projection_line_value, projection_odds_type)}</div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.button(
+                            "Use",
+                            key=f"batter_{prop_slug}_alt_line_{batter_id}_{idx}",
+                            on_click=set_game_log_line_value,
+                            args=(line_key, projection_line_value),
+                        )
 
     game_log_filters = render_game_log_filter_controls(game_log_df, f"batter_game_log_filters_{batter_id}")
 
@@ -3800,43 +4037,44 @@ def render_pitcher_prop_game_log_section(pitcher_id, current_opponent_context, p
     exact_projection_lines = projection_lines_matching_value(projection_lines, selected_line_value)
 
     st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
-    line_cols = st.columns([0.34, 1.35, 0.34, 1.15, 5.2])
-    with line_cols[0]:
-        st.button(
-            "-",
-            key=f"pitcher_{prop_slug}_line_minus_{pitcher_id}",
-            on_click=adjust_pitcher_game_log_line_value,
-            args=(line_key, -1.0),
-        )
-    with line_cols[1]:
-        st.markdown(
-            f"<div class='line-badge-wrap'>{render_line_badge_for_projection_matches(st.session_state[line_key], exact_projection_lines)}</div>",
-            unsafe_allow_html=True,
-        )
-    with line_cols[2]:
-        st.button(
-            "+",
-            key=f"pitcher_{prop_slug}_line_plus_{pitcher_id}",
-            on_click=adjust_pitcher_game_log_line_value,
-            args=(line_key, 1.0),
-        )
+    with st.container(key=f"pitcher_game_log_line_controls_{pitcher_id}"):
+        line_cols = st.columns([0.34, 1.35, 0.34, 1.15, 5.2])
+        with line_cols[0]:
+            st.button(
+                "-",
+                key=f"pitcher_{prop_slug}_line_minus_{pitcher_id}",
+                on_click=adjust_pitcher_game_log_line_value,
+                args=(line_key, -1.0),
+            )
+        with line_cols[1]:
+            st.markdown(
+                f"<div class='line-badge-wrap'>{render_line_badge_for_projection_matches(st.session_state[line_key], exact_projection_lines)}</div>",
+                unsafe_allow_html=True,
+            )
+        with line_cols[2]:
+            st.button(
+                "+",
+                key=f"pitcher_{prop_slug}_line_plus_{pitcher_id}",
+                on_click=adjust_pitcher_game_log_line_value,
+                args=(line_key, 1.0),
+            )
 
-    with line_cols[3]:
-        if projection_lines:
-            with st.expander("Alt lines", expanded=False):
-                for idx, projection_line in enumerate(projection_lines):
-                    projection_line_value = _projection_line_value(projection_line)
-                    projection_exact_lines = projection_lines_matching_value(projection_lines, projection_line_value)
-                    st.markdown(
-                        f"<div class='alt-line-row'>{render_line_badge_for_projection_matches(projection_line_value, projection_exact_lines)}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    st.button(
-                        "Use",
-                        key=f"pitcher_{prop_slug}_alt_line_{pitcher_id}_{idx}",
-                        on_click=set_pitcher_game_log_line_value,
-                        args=(line_key, projection_line_value),
-                    )
+        with line_cols[3]:
+            if projection_lines:
+                with st.expander("Alt lines", expanded=False):
+                    for idx, projection_line in enumerate(projection_lines):
+                        projection_line_value = _projection_line_value(projection_line)
+                        projection_exact_lines = projection_lines_matching_value(projection_lines, projection_line_value)
+                        st.markdown(
+                            f"<div class='alt-line-row'>{render_line_badge_for_projection_matches(projection_line_value, projection_exact_lines)}</div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.button(
+                            "Use",
+                            key=f"pitcher_{prop_slug}_alt_line_{pitcher_id}_{idx}",
+                            on_click=set_pitcher_game_log_line_value,
+                            args=(line_key, projection_line_value),
+                        )
 
     game_log_filters = render_game_log_filter_controls(game_log_df, f"pitcher_game_log_filters_{pitcher_id}")
 
@@ -4903,7 +5141,7 @@ def render_lineup_table(lineup, current_batter_id="", current_batter_name="", li
             player_stats_key = ""
         lineup_stats = stats_by_player.get(player_stats_key, {})
         rows.append(
-            f"<div style='min-width:690px; display:grid; grid-template-columns:{grid_columns}; align-items:center; border-top:1px solid #e5e7eb; "
+            f"<div class='lineup-table-row' style='min-width:690px; display:grid; grid-template-columns:{grid_columns}; align-items:center; border-top:1px solid #e5e7eb; "
             f"{row_style}'>"
             f"<div style='padding:6px 8px;'>{player.get('number', '')}</div>"
             f"<div style='padding:6px 10px;'>{batter_cell_html}</div>"
@@ -4919,8 +5157,8 @@ def render_lineup_table(lineup, current_batter_id="", current_batter_name="", li
 
     return (
         f"{lineup_status_html(lineup)}"
-        "<div style='overflow-x:auto; width:100%;'>"
-        f"<div style='min-width:690px; display:grid; grid-template-columns:{grid_columns}; align-items:end; font-size:12px; color:#6b7280; font-weight:700;'>"
+        "<div class='lineup-table-scroll' style='overflow-x:auto; width:100%;'>"
+        f"<div class='lineup-table-grid' style='min-width:690px; display:grid; grid-template-columns:{grid_columns}; align-items:end; font-size:12px; color:#6b7280; font-weight:700;'>"
         "<div style='padding:0 8px 6px 8px;'>#</div>"
         "<div style='padding:0 10px 6px 10px;'>Batter</div>"
         "<div style='padding:0 6px 6px 6px; text-align:center; white-space:nowrap;'>Hand</div>"
@@ -4976,13 +5214,14 @@ def render_general_information(sb, batter_id, batter_name):
                 st.info("Run value by pitch type is unavailable for this batter right now.")
             else:
                 display_run_value_df = compact_run_value_display_df(run_value_df)
-                st.dataframe(
-                    style_run_value_table(display_run_value_df).format(
-                        compact_run_value_table_formatters(display_run_value_df)
-                    ),
-                    hide_index=True,
-                    use_container_width=True,
-                )
+                with st.container(key="run_value_pitch_table"):
+                    st.dataframe(
+                        style_run_value_table(display_run_value_df).format(
+                            compact_run_value_table_formatters(display_run_value_df)
+                        ),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
         with run_value_cols[1]:
             pitcher_id = run_value_pitcher.get("id", "")
             pitcher_name = run_value_pitcher.get("name", "") or "Opposing Pitcher Arsenal"
@@ -7329,10 +7568,10 @@ def _cached_prop_card_tile(label, value):
     except (TypeError, ValueError):
         pass
     return (
-        "<div style='min-width:88px; padding:10px 12px; border:1px solid var(--dash-border); border-radius:10px; "
+        "<div class='props-stat-tile' style='min-width:88px; padding:10px 12px; border:1px solid var(--dash-border); border-radius:10px; "
         f"background:{tile_bg}; color:{tile_color}; text-align:center;'>"
-        f"<div style='font-size:11px; font-weight:900; letter-spacing:.04em;'>{html.escape(str(label))}</div>"
-        f"<div style='font-size:17px; font-weight:950; margin-top:4px;'>{html.escape(value_text)}</div>"
+        f"<div class='props-stat-label' style='font-size:11px; font-weight:900; letter-spacing:.04em;'>{html.escape(str(label))}</div>"
+        f"<div class='props-stat-value' style='font-size:17px; font-weight:950; margin-top:4px;'>{html.escape(value_text)}</div>"
         "</div>"
     )
 
@@ -7419,7 +7658,7 @@ def _cached_props_card_html(record):
     )
     href = str(_cached_record_value(record, "routing", "href", default=""))
     open_link = (
-        f"<a href='{html.escape(href, quote=True)}' target='_self' "
+        f"<a class='props-open-player' href='{html.escape(href, quote=True)}' target='_self' "
         "style='display:inline-flex; align-items:center; justify-content:center; padding:8px 12px; "
         "border-radius:999px; background:var(--dash-accent); color:white; font-size:12px; font-weight:900; "
         "text-decoration:none; white-space:nowrap;'>Open Player</a>"
@@ -7428,36 +7667,36 @@ def _cached_props_card_html(record):
     )
     status = str(_cached_record_value(record, "prop", "status", default="PrizePicks") or "PrizePicks")
     return (
-        "<div style='border:1px solid var(--dash-border); border-radius:14px; background:var(--dash-card-bg); "
+        "<div class='props-card' style='border:1px solid var(--dash-border); border-radius:14px; background:var(--dash-card-bg); "
         "box-shadow:0 2px 9px rgba(15,23,42,.10); padding:18px; margin:14px 0; color:var(--dash-text);'>"
-        "<div style='display:grid; grid-template-columns:auto minmax(220px,1fr) auto; align-items:center; gap:16px;'>"
-        "<div style='position:relative; width:68px; height:68px; flex:0 0 auto;'>"
-        "<div style='width:68px; height:68px; border-radius:999px; overflow:hidden; border:1px solid var(--dash-border); "
+        "<div class='props-card-main' style='display:grid; grid-template-columns:auto minmax(220px,1fr) auto; align-items:center; gap:16px;'>"
+        "<div class='props-card-avatar-wrap' style='position:relative; width:68px; height:68px; flex:0 0 auto;'>"
+        "<div class='props-card-avatar' style='width:68px; height:68px; border-radius:999px; overflow:hidden; border:1px solid var(--dash-border); "
         "background:var(--dash-surface-2); display:flex; align-items:center; justify-content:center;'>"
         f"{avatar_html}"
         "</div>"
-        "<div style='position:absolute; right:-3px; top:-4px; width:22px; height:22px; border-radius:999px; "
+        "<div class='props-card-star' style='position:absolute; right:-3px; top:-4px; width:22px; height:22px; border-radius:999px; "
         "background:var(--dash-card-bg); border:1px solid var(--dash-border); display:flex; align-items:center; "
         "justify-content:center; color:#f59e0b; font-size:13px; font-weight:900;'>☆</div>"
         "</div>"
-        "<div style='min-width:0;'>"
-        f"<div style='font-size:21px; font-weight:950; line-height:1.1;'>{player_text}</div>"
-        f"<div style='font-size:16px; font-weight:950; margin-top:6px;'>O/U {html.escape(line_text)} {html.escape(prop_label)}</div>"
-        f"<div style='font-size:12px; color:var(--dash-muted); font-weight:800; margin-top:5px;'>{html.escape(matchup)}{html.escape(hand_text)}</div>"
-        "<div style='display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px;'>"
+        "<div class='props-card-body' style='min-width:0;'>"
+        f"<div class='props-card-player' style='font-size:21px; font-weight:950; line-height:1.1;'>{player_text}</div>"
+        f"<div class='props-card-prop' style='font-size:16px; font-weight:950; margin-top:6px;'>O/U {html.escape(line_text)} {html.escape(prop_label)}</div>"
+        f"<div class='props-card-meta' style='font-size:12px; color:var(--dash-muted); font-weight:800; margin-top:5px;'>{html.escape(matchup)}{html.escape(hand_text)}</div>"
+        "<div class='props-card-actions' style='display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px;'>"
         f"{_cached_line_badge(record)}"
         f"<div style='font-size:12px; color:var(--dash-muted); font-weight:800;'>{html.escape(status)}</div>"
         f"{open_link}"
         "</div>"
         "</div>"
-        "<div style='width:86px; height:86px; border-radius:999px; border:2px solid var(--dash-border); "
+        "<div class='props-ou-bubble' style='width:86px; height:86px; border-radius:999px; border:2px solid var(--dash-border); "
         "background:var(--dash-surface-2); display:flex; flex-direction:column; align-items:center; justify-content:center; "
         "font-weight:950; line-height:1.35; color:var(--dash-text);'>"
         "<div style='font-size:15px;'>O —</div>"
         "<div style='font-size:15px;'>U —</div>"
         "</div>"
         "</div>"
-        f"<div style='display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;'>{stat_tiles}</div>"
+        f"<div class='props-stat-grid' style='display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;'>{stat_tiles}</div>"
         "</div>"
     )
 
@@ -7491,40 +7730,41 @@ def _render_cached_homepage_props_tab(cache_payload):
         team for team in st.session_state.get(teams_filter_key, []) if team in team_filter_options
     ]
 
-    filter_cols = st.columns([1.1, 2.2, 2.1, 1.7])
-    with filter_cols[0]:
-        st.selectbox(
-            "Line Type",
-            PROPS_LINE_TYPE_FILTER_OPTIONS,
-            key="props_line_type_filter",
-            on_change=set_homepage_props_line_type,
-        )
-        st.selectbox(
-            "Sort By Trend",
-            props_trend_sort_options,
-            key=trend_filter_key,
-        )
-    with filter_cols[1]:
-        st.multiselect(
-            "Props",
-            available_props,
-            key=props_filter_key,
-            placeholder="All props",
-        )
-    with filter_cols[2]:
-        st.multiselect(
-            "Games",
-            game_filter_options,
-            key=games_filter_key,
-            placeholder="All games",
-        )
-    with filter_cols[3]:
-        st.multiselect(
-            "Teams",
-            team_filter_options,
-            key=teams_filter_key,
-            placeholder="All teams",
-        )
+    with st.container(key="homepage_props_filters"):
+        filter_cols = st.columns([1.1, 2.2, 2.1, 1.7])
+        with filter_cols[0]:
+            st.selectbox(
+                "Line Type",
+                PROPS_LINE_TYPE_FILTER_OPTIONS,
+                key="props_line_type_filter",
+                on_change=set_homepage_props_line_type,
+            )
+            st.selectbox(
+                "Sort By Trend",
+                props_trend_sort_options,
+                key=trend_filter_key,
+            )
+        with filter_cols[1]:
+            st.multiselect(
+                "Props",
+                available_props,
+                key=props_filter_key,
+                placeholder="All props",
+            )
+        with filter_cols[2]:
+            st.multiselect(
+                "Games",
+                game_filter_options,
+                key=games_filter_key,
+                placeholder="All games",
+            )
+        with filter_cols[3]:
+            st.multiselect(
+                "Teams",
+                team_filter_options,
+                key=teams_filter_key,
+                placeholder="All teams",
+            )
 
     selected_props_filter = [
         prop for prop in st.session_state.get(props_filter_key, []) if prop in available_props
@@ -7787,40 +8027,41 @@ def render_homepage_props_tab():
         team for team in st.session_state.get(teams_filter_key, []) if team in team_filter_options
     ]
 
-    filter_cols = st.columns([1.1, 2.2, 2.1, 1.7])
-    with filter_cols[0]:
-        st.selectbox(
-            "Line Type",
-            PROPS_LINE_TYPE_FILTER_OPTIONS,
-            key="props_line_type_filter",
-            on_change=set_homepage_props_line_type,
-        )
-        st.selectbox(
-            "Sort By Trend",
-            props_trend_sort_options,
-            key=trend_filter_key,
-        )
-    with filter_cols[1]:
-        st.multiselect(
-            "Props",
-            available_props,
-            key=props_filter_key,
-            placeholder="All props",
-        )
-    with filter_cols[2]:
-        st.multiselect(
-            "Games",
-            game_filter_options,
-            key=games_filter_key,
-            placeholder="All games",
-        )
-    with filter_cols[3]:
-        st.multiselect(
-            "Teams",
-            team_filter_options,
-            key=teams_filter_key,
-            placeholder="All teams",
-        )
+    with st.container(key="homepage_props_filters"):
+        filter_cols = st.columns([1.1, 2.2, 2.1, 1.7])
+        with filter_cols[0]:
+            st.selectbox(
+                "Line Type",
+                PROPS_LINE_TYPE_FILTER_OPTIONS,
+                key="props_line_type_filter",
+                on_change=set_homepage_props_line_type,
+            )
+            st.selectbox(
+                "Sort By Trend",
+                props_trend_sort_options,
+                key=trend_filter_key,
+            )
+        with filter_cols[1]:
+            st.multiselect(
+                "Props",
+                available_props,
+                key=props_filter_key,
+                placeholder="All props",
+            )
+        with filter_cols[2]:
+            st.multiselect(
+                "Games",
+                game_filter_options,
+                key=games_filter_key,
+                placeholder="All games",
+            )
+        with filter_cols[3]:
+            st.multiselect(
+                "Teams",
+                team_filter_options,
+                key=teams_filter_key,
+                placeholder="All teams",
+            )
 
     selected_props_filter = [
         prop for prop in st.session_state.get(props_filter_key, []) if prop in available_props
@@ -8188,10 +8429,10 @@ def render_homepage_props_tab():
         except (TypeError, ValueError):
             pass
         return (
-            "<div style='min-width:88px; padding:10px 12px; border:1px solid var(--dash-border); border-radius:10px; "
+            "<div class='props-stat-tile' style='min-width:88px; padding:10px 12px; border:1px solid var(--dash-border); border-radius:10px; "
             f"background:{tile_bg}; color:{tile_color}; text-align:center;'>"
-            f"<div style='font-size:11px; font-weight:900; letter-spacing:.04em;'>{html.escape(str(label))}</div>"
-            f"<div style='font-size:17px; font-weight:950; margin-top:4px;'>{html.escape(value_text)}</div>"
+            f"<div class='props-stat-label' style='font-size:11px; font-weight:900; letter-spacing:.04em;'>{html.escape(str(label))}</div>"
+            f"<div class='props-stat-value' style='font-size:17px; font-weight:950; margin-top:4px;'>{html.escape(value_text)}</div>"
             "</div>"
         )
 
@@ -8429,7 +8670,7 @@ def render_homepage_props_tab():
             for label in ("L5", "L10", "L15", "H2H", "AVG", "SZN")
         )
         open_link = (
-            f"<a href='{html.escape(row['href'], quote=True)}' target='_self' "
+            f"<a class='props-open-player' href='{html.escape(row['href'], quote=True)}' target='_self' "
             "style='display:inline-flex; align-items:center; justify-content:center; padding:8px 12px; "
             "border-radius:999px; background:var(--dash-accent); color:white; font-size:12px; font-weight:900; "
             "text-decoration:none; white-space:nowrap;'>Open Player</a>"
@@ -8437,36 +8678,36 @@ def render_homepage_props_tab():
             else "<span style='font-size:12px; color:var(--dash-muted); font-weight:700;'>Player detail unavailable</span>"
         )
         return (
-            "<div style='border:1px solid var(--dash-border); border-radius:14px; background:var(--dash-card-bg); "
+            "<div class='props-card' style='border:1px solid var(--dash-border); border-radius:14px; background:var(--dash-card-bg); "
             "box-shadow:0 2px 9px rgba(15,23,42,.10); padding:18px; margin:14px 0; color:var(--dash-text);'>"
-            "<div style='display:grid; grid-template-columns:auto minmax(220px,1fr) auto; align-items:center; gap:16px;'>"
-            "<div style='position:relative; width:68px; height:68px; flex:0 0 auto;'>"
-            "<div style='width:68px; height:68px; border-radius:999px; overflow:hidden; border:1px solid var(--dash-border); "
+            "<div class='props-card-main' style='display:grid; grid-template-columns:auto minmax(220px,1fr) auto; align-items:center; gap:16px;'>"
+            "<div class='props-card-avatar-wrap' style='position:relative; width:68px; height:68px; flex:0 0 auto;'>"
+            "<div class='props-card-avatar' style='width:68px; height:68px; border-radius:999px; overflow:hidden; border:1px solid var(--dash-border); "
             "background:var(--dash-surface-2); display:flex; align-items:center; justify-content:center;'>"
             f"{avatar_html}"
             "</div>"
-            "<div style='position:absolute; right:-3px; top:-4px; width:22px; height:22px; border-radius:999px; "
+            "<div class='props-card-star' style='position:absolute; right:-3px; top:-4px; width:22px; height:22px; border-radius:999px; "
             "background:var(--dash-card-bg); border:1px solid var(--dash-border); display:flex; align-items:center; "
             "justify-content:center; color:#f59e0b; font-size:13px; font-weight:900;'>☆</div>"
             "</div>"
-            "<div style='min-width:0;'>"
-            f"<div style='font-size:21px; font-weight:950; line-height:1.1;'>{player_text}</div>"
-            f"<div style='font-size:16px; font-weight:950; margin-top:6px;'>O/U {html.escape(line_text)} {html.escape(str(row.get('prop') or ''))}</div>"
-            f"<div style='font-size:12px; color:var(--dash-muted); font-weight:800; margin-top:5px;'>{html.escape(matchup)}{html.escape(hand_text)}</div>"
-            "<div style='display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px;'>"
+            "<div class='props-card-body' style='min-width:0;'>"
+            f"<div class='props-card-player' style='font-size:21px; font-weight:950; line-height:1.1;'>{player_text}</div>"
+            f"<div class='props-card-prop' style='font-size:16px; font-weight:950; margin-top:6px;'>O/U {html.escape(line_text)} {html.escape(str(row.get('prop') or ''))}</div>"
+            f"<div class='props-card-meta' style='font-size:12px; color:var(--dash-muted); font-weight:800; margin-top:5px;'>{html.escape(matchup)}{html.escape(hand_text)}</div>"
+            "<div class='props-card-actions' style='display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px;'>"
             f"{line_html}"
             f"<div style='font-size:12px; color:var(--dash-muted); font-weight:800;'>{html.escape(str(row.get('status', '') or 'PrizePicks'))}</div>"
             f"{open_link}"
             "</div>"
             "</div>"
-            "<div style='width:86px; height:86px; border-radius:999px; border:2px solid var(--dash-border); "
+            "<div class='props-ou-bubble' style='width:86px; height:86px; border-radius:999px; border:2px solid var(--dash-border); "
             "background:var(--dash-surface-2); display:flex; flex-direction:column; align-items:center; justify-content:center; "
             "font-weight:950; line-height:1.35; color:var(--dash-text);'>"
             "<div style='font-size:15px;'>O —</div>"
             "<div style='font-size:15px;'>U —</div>"
             "</div>"
             "</div>"
-            f"<div style='display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;'>{stat_tiles}</div>"
+            f"<div class='props-stat-grid' style='display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;'>{stat_tiles}</div>"
             "</div>"
         )
 
