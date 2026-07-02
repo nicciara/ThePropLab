@@ -3,8 +3,10 @@ name: Build Props Summary Cache
 on:
   workflow_dispatch:
   schedule:
-    # GitHub cron uses UTC. These approximate 9 AM, 12 PM, 3 PM, and 5 PM ET during daylight saving time.
-    # During standard time they run one hour earlier in ET unless adjusted.
+    # GitHub cron uses UTC. The 04:15/05:15 runs cover shortly after midnight ET
+    # during daylight saving and standard time, followed by the existing daytime runs.
+    - cron: "15 4 * * *"
+    - cron: "15 5 * * *"
     - cron: "0 13 * * *"
     - cron: "0 16 * * *"
     - cron: "0 19 * * *"
