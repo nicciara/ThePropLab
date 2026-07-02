@@ -5075,11 +5075,7 @@ def render_general_information(sb, batter_id, batter_name):
             compare_pitcher_id = selected_compare_pitcher.get("id", "")
             compare_pitcher_name = selected_compare_pitcher.get("name", "")
             comparison_pitcher = selected_compare_pitcher
-        pitcher_pitch_type_options = (
-            get_pitcher_compare_pitch_type_options(compare_pitcher_id)
-            if compare_enabled and compare_pitcher_id
-            else ["All Pitches"]
-        )
+        pitcher_pitch_type_options = get_pitcher_compare_pitch_type_options(compare_pitcher_id)
         pitcher_pitch_type_key = f"batter_compare_pitcher_pitch_type_{batter_id}"
         if st.session_state.get(pitcher_pitch_type_key) not in pitcher_pitch_type_options:
             st.session_state[pitcher_pitch_type_key] = "All Pitches"
