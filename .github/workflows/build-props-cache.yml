@@ -15,6 +15,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: props-cache-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-props-cache:
     runs-on: ubuntu-latest
@@ -22,6 +26,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -62,5 +68,6 @@ jobs:
             echo "No Props cache changes to commit."
           else
             git commit -m "Update Props summary cache for ${CACHE_DATE}"
-            git push
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
