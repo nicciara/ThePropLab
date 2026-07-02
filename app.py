@@ -6913,16 +6913,15 @@ def _render_cached_homepage_props_tab(cache_payload):
     st.session_state["props_line_type_filter"] = selected_line_type
     game_filter_options, game_filter_lookup = _cached_game_filter_options(records)
     team_filter_options, team_filter_lookup = _cached_team_filter_options(records)
-    props_trend_sort_options = ("Best Overall", "Default", "L5", "L10", "L15", "H2H", "SZN", "AVG")
+    props_trend_sort_options = ("Best Overall", "L5", "L10", "L15", "H2H", "SZN", "AVG")
     props_filter_key = "homepage_props_filter_props"
     games_filter_key = "homepage_props_filter_games"
     teams_filter_key = "homepage_props_filter_teams"
     trend_filter_key = "homepage_props_trend_filter"
     if st.session_state.get(trend_filter_key) not in props_trend_sort_options:
         st.session_state[trend_filter_key] = "Best Overall"
-    elif st.session_state.get(trend_filter_key) == "Default" and not st.session_state.get("homepage_props_cached_default_sort_migrated"):
+    elif st.session_state.get(trend_filter_key) == "Default":
         st.session_state[trend_filter_key] = "Best Overall"
-        st.session_state["homepage_props_cached_default_sort_migrated"] = True
     st.session_state[props_filter_key] = [
         prop for prop in st.session_state.get(props_filter_key, []) if prop in available_props
     ]
@@ -7210,21 +7209,15 @@ def render_homepage_props_tab():
     game_filter_options, game_filter_lookup = _homepage_game_filter_options(games)
     team_filter_options, team_filter_lookup = _homepage_team_filter_options(games)
 
-    props_trend_sort_options = (
-        "Default",
-        "L5",
-        "L10",
-        "L15",
-        "H2H",
-        "SZN",
-        "AVG",
-    )
+    props_trend_sort_options = ("Best Overall", "L5", "L10", "L15", "H2H", "SZN", "AVG")
     props_filter_key = "homepage_props_filter_props"
     games_filter_key = "homepage_props_filter_games"
     teams_filter_key = "homepage_props_filter_teams"
     trend_filter_key = "homepage_props_trend_filter"
     if st.session_state.get(trend_filter_key) not in props_trend_sort_options:
-        st.session_state[trend_filter_key] = "Default"
+        st.session_state[trend_filter_key] = "Best Overall"
+    elif st.session_state.get(trend_filter_key) == "Default":
+        st.session_state[trend_filter_key] = "Best Overall"
     st.session_state[props_filter_key] = [
         prop for prop in st.session_state.get(props_filter_key, []) if prop in available_props
     ]
@@ -7279,7 +7272,10 @@ def render_homepage_props_tab():
     selected_team_filter_labels = [
         team for team in st.session_state.get(teams_filter_key, []) if team in team_filter_lookup
     ]
-    selected_trend_sort = st.session_state.get(trend_filter_key, "Default")
+    selected_trend_sort = st.session_state.get(trend_filter_key, "Best Overall")
+    if selected_trend_sort == "Default":
+        selected_trend_sort = "Best Overall"
+        st.session_state[trend_filter_key] = selected_trend_sort
     active_props = selected_props_filter or available_props
     active_prop_filter_key = (
         f"selected-{_homepage_filter_key(active_props)}"
