@@ -3082,7 +3082,7 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
     has_exact_prizepicks_line = isinstance(selected_projection_line, dict)
 
     st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
-    line_cols = st.columns([0.34, 1.35, 0.34, 1.15])
+    line_cols = st.columns([0.34, 1.35, 0.34, 1.15, 5.2])
     with line_cols[0]:
         st.button(
             "-",
@@ -3394,7 +3394,7 @@ def render_pitcher_prop_game_log_section(pitcher_id, current_opponent_context, p
     exact_projection_lines = projection_lines_matching_value(projection_lines, selected_line_value)
 
     st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
-    line_cols = st.columns([0.34, 1.35, 0.34, 1.15])
+    line_cols = st.columns([0.34, 1.35, 0.34, 1.15, 5.2])
     with line_cols[0]:
         st.button(
             "-",
