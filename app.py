@@ -6608,6 +6608,22 @@ def _render_props_autoload_sentinel(props_loaded_card_limit_key, loaded_card_lim
     st.rerun()
 
 
+def _props_autoload_loading_html():
+    return (
+        "<style>"
+        ".props-autoload-loading{display:flex;align-items:center;justify-content:center;gap:10px;"
+        "margin:18px 0 8px 0;color:var(--dash-muted);font-size:12px;font-weight:800;}"
+        ".props-autoload-spinner{width:18px;height:18px;border:2px solid var(--dash-control-border);"
+        "border-top-color:var(--dash-accent);border-radius:999px;animation:props-autoload-spin .8s linear infinite;}"
+        "@keyframes props-autoload-spin{to{transform:rotate(360deg)}}"
+        "</style>"
+        "<div class='props-autoload-loading'>"
+        "<span class='props-autoload-spinner' aria-hidden='true'></span>"
+        "<span>Loading more props as you scroll</span>"
+        "</div>"
+    )
+
+
 def _cached_record_value(record, *keys, default=""):
     value = record
     for key in keys:
@@ -7043,7 +7059,6 @@ def _render_cached_homepage_props_tab(cache_payload):
         st.markdown(_cached_props_card_html(record), unsafe_allow_html=True)
 
     if remaining_record_count > 0:
-        st.caption(f"Showing {len(visible_records)} of {len(filtered_records)} props")
         load_more_key_parts = (
             selected_date_key,
             active_prop_filter_key,
@@ -7052,28 +7067,32 @@ def _render_cached_homepage_props_tab(cache_payload):
             selected_teams_key,
             selected_trend_sort_key,
         )
-        _render_props_autoload_sentinel(
-            props_loaded_card_limit_key,
-            loaded_card_limit,
-            props_card_batch_size,
-            len(filtered_records),
-            load_more_key_parts,
-        )
-
-        def _load_more_cached_props_rows():
-            st.session_state[props_loaded_card_limit_key] = min(
+        if _props_autoload_enabled():
+            _render_props_autoload_sentinel(
+                props_loaded_card_limit_key,
+                loaded_card_limit,
+                props_card_batch_size,
                 len(filtered_records),
-                loaded_card_limit + props_card_batch_size,
+                load_more_key_parts,
             )
+            st.markdown(_props_autoload_loading_html(), unsafe_allow_html=True)
+        else:
+            st.caption(f"Showing {len(visible_records)} of {len(filtered_records)} props")
 
-        st.button(
-            f"Load next {props_card_batch_size} props",
-            key=(
-                f"load_more_cached_props_{selected_date_key}_{active_prop_filter_key}_"
-                f"{selected_line_type_key}_{selected_games_key}_{selected_teams_key}_{selected_trend_sort_key}"
-            ),
-            on_click=_load_more_cached_props_rows,
-        )
+            def _load_more_cached_props_rows():
+                st.session_state[props_loaded_card_limit_key] = min(
+                    len(filtered_records),
+                    loaded_card_limit + props_card_batch_size,
+                )
+
+            st.button(
+                f"Load next {props_card_batch_size} props",
+                key=(
+                    f"load_more_cached_props_{selected_date_key}_{active_prop_filter_key}_"
+                    f"{selected_line_type_key}_{selected_games_key}_{selected_teams_key}_{selected_trend_sort_key}"
+                ),
+                on_click=_load_more_cached_props_rows,
+            )
 
 
 def render_homepage_props_tab():
