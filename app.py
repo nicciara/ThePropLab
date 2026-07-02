@@ -6619,7 +6619,7 @@ def _props_autoload_loading_html():
         "</style>"
         "<div class='props-autoload-loading'>"
         "<span class='props-autoload-spinner' aria-hidden='true'></span>"
-        "<span>Loading more props as you scroll</span>"
+        "<span>Loading more props</span>"
         "</div>"
     )
 
