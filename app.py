@@ -383,6 +383,9 @@ def _render_page_header_and_styles():
         }
         .game-card{padding:10px 14px 20px 14px;box-sizing:border-box}
         .game-card .lineup-area{padding:8px 6px}
+        .homepage-lineups-mobile{display:none}
+        .homepage-lineups-desktop{display:block}
+        .mobile-lineups-grid{display:none}
         /* Style Streamlit buttons used as inline pitcher links to look like normal hyperlinks (scoped to game cards) */
         .game-card .stButton>button{background:none;border:none;padding:0;color:var(--dash-value);text-decoration:none;cursor:pointer;font-size:inherit;font-weight:650}
         .game-card .stButton>button:hover{color:var(--dash-accent);text-decoration:underline}
@@ -842,6 +845,158 @@ def _render_page_header_and_styles():
                 flex:1 1 100%!important;
             }
             section[data-testid="stMain"] [data-baseweb="select"] > div{min-height:42px}
+            .mobile-lineups-grid{
+                display:grid;
+                grid-template-columns:repeat(2,minmax(0,1fr));
+                gap:8px;
+                margin:6px 0 10px 0;
+                width:100%;
+            }
+            .st-key-homepage_lineups_desktop{display:none!important}
+            .mobile-lineup-card{
+                border:1px solid var(--dash-border);
+                border-radius:12px;
+                background:var(--dash-card-bg);
+                color:var(--dash-text);
+                box-shadow:0 2px 7px rgba(15,23,42,.10);
+                padding:8px;
+                min-width:0;
+                overflow:hidden;
+            }
+            .mobile-lineup-matchup{
+                display:flex;
+                align-items:center;
+                justify-content:space-between;
+                gap:6px;
+                margin-bottom:5px;
+            }
+            .mobile-lineup-teams{
+                display:flex;
+                align-items:center;
+                gap:5px;
+                min-width:0;
+                font-size:13px;
+                font-weight:950;
+                line-height:1.1;
+                white-space:nowrap;
+            }
+            .mobile-lineup-logo{
+                width:18px;
+                height:18px;
+                object-fit:contain;
+                flex:0 0 auto;
+            }
+            .mobile-lineup-at{
+                color:var(--dash-muted);
+                font-size:10px;
+                font-weight:900;
+            }
+            .mobile-lineup-status-pill{
+                flex:0 0 auto;
+                border:1px solid var(--dash-control-border);
+                border-radius:999px;
+                padding:3px 6px;
+                color:var(--dash-muted);
+                font-size:9px;
+                font-weight:900;
+                line-height:1;
+                text-transform:uppercase;
+                white-space:nowrap;
+            }
+            .mobile-lineup-time{
+                color:var(--dash-muted);
+                font-size:11px;
+                font-weight:800;
+                line-height:1.2;
+                margin-bottom:6px;
+                white-space:nowrap;
+                overflow:hidden;
+                text-overflow:ellipsis;
+            }
+            .mobile-lineup-sp{
+                display:grid;
+                grid-template-columns:1fr;
+                gap:3px;
+                margin-bottom:6px;
+            }
+            .mobile-lineup-sp-row{
+                color:var(--dash-text);
+                font-size:11px;
+                font-weight:750;
+                line-height:1.2;
+                white-space:nowrap;
+                overflow:hidden;
+                text-overflow:ellipsis;
+            }
+            .mobile-lineup-team-abbr{
+                color:var(--dash-muted);
+                font-weight:950;
+            }
+            .mobile-lineup-lineup-pill{
+                display:inline-flex;
+                align-items:center;
+                justify-content:center;
+                border-radius:999px;
+                padding:4px 7px;
+                font-size:10px;
+                font-weight:900;
+                line-height:1;
+                margin-bottom:6px;
+                white-space:nowrap;
+            }
+            .mobile-lineup-lineup-pill.confirmed{
+                border:1px solid #16a34a;
+                background:#f0fdf4;
+                color:#15803d;
+            }
+            .mobile-lineup-lineup-pill.projected,
+            .mobile-lineup-lineup-pill.pending{
+                border:1px solid #dc2626;
+                background:#fef2f2;
+                color:#b91c1c;
+            }
+            .mobile-lineup-details{
+                border-top:1px solid rgba(148,163,184,0.28);
+                padding-top:5px;
+            }
+            .mobile-lineup-details summary{
+                cursor:pointer;
+                color:var(--dash-accent);
+                font-size:11px;
+                font-weight:900;
+                line-height:1.2;
+                list-style:none;
+            }
+            .mobile-lineup-details summary::-webkit-details-marker{display:none}
+            .mobile-lineup-detail-grid{
+                display:grid;
+                grid-template-columns:1fr;
+                gap:7px;
+                margin-top:7px;
+            }
+            .mobile-lineup-detail-title{
+                color:var(--dash-title);
+                font-size:11px;
+                font-weight:950;
+                line-height:1.2;
+                margin-bottom:3px;
+            }
+            .mobile-lineup-player{
+                color:var(--dash-text);
+                font-size:11px;
+                font-weight:700;
+                line-height:1.2;
+                margin:2px 0;
+                white-space:nowrap;
+                overflow:hidden;
+                text-overflow:ellipsis;
+            }
+            .mobile-lineup-empty{
+                color:#92400e;
+                font-size:11px;
+                font-weight:800;
+                line-height:1.2;
+            }
             .game-card{padding:8px 8px 12px 8px}
             .game-card .lineup-area{
                 min-height:0!important;
@@ -9090,6 +9245,122 @@ def render_homepage_props_tab():
         )
 
 
+def homepage_mobile_lineup_status(away_lineup, home_lineup):
+    lineups = list(away_lineup or []) + list(home_lineup or [])
+    if not lineups:
+        return "Lineups pending", "pending"
+    if any(player.get("is_projected") for player in lineups):
+        return "Projected lineup", "projected"
+    return "Confirmed lineup", "confirmed"
+
+
+def homepage_mobile_pitcher_line(game, side):
+    abbr = str(game.get(f"{side}_abbrev") or "").strip()
+    pitcher = str(game.get(f"{side}_pitcher") or "TBD").strip() or "TBD"
+    hand = str(game.get(f"{side}_pitcher_hand") or "").strip()
+    hand_text = f" ({hand})" if hand else ""
+    return (
+        "<div class='mobile-lineup-sp-row'>"
+        f"<span class='mobile-lineup-team-abbr'>{html.escape(abbr)}</span>: "
+        f"{html.escape(pitcher)}{html.escape(hand_text)}"
+        "</div>"
+    )
+
+
+def homepage_mobile_lineup_rows(lineup, game, side):
+    if not lineup:
+        return "<div class='mobile-lineup-empty'>Lineup not posted yet.</div>"
+
+    opponent_side = "home" if side == "away" else "away"
+    rows = []
+    for player in lineup:
+        batter_name = str(player.get("name", "") or "")
+        batter_name_html = html.escape(batter_name)
+        player_id = player.get("player_id")
+        if player_id:
+            batter_href = _build_batter_detail_href(
+                player_id,
+                batter_name=batter_name,
+                batter_hand=player.get("handedness", ""),
+                team=game.get(f"{side}_team", ""),
+                team_id=game.get(f"{side}_team_id", ""),
+                opponent=game.get(f"{opponent_side}_team", ""),
+                opponent_id=game.get(f"{opponent_side}_team_id", ""),
+                return_game_pk=game.get("game_pk", ""),
+            )
+            batter_name_html = (
+                f"<a class='nav-name-link' href='{html.escape(batter_href, quote=True)}' target='_self'>"
+                f"{html.escape(batter_name)}</a>"
+            )
+        hand = f" ({player.get('handedness')})" if player.get("handedness") else ""
+        rows.append(
+            "<div class='mobile-lineup-player'>"
+            f"{html.escape(str(player.get('number', '') or ''))}. "
+            f"{batter_name_html}{html.escape(hand)} "
+            f"{html.escape(str(player.get('position', '') or ''))}"
+            "</div>"
+        )
+    return "".join(rows)
+
+
+def homepage_mobile_lineup_card_html(game, lineup_context):
+    away_lineup = lineup_context.get("away", [])
+    home_lineup = lineup_context.get("home", [])
+    lineup_label, lineup_class = homepage_mobile_lineup_status(away_lineup, home_lineup)
+    raw_status = game.get("status", "")
+    display_status_text = display_status(raw_status)
+    away_abbr = str(game.get("away_abbrev") or game.get("away_team") or "AWAY").strip()
+    home_abbr = str(game.get("home_abbrev") or game.get("home_team") or "HOME").strip()
+    game_time = str(game.get("game_time_et") or "").strip()
+    time_status = " | ".join(part for part in (game_time, display_status_text) if part)
+
+    return (
+        "<div class='mobile-lineup-card'>"
+        "<div class='mobile-lineup-matchup'>"
+        "<div class='mobile-lineup-teams'>"
+        f"<img class='mobile-lineup-logo' src='https://www.mlbstatic.com/team-logos/{html.escape(str(game.get('away_team_id') or ''), quote=True)}.svg' alt='{html.escape(away_abbr, quote=True)} logo' />"
+        f"<span>{html.escape(away_abbr)}</span>"
+        "<span class='mobile-lineup-at'>@</span>"
+        f"<img class='mobile-lineup-logo' src='https://www.mlbstatic.com/team-logos/{html.escape(str(game.get('home_team_id') or ''), quote=True)}.svg' alt='{html.escape(home_abbr, quote=True)} logo' />"
+        f"<span>{html.escape(home_abbr)}</span>"
+        "</div>"
+        f"<div class='mobile-lineup-status-pill'>{html.escape(display_status_text or 'Scheduled')}</div>"
+        "</div>"
+        f"<div class='mobile-lineup-time'>{html.escape(time_status or 'Time TBD')}</div>"
+        "<div class='mobile-lineup-sp'>"
+        f"{homepage_mobile_pitcher_line(game, 'away')}"
+        f"{homepage_mobile_pitcher_line(game, 'home')}"
+        "</div>"
+        f"<div class='mobile-lineup-lineup-pill {lineup_class}'>{html.escape(lineup_label)}</div>"
+        "<details class='mobile-lineup-details'>"
+        "<summary>View full lineups</summary>"
+        "<div class='mobile-lineup-detail-grid'>"
+        "<div>"
+        f"<div class='mobile-lineup-detail-title'>{html.escape(away_abbr)} lineup</div>"
+        f"{homepage_mobile_lineup_rows(away_lineup, game, 'away')}"
+        "</div>"
+        "<div>"
+        f"<div class='mobile-lineup-detail-title'>{html.escape(home_abbr)} lineup</div>"
+        f"{homepage_mobile_lineup_rows(home_lineup, game, 'home')}"
+        "</div>"
+        "</div>"
+        "</details>"
+        "</div>"
+    )
+
+
+def render_homepage_mobile_lineups(games):
+    cards = []
+    for _, game in games.iterrows():
+        lineup_context = get_game_lineups(game.get("game_pk"), game)
+        cards.append(homepage_mobile_lineup_card_html(game, lineup_context))
+    if cards:
+        st.markdown(
+            f"<div class='mobile-lineups-grid'>{''.join(cards)}</div>",
+            unsafe_allow_html=True,
+        )
+
+
 def render_homepage():
     if st.session_state["calendar_date"] != st.session_state["selected_date"]:
         st.session_state["calendar_date"] = st.session_state["selected_date"]
@@ -9152,178 +9423,180 @@ def render_homepage():
         logger.debug("Games loaded: %s", len(games))
 
         load_start = time.perf_counter()
-        for i in range(0, len(games), 2):
-            row_cols = st.columns(2)
+        render_homepage_mobile_lineups(games)
+        with st.container(key="homepage_lineups_desktop"):
+            for i in range(0, len(games), 2):
+                row_cols = st.columns(2)
 
-            for col, (_, game) in zip(row_cols, games.iloc[i:i + 2].iterrows()):
-                with col:
-                    with st.container(border=True):
-                        st.markdown("<div class='game-card'>", unsafe_allow_html=True)
-                        st.markdown(
-                            f"<div style='display:flex; justify-content:center; align-items:center; gap:16px; margin-bottom:8px;'>"
-                            f"<div style='width:48px; height:48px; display:flex; justify-content:center; align-items:center;'>"
-                            f"<img src='https://www.mlbstatic.com/team-logos/{game['away_team_id']}.svg' alt='{game['away_abbrev']} logo' style='display:block; width:100%; height:100%; object-fit:contain;' />"
-                            f"</div>"
-                            f"<span style='font-size:1.1rem; font-weight:600; line-height:1; display:flex; align-items:center;'>@</span>"
-                            f"<div style='width:48px; height:48px; display:flex; justify-content:center; align-items:center;'>"
-                            f"<img src='https://www.mlbstatic.com/team-logos/{game['home_team_id']}.svg' alt='{game['home_abbrev']} logo' style='display:block; width:100%; height:100%; object-fit:contain;' />"
-                            f"</div>"
-                            f"</div>",
-                            unsafe_allow_html=True,
-                        )
-                        raw_status = game.get("status", "")
-                        display_status_text = display_status(raw_status)
-                        status_color_text = status_color(raw_status)
-                        st.markdown(
-                            f"<div style='text-align:center; margin-bottom:6px;'>"
-                            f"<span style='font-weight:700; font-size:17px;'>🕒 {game['game_time_et']}</span>"
-                            f"</div>"
-                            f"<div style='text-align:center; font-size:13px; color:#555;'>"
-                            f"{game['venue']} | "
-                            f"<span style='color:{status_color_text}; font-weight:700;'>{display_status_text}</span>"
-                            f"</div>",
-                            unsafe_allow_html=True,
-                        )
+                for col, (_, game) in zip(row_cols, games.iloc[i:i + 2].iterrows()):
+                    with col:
+                        with st.container(border=True):
+                            st.markdown("<div class='game-card'>", unsafe_allow_html=True)
+                            st.markdown(
+                                f"<div style='display:flex; justify-content:center; align-items:center; gap:16px; margin-bottom:8px;'>"
+                                f"<div style='width:48px; height:48px; display:flex; justify-content:center; align-items:center;'>"
+                                f"<img src='https://www.mlbstatic.com/team-logos/{game['away_team_id']}.svg' alt='{game['away_abbrev']} logo' style='display:block; width:100%; height:100%; object-fit:contain;' />"
+                                f"</div>"
+                                f"<span style='font-size:1.1rem; font-weight:600; line-height:1; display:flex; align-items:center;'>@</span>"
+                                f"<div style='width:48px; height:48px; display:flex; justify-content:center; align-items:center;'>"
+                                f"<img src='https://www.mlbstatic.com/team-logos/{game['home_team_id']}.svg' alt='{game['home_abbrev']} logo' style='display:block; width:100%; height:100%; object-fit:contain;' />"
+                                f"</div>"
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
+                            raw_status = game.get("status", "")
+                            display_status_text = display_status(raw_status)
+                            status_color_text = status_color(raw_status)
+                            st.markdown(
+                                f"<div style='text-align:center; margin-bottom:6px;'>"
+                                f"<span style='font-weight:700; font-size:17px;'>🕒 {game['game_time_et']}</span>"
+                                f"</div>"
+                                f"<div style='text-align:center; font-size:13px; color:#555;'>"
+                                f"{game['venue']} | "
+                                f"<span style='color:{status_color_text}; font-weight:700;'>{display_status_text}</span>"
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
 
-                        lineup_context = get_game_lineups(game["game_pk"], game)
-                        away_lineup = lineup_context.get("away", [])
-                        home_lineup = lineup_context.get("home", [])
+                            lineup_context = get_game_lineups(game["game_pk"], game)
+                            away_lineup = lineup_context.get("away", [])
+                            home_lineup = lineup_context.get("home", [])
 
-                        away_col, home_col = st.columns(2)
+                            away_col, home_col = st.columns(2)
 
-                        with away_col:
-                            st.markdown(f"### {game['away_team']}")
-                            away_pitcher_label = f"Starting Pitcher:"
-                            away_btn_key = f"away_pitch_{game['game_pk']}"
-                            c_label, c_button, c_hand = st.columns([1, 3, 1])
-                            c_label.markdown(away_pitcher_label)
-                            # Render pitcher name as a link-styled button that opens pitcher detail
-                            if c_button.button(game['away_pitcher'], key=away_btn_key):
-                                selected_pitcher = {
-                                    'name': game.get('away_pitcher'),
-                                    'id': game.get('away_pitcher_id'),
-                                    'hand': game.get('away_pitcher_hand'),
-                                    'side': 'away'
-                                }
-                                st.session_state['selected_pitcher'] = selected_pitcher
-                                st.session_state['selected_game'] = game['game_pk']
-                                _set_pitcher_detail_query(selected_pitcher, game['game_pk'])
-                                st.rerun()
-                            away_hand_text = game.get('away_pitcher_hand')
-                            c_hand.markdown(f"({away_hand_text})" if away_hand_text else "")
-                            if not away_lineup:
-                                st.markdown(
-                                    f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; padding-top:6px; color:#92400e; font-weight:600;'>Lineup not posted yet.</div>",
-                                    unsafe_allow_html=True,
-                                )
-                            else:
-                                away_lines = []
-                                for player in away_lineup:
-                                    ph = f" ({player.get('handedness')})" if player.get('handedness') else ''
-                                    batter_name = player.get("name", "")
-                                    if player.get("player_id"):
-                                        batter_href = _build_batter_detail_href(
-                                            player.get("player_id"),
-                                            batter_name=batter_name,
-                                            batter_hand=player.get("handedness", ""),
-                                            team=game.get("away_team", ""),
-                                            team_id=game.get("away_team_id", ""),
-                                            opponent=game.get("home_team", ""),
-                                            opponent_id=game.get("home_team_id", ""),
-                                            return_game_pk=game["game_pk"],
-                                        )
-                                        batter_name_html = (
-                                            f"<a class='nav-name-link' href='{html.escape(batter_href, quote=True)}' target='_self'>"
-                                            f"{html.escape(str(batter_name))}</a>"
-                                        )
-                                    else:
-                                        batter_name_html = html.escape(str(batter_name))
-                                    away_lines.append(f"<div style='line-height:1.4; margin:4px 0;'>{player.get('number','')}. {batter_name_html}{ph} {player.get('position','')}</div>")
-                                away_lines_html = "".join(away_lines)
-                                away_warning_html = (
-                                    "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #dc2626; border-radius:6px; background:#fef2f2; color:#b91c1c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
-                                    if any(player.get("is_projected") for player in away_lineup)
-                                    else ""
-                                )
-                                away_confirmed_html = ""
-                                if not away_warning_html:
-                                    away_confirmed_html = (
-                                        "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #16a34a; border-radius:6px; background:#f0fdf4; color:#15803d; font-weight:800;'>"
-                                        "🟢 Confirmed MLB Lineup"
-                                        "</div>"
+                            with away_col:
+                                st.markdown(f"### {game['away_team']}")
+                                away_pitcher_label = f"Starting Pitcher:"
+                                away_btn_key = f"away_pitch_{game['game_pk']}"
+                                c_label, c_button, c_hand = st.columns([1, 3, 1])
+                                c_label.markdown(away_pitcher_label)
+                                # Render pitcher name as a link-styled button that opens pitcher detail
+                                if c_button.button(game['away_pitcher'], key=away_btn_key):
+                                    selected_pitcher = {
+                                        'name': game.get('away_pitcher'),
+                                        'id': game.get('away_pitcher_id'),
+                                        'hand': game.get('away_pitcher_hand'),
+                                        'side': 'away'
+                                    }
+                                    st.session_state['selected_pitcher'] = selected_pitcher
+                                    st.session_state['selected_game'] = game['game_pk']
+                                    _set_pitcher_detail_query(selected_pitcher, game['game_pk'])
+                                    st.rerun()
+                                away_hand_text = game.get('away_pitcher_hand')
+                                c_hand.markdown(f"({away_hand_text})" if away_hand_text else "")
+                                if not away_lineup:
+                                    st.markdown(
+                                        f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; padding-top:6px; color:#92400e; font-weight:600;'>Lineup not posted yet.</div>",
+                                        unsafe_allow_html=True,
                                     )
-                                st.markdown(
-                                    f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start;'>{away_warning_html}{away_confirmed_html}{away_lines_html}</div>",
-                                    unsafe_allow_html=True,
-                                )
-
-                        with home_col:
-                            st.markdown(f"### {game['home_team']}")
-                            home_pitcher_label = f"Starting Pitcher:"
-                            home_btn_key = f"home_pitch_{game['game_pk']}"
-                            c_label_h, c_button_h, c_hand_h = st.columns([1, 3, 1])
-                            c_label_h.markdown(home_pitcher_label)
-                            # Render pitcher name as a link-styled button that opens pitcher detail
-                            if c_button_h.button(game['home_pitcher'], key=home_btn_key):
-                                selected_pitcher = {
-                                    'name': game.get('home_pitcher'),
-                                    'id': game.get('home_pitcher_id'),
-                                    'hand': game.get('home_pitcher_hand'),
-                                    'side': 'home'
-                                }
-                                st.session_state['selected_pitcher'] = selected_pitcher
-                                st.session_state['selected_game'] = game['game_pk']
-                                _set_pitcher_detail_query(selected_pitcher, game['game_pk'])
-                                st.rerun()
-                            home_hand_text = game.get('home_pitcher_hand')
-                            c_hand_h.markdown(f"({home_hand_text})" if home_hand_text else "")
-
-                            if not home_lineup:
-                                st.markdown(
-                                    f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; padding-top:6px; color:#92400e; font-weight:600;'>Lineup not posted yet.</div>",
-                                    unsafe_allow_html=True,
-                                )
-                            else:
-                                home_lines = []
-                                for player in home_lineup:
-                                    ph = f" ({player.get('handedness')})" if player.get('handedness') else ''
-                                    batter_name = player.get("name", "")
-                                    if player.get("player_id"):
-                                        batter_href = _build_batter_detail_href(
-                                            player.get("player_id"),
-                                            batter_name=batter_name,
-                                            batter_hand=player.get("handedness", ""),
-                                            team=game.get("home_team", ""),
-                                            team_id=game.get("home_team_id", ""),
-                                            opponent=game.get("away_team", ""),
-                                            opponent_id=game.get("away_team_id", ""),
-                                            return_game_pk=game["game_pk"],
-                                        )
-                                        batter_name_html = (
-                                            f"<a class='nav-name-link' href='{html.escape(batter_href, quote=True)}' target='_self'>"
-                                            f"{html.escape(str(batter_name))}</a>"
-                                        )
-                                    else:
-                                        batter_name_html = html.escape(str(batter_name))
-                                    home_lines.append(f"<div style='line-height:1.4; margin:4px 0;'>{player.get('number','')}. {batter_name_html}{ph} {player.get('position','')}</div>")
-                                home_lines_html = "".join(home_lines)
-                                home_warning_html = (
-                                    "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #dc2626; border-radius:6px; background:#fef2f2; color:#b91c1c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
-                                    if any(player.get("is_projected") for player in home_lineup)
-                                    else ""
-                                )
-                                home_confirmed_html = ""
-                                if not home_warning_html:
-                                    home_confirmed_html = (
-                                        "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #16a34a; border-radius:6px; background:#f0fdf4; color:#15803d; font-weight:800;'>"
-                                        "🟢 Confirmed MLB Lineup"
-                                        "</div>"
+                                else:
+                                    away_lines = []
+                                    for player in away_lineup:
+                                        ph = f" ({player.get('handedness')})" if player.get('handedness') else ''
+                                        batter_name = player.get("name", "")
+                                        if player.get("player_id"):
+                                            batter_href = _build_batter_detail_href(
+                                                player.get("player_id"),
+                                                batter_name=batter_name,
+                                                batter_hand=player.get("handedness", ""),
+                                                team=game.get("away_team", ""),
+                                                team_id=game.get("away_team_id", ""),
+                                                opponent=game.get("home_team", ""),
+                                                opponent_id=game.get("home_team_id", ""),
+                                                return_game_pk=game["game_pk"],
+                                            )
+                                            batter_name_html = (
+                                                f"<a class='nav-name-link' href='{html.escape(batter_href, quote=True)}' target='_self'>"
+                                                f"{html.escape(str(batter_name))}</a>"
+                                            )
+                                        else:
+                                            batter_name_html = html.escape(str(batter_name))
+                                        away_lines.append(f"<div style='line-height:1.4; margin:4px 0;'>{player.get('number','')}. {batter_name_html}{ph} {player.get('position','')}</div>")
+                                    away_lines_html = "".join(away_lines)
+                                    away_warning_html = (
+                                        "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #dc2626; border-radius:6px; background:#fef2f2; color:#b91c1c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
+                                        if any(player.get("is_projected") for player in away_lineup)
+                                        else ""
                                     )
-                                st.markdown(
-                                    f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start;'>{home_warning_html}{home_confirmed_html}{home_lines_html}</div>",
-                                    unsafe_allow_html=True,
-                                )
-                        st.markdown("</div>", unsafe_allow_html=True)
+                                    away_confirmed_html = ""
+                                    if not away_warning_html:
+                                        away_confirmed_html = (
+                                            "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #16a34a; border-radius:6px; background:#f0fdf4; color:#15803d; font-weight:800;'>"
+                                            "🟢 Confirmed MLB Lineup"
+                                            "</div>"
+                                        )
+                                    st.markdown(
+                                        f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start;'>{away_warning_html}{away_confirmed_html}{away_lines_html}</div>",
+                                        unsafe_allow_html=True,
+                                    )
+
+                            with home_col:
+                                st.markdown(f"### {game['home_team']}")
+                                home_pitcher_label = f"Starting Pitcher:"
+                                home_btn_key = f"home_pitch_{game['game_pk']}"
+                                c_label_h, c_button_h, c_hand_h = st.columns([1, 3, 1])
+                                c_label_h.markdown(home_pitcher_label)
+                                # Render pitcher name as a link-styled button that opens pitcher detail
+                                if c_button_h.button(game['home_pitcher'], key=home_btn_key):
+                                    selected_pitcher = {
+                                        'name': game.get('home_pitcher'),
+                                        'id': game.get('home_pitcher_id'),
+                                        'hand': game.get('home_pitcher_hand'),
+                                        'side': 'home'
+                                    }
+                                    st.session_state['selected_pitcher'] = selected_pitcher
+                                    st.session_state['selected_game'] = game['game_pk']
+                                    _set_pitcher_detail_query(selected_pitcher, game['game_pk'])
+                                    st.rerun()
+                                home_hand_text = game.get('home_pitcher_hand')
+                                c_hand_h.markdown(f"({home_hand_text})" if home_hand_text else "")
+
+                                if not home_lineup:
+                                    st.markdown(
+                                        f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; padding-top:6px; color:#92400e; font-weight:600;'>Lineup not posted yet.</div>",
+                                        unsafe_allow_html=True,
+                                    )
+                                else:
+                                    home_lines = []
+                                    for player in home_lineup:
+                                        ph = f" ({player.get('handedness')})" if player.get('handedness') else ''
+                                        batter_name = player.get("name", "")
+                                        if player.get("player_id"):
+                                            batter_href = _build_batter_detail_href(
+                                                player.get("player_id"),
+                                                batter_name=batter_name,
+                                                batter_hand=player.get("handedness", ""),
+                                                team=game.get("home_team", ""),
+                                                team_id=game.get("home_team_id", ""),
+                                                opponent=game.get("away_team", ""),
+                                                opponent_id=game.get("away_team_id", ""),
+                                                return_game_pk=game["game_pk"],
+                                            )
+                                            batter_name_html = (
+                                                f"<a class='nav-name-link' href='{html.escape(batter_href, quote=True)}' target='_self'>"
+                                                f"{html.escape(str(batter_name))}</a>"
+                                            )
+                                        else:
+                                            batter_name_html = html.escape(str(batter_name))
+                                        home_lines.append(f"<div style='line-height:1.4; margin:4px 0;'>{player.get('number','')}. {batter_name_html}{ph} {player.get('position','')}</div>")
+                                    home_lines_html = "".join(home_lines)
+                                    home_warning_html = (
+                                        "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #dc2626; border-radius:6px; background:#fef2f2; color:#b91c1c; font-weight:800;'>⚠ Projected lineup — not confirmed</div>"
+                                        if any(player.get("is_projected") for player in home_lineup)
+                                        else ""
+                                    )
+                                    home_confirmed_html = ""
+                                    if not home_warning_html:
+                                        home_confirmed_html = (
+                                            "<div style='margin:0 0 8px 0; padding:6px 8px; border:1px solid #16a34a; border-radius:6px; background:#f0fdf4; color:#15803d; font-weight:800;'>"
+                                            "🟢 Confirmed MLB Lineup"
+                                            "</div>"
+                                        )
+                                    st.markdown(
+                                        f"<div class='lineup-area' style='min-height:{LINEUP_MIN_HEIGHT}px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start;'>{home_warning_html}{home_confirmed_html}{home_lines_html}</div>",
+                                        unsafe_allow_html=True,
+                                    )
+                            st.markdown("</div>", unsafe_allow_html=True)
         load_time = time.perf_counter() - load_start
         logger.debug("Player API calls: %s", PLAYER_API_CALLS)
         logger.debug("Total load time: %.2fs", load_time)
