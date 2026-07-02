@@ -7022,11 +7022,12 @@ def render_homepage_props_tab():
         selected_date_key = st.session_state.get("selected_date", eastern_today()).isoformat()
         cache_payload, cache_unavailable_reason = load_props_summary_cache(selected_date_key)
         if cache_payload:
-            generated_at = cache_payload.get("generated_at", "")
-            if generated_at:
-                st.caption(f"Using cached Props summaries generated at {generated_at}.")
-            else:
-                st.caption("Using cached Props summaries.")
+            if props_cache_mode == "force_cache":
+                generated_at = cache_payload.get("generated_at", "")
+                if generated_at:
+                    st.caption(f"Using cached Props summaries generated at {generated_at}.")
+                else:
+                    st.caption("Using cached Props summaries.")
             _render_cached_homepage_props_tab(cache_payload)
             return
         if props_cache_mode == "force_cache":
