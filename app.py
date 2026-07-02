@@ -572,6 +572,160 @@ def _render_page_header_and_styles():
         *, *:before, *:after{box-sizing:border-box}
         section[data-testid="stMain"]{overflow-x:hidden}
         section[data-testid="stMain"] img{max-width:100%}
+        .props-card-shell{width:100%;max-width:100%}
+        .props-card-desktop{display:block}
+        .props-card-mobile{display:none}
+        @media (max-width:640px){
+            .props-card-desktop{display:none!important}
+            .props-card-mobile{
+                display:block!important;
+                width:100%;
+                max-width:100%;
+                margin:10px 0;
+                padding:12px;
+                border:1px solid var(--dash-border);
+                border-radius:14px;
+                background:var(--dash-card-bg);
+                box-shadow:0 2px 9px rgba(15,23,42,.10);
+                color:var(--dash-text);
+                overflow:hidden;
+            }
+            .props-mobile-header{
+                display:grid;
+                grid-template-columns:52px minmax(0,1fr);
+                gap:10px;
+                align-items:start;
+            }
+            .props-mobile-avatar-wrap{
+                position:relative;
+                width:52px;
+                height:52px;
+                flex:0 0 auto;
+            }
+            .props-mobile-avatar{
+                width:52px;
+                height:52px;
+                border-radius:999px;
+                overflow:hidden;
+                border:1px solid var(--dash-border);
+                background:var(--dash-surface-2);
+                display:flex;
+                align-items:center;
+                justify-content:center;
+            }
+            .props-mobile-star{
+                position:absolute;
+                right:-2px;
+                top:-3px;
+                width:18px;
+                height:18px;
+                border-radius:999px;
+                background:var(--dash-card-bg);
+                border:1px solid var(--dash-border);
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                color:#f59e0b;
+                font-size:10px;
+                font-weight:900;
+            }
+            .props-mobile-title{min-width:0}
+            .props-mobile-player{
+                font-size:17px;
+                font-weight:950;
+                line-height:1.15;
+                overflow-wrap:anywhere;
+            }
+            .props-mobile-prop{
+                font-size:13px;
+                font-weight:950;
+                line-height:1.25;
+                margin-top:4px;
+                overflow-wrap:anywhere;
+            }
+            .props-mobile-meta{
+                font-size:11px;
+                color:var(--dash-muted);
+                font-weight:800;
+                line-height:1.25;
+                margin-top:5px;
+                overflow-wrap:anywhere;
+            }
+            .props-mobile-actions{
+                display:flex;
+                align-items:flex-start;
+                gap:7px;
+                flex-wrap:wrap;
+                margin-top:10px;
+            }
+            .props-mobile-actions .line-badge{
+                min-width:0;
+                padding:5px 9px;
+                gap:6px;
+            }
+            .props-mobile-actions .line-value{font-size:18px}
+            .props-mobile-actions .book-badge-img{height:19px;max-width:30px}
+            .props-mobile-actions .modifier-badge-img{height:21px;max-width:26px}
+            .props-mobile-status{
+                font-size:12px;
+                color:var(--dash-muted);
+                font-weight:800;
+                line-height:1.2;
+                padding-top:6px;
+            }
+            .props-mobile-open-player{
+                display:inline-flex;
+                align-items:center;
+                justify-content:center;
+                width:100%;
+                min-height:38px;
+                margin-top:2px;
+                padding:8px 12px;
+                border-radius:999px;
+                background:var(--dash-accent);
+                color:white!important;
+                font-size:12px;
+                font-weight:900;
+                text-decoration:none!important;
+                white-space:nowrap;
+            }
+            .props-mobile-unavailable{
+                display:block;
+                width:100%;
+                font-size:12px;
+                color:var(--dash-muted);
+                font-weight:700;
+            }
+            .props-mobile-ou{
+                display:flex;
+                flex-direction:row;
+                align-items:center;
+                justify-content:center;
+                gap:16px;
+                width:100%;
+                min-height:38px;
+                margin-top:10px;
+                border:2px solid var(--dash-border);
+                border-radius:10px;
+                background:var(--dash-surface-2);
+                color:var(--dash-text);
+                font-size:12px;
+                font-weight:950;
+                line-height:1.25;
+            }
+            .props-mobile-stats{
+                display:grid;
+                grid-template-columns:repeat(2,minmax(0,1fr));
+                gap:7px;
+                margin-top:10px;
+            }
+            .props-mobile-stats .props-stat-tile{
+                min-width:0!important;
+                padding:8px 6px!important;
+            }
+            .props-mobile-stats .props-stat-label{font-size:10px!important}
+            .props-mobile-stats .props-stat-value{font-size:14px!important}
+        }
         @media (max-width:768px){
             section[data-testid="stMain"] .block-container{
                 padding-left:0.7rem;
@@ -602,85 +756,6 @@ def _render_page_header_and_styles():
                 flex:1 1 100%!important;
             }
             section[data-testid="stMain"] [data-baseweb="select"] > div{min-height:42px}
-            .props-card{
-                width:100%;
-                max-width:100%;
-                padding:12px!important;
-                margin:10px 0!important;
-                overflow:hidden;
-            }
-            .props-card-main{
-                grid-template-columns:52px minmax(0,1fr)!important;
-                align-items:start!important;
-                gap:10px!important;
-            }
-            .props-card-avatar-wrap,
-            .props-card-avatar{
-                width:52px!important;
-                height:52px!important;
-            }
-            .props-card-star{
-                width:18px!important;
-                height:18px!important;
-                font-size:10px!important;
-                right:-2px!important;
-                top:-3px!important;
-            }
-            .props-card-body{min-width:0!important}
-            .props-card-player{
-                font-size:17px!important;
-                line-height:1.15!important;
-                overflow-wrap:anywhere;
-            }
-            .props-card-prop{
-                font-size:13px!important;
-                line-height:1.25!important;
-                margin-top:4px!important;
-                overflow-wrap:anywhere;
-            }
-            .props-card-meta{font-size:11px!important;line-height:1.25!important}
-            .props-card-actions{
-                align-items:flex-start!important;
-                gap:7px!important;
-                margin-top:8px!important;
-            }
-            .line-badge{
-                min-width:0;
-                padding:5px 9px;
-                gap:6px;
-            }
-            .line-value{font-size:18px}
-            .book-badge-img{height:19px;max-width:30px}
-            .modifier-badge-img{height:21px;max-width:26px}
-            .props-open-player{
-                width:100%;
-                min-height:38px;
-                margin-top:2px;
-            }
-            .props-ou-bubble{
-                grid-column:1 / -1;
-                width:100%!important;
-                height:auto!important;
-                min-height:38px;
-                border-radius:10px!important;
-                flex-direction:row!important;
-                gap:16px;
-                justify-content:center!important;
-                font-size:12px!important;
-            }
-            .props-ou-bubble div{font-size:12px!important}
-            .props-stat-grid{
-                display:grid!important;
-                grid-template-columns:repeat(3,minmax(0,1fr));
-                gap:7px!important;
-                margin-top:10px!important;
-            }
-            .props-stat-tile{
-                min-width:0!important;
-                padding:8px 6px!important;
-            }
-            .props-stat-label{font-size:10px!important}
-            .props-stat-value{font-size:14px!important}
             .game-card{padding:8px 8px 12px 8px}
             .game-card .lineup-area{
                 min-height:0!important;
@@ -787,17 +862,6 @@ def _render_page_header_and_styles():
                 padding-left:0.55rem;
                 padding-right:0.55rem;
             }
-            .props-card-main{grid-template-columns:46px minmax(0,1fr)!important}
-            .props-card-avatar-wrap,
-            .props-card-avatar{
-                width:46px!important;
-                height:46px!important;
-            }
-            .props-card-player{font-size:16px!important}
-            .props-card-prop{font-size:12px!important}
-            .props-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-            .line-badge{padding:5px 8px}
-            .line-value{font-size:17px}
             .lineup-table-grid,
             .lineup-table-row{
                 min-width:560px!important;
@@ -7620,6 +7684,53 @@ def _cached_line_badge(record):
     )
 
 
+def _props_mobile_card_html(
+    player_name,
+    avatar_html,
+    line_text,
+    prop_label,
+    matchup,
+    hand,
+    line_badge_html,
+    status_text,
+    href,
+    stat_tiles_html,
+):
+    hand_text = f" • {hand}" if hand else ""
+    open_link = (
+        f"<a class='props-mobile-open-player' href='{html.escape(str(href), quote=True)}' target='_self'>Open Player</a>"
+        if href
+        else "<span class='props-mobile-unavailable'>Player detail unavailable</span>"
+    )
+    return (
+        "<div class='props-card-mobile'>"
+        "<div class='props-mobile-header'>"
+        "<div class='props-mobile-avatar-wrap'>"
+        "<div class='props-mobile-avatar'>"
+        f"{avatar_html}"
+        "</div>"
+        "<div class='props-mobile-star'>☆</div>"
+        "</div>"
+        "<div class='props-mobile-title'>"
+        f"<div class='props-mobile-player'>{html.escape(str(player_name or ''))}</div>"
+        f"<div class='props-mobile-prop'>O/U {html.escape(str(line_text or '—'))} {html.escape(str(prop_label or ''))}</div>"
+        f"<div class='props-mobile-meta'>{html.escape(str(matchup or '—'))}{html.escape(hand_text)}</div>"
+        "</div>"
+        "</div>"
+        "<div class='props-mobile-actions'>"
+        f"{line_badge_html}"
+        f"<div class='props-mobile-status'>{html.escape(str(status_text or 'PrizePicks'))}</div>"
+        f"{open_link}"
+        "</div>"
+        "<div class='props-mobile-ou'>"
+        "<div>O —</div>"
+        "<div>U —</div>"
+        "</div>"
+        f"<div class='props-mobile-stats'>{stat_tiles_html}</div>"
+        "</div>"
+    )
+
+
 def _cached_props_card_html(record):
     player_name = str(_cached_record_value(record, "player", "name", default=""))
     player_text = html.escape(player_name)
@@ -7666,8 +7777,22 @@ def _cached_props_card_html(record):
         else "<span style='font-size:12px; color:var(--dash-muted); font-weight:700;'>Player detail unavailable</span>"
     )
     status = str(_cached_record_value(record, "prop", "status", default="PrizePicks") or "PrizePicks")
+    line_badge_html = _cached_line_badge(record)
+    mobile_card_html = _props_mobile_card_html(
+        player_name,
+        avatar_html,
+        line_text,
+        prop_label,
+        matchup,
+        hand,
+        line_badge_html,
+        status,
+        href,
+        stat_tiles,
+    )
     return (
-        "<div class='props-card' style='border:1px solid var(--dash-border); border-radius:14px; background:var(--dash-card-bg); "
+        "<div class='props-card-shell'>"
+        "<div class='props-card props-card-desktop' style='border:1px solid var(--dash-border); border-radius:14px; background:var(--dash-card-bg); "
         "box-shadow:0 2px 9px rgba(15,23,42,.10); padding:18px; margin:14px 0; color:var(--dash-text);'>"
         "<div class='props-card-main' style='display:grid; grid-template-columns:auto minmax(220px,1fr) auto; align-items:center; gap:16px;'>"
         "<div class='props-card-avatar-wrap' style='position:relative; width:68px; height:68px; flex:0 0 auto;'>"
@@ -7684,7 +7809,7 @@ def _cached_props_card_html(record):
         f"<div class='props-card-prop' style='font-size:16px; font-weight:950; margin-top:6px;'>O/U {html.escape(line_text)} {html.escape(prop_label)}</div>"
         f"<div class='props-card-meta' style='font-size:12px; color:var(--dash-muted); font-weight:800; margin-top:5px;'>{html.escape(matchup)}{html.escape(hand_text)}</div>"
         "<div class='props-card-actions' style='display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px;'>"
-        f"{_cached_line_badge(record)}"
+        f"{line_badge_html}"
         f"<div style='font-size:12px; color:var(--dash-muted); font-weight:800;'>{html.escape(status)}</div>"
         f"{open_link}"
         "</div>"
@@ -7697,6 +7822,8 @@ def _cached_props_card_html(record):
         "</div>"
         "</div>"
         f"<div class='props-stat-grid' style='display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;'>{stat_tiles}</div>"
+        "</div>"
+        f"{mobile_card_html}"
         "</div>"
     )
 
@@ -8677,8 +8804,22 @@ def render_homepage_props_tab():
             if row.get("href")
             else "<span style='font-size:12px; color:var(--dash-muted); font-weight:700;'>Player detail unavailable</span>"
         )
+        status_text = str(row.get("status", "") or "PrizePicks")
+        mobile_card_html = _props_mobile_card_html(
+            row.get("player", ""),
+            avatar_html,
+            line_text,
+            str(row.get("prop") or ""),
+            matchup,
+            row.get("hand", ""),
+            line_html,
+            status_text,
+            row.get("href", ""),
+            stat_tiles,
+        )
         return (
-            "<div class='props-card' style='border:1px solid var(--dash-border); border-radius:14px; background:var(--dash-card-bg); "
+            "<div class='props-card-shell'>"
+            "<div class='props-card props-card-desktop' style='border:1px solid var(--dash-border); border-radius:14px; background:var(--dash-card-bg); "
             "box-shadow:0 2px 9px rgba(15,23,42,.10); padding:18px; margin:14px 0; color:var(--dash-text);'>"
             "<div class='props-card-main' style='display:grid; grid-template-columns:auto minmax(220px,1fr) auto; align-items:center; gap:16px;'>"
             "<div class='props-card-avatar-wrap' style='position:relative; width:68px; height:68px; flex:0 0 auto;'>"
@@ -8696,7 +8837,7 @@ def render_homepage_props_tab():
             f"<div class='props-card-meta' style='font-size:12px; color:var(--dash-muted); font-weight:800; margin-top:5px;'>{html.escape(matchup)}{html.escape(hand_text)}</div>"
             "<div class='props-card-actions' style='display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px;'>"
             f"{line_html}"
-            f"<div style='font-size:12px; color:var(--dash-muted); font-weight:800;'>{html.escape(str(row.get('status', '') or 'PrizePicks'))}</div>"
+            f"<div style='font-size:12px; color:var(--dash-muted); font-weight:800;'>{html.escape(status_text)}</div>"
             f"{open_link}"
             "</div>"
             "</div>"
@@ -8708,6 +8849,8 @@ def render_homepage_props_tab():
             "</div>"
             "</div>"
             f"<div class='props-stat-grid' style='display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;'>{stat_tiles}</div>"
+            "</div>"
+            f"{mobile_card_html}"
             "</div>"
         )
 
