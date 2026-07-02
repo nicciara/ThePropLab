@@ -784,6 +784,63 @@ def _render_page_header_and_styles():
                 width:100%!important;
                 flex:1 1 100%!important;
             }
+            .st-key-homepage_props_filters{
+                margin-top:-2px;
+            }
+            .st-key-homepage_props_filters [data-testid="stVerticalBlock"]{
+                gap:0.18rem;
+            }
+            .st-key-homepage_props_filters [data-testid="stWidgetLabel"]{
+                margin-bottom:1px!important;
+            }
+            .st-key-homepage_props_filters [data-testid="stWidgetLabel"] label,
+            .st-key-homepage_props_filters [data-testid="stWidgetLabel"] p{
+                font-size:0.72rem!important;
+                font-weight:800!important;
+                line-height:1.08!important;
+                margin:0!important;
+            }
+            .st-key-homepage_props_filters [data-baseweb="select"] > div{
+                min-height:38px!important;
+                padding-top:0!important;
+                padding-bottom:0!important;
+            }
+            .st-key-homepage_props_filters [data-baseweb="select"] input,
+            .st-key-homepage_props_filters [data-baseweb="select"] span,
+            .st-key-homepage_props_filters [data-baseweb="select"] div{
+                font-size:0.82rem!important;
+                line-height:1.15!important;
+            }
+            .st-key-homepage_props_filters .stMultiSelect [data-baseweb="tag"]{
+                min-height:22px!important;
+                padding-top:1px!important;
+                padding-bottom:1px!important;
+            }
+            .st-key-homepage_props_filters .stMultiSelect [data-baseweb="tag"] span{
+                font-size:0.72rem!important;
+            }
+            .st-key-homepage_props_filters .stSelectbox,
+            .st-key-homepage_props_filters .stMultiSelect{
+                margin-bottom:0!important;
+            }
+            .st-key-homepage_props_filters_top_row [data-testid="stHorizontalBlock"]{
+                flex-direction:row!important;
+                flex-wrap:nowrap!important;
+                gap:0.42rem!important;
+            }
+            .st-key-homepage_props_filters_top_row [data-testid="stHorizontalBlock"]>div{
+                width:calc(50% - 0.21rem)!important;
+                flex:1 1 calc(50% - 0.21rem)!important;
+                min-width:0!important;
+            }
+            .st-key-homepage_props_filters_bottom_row [data-testid="stHorizontalBlock"]{
+                flex-direction:column!important;
+                gap:0.22rem!important;
+            }
+            .st-key-homepage_props_filters_bottom_row [data-testid="stHorizontalBlock"]>div{
+                width:100%!important;
+                flex:1 1 100%!important;
+            }
             section[data-testid="stMain"] [data-baseweb="select"] > div{min-height:42px}
             .game-card{padding:8px 8px 12px 8px}
             .game-card .lineup-area{
@@ -7890,40 +7947,44 @@ def _render_cached_homepage_props_tab(cache_payload):
     ]
 
     with st.container(key="homepage_props_filters"):
-        filter_cols = st.columns([1.1, 2.2, 2.1, 1.7])
-        with filter_cols[0]:
-            st.selectbox(
-                "Line Type",
-                PROPS_LINE_TYPE_FILTER_OPTIONS,
-                key="props_line_type_filter",
-                on_change=set_homepage_props_line_type,
-            )
-            st.selectbox(
-                "Sort By Trend",
-                props_trend_sort_options,
-                key=trend_filter_key,
-            )
-        with filter_cols[1]:
-            st.multiselect(
-                "Props",
-                available_props,
-                key=props_filter_key,
-                placeholder="All props",
-            )
-        with filter_cols[2]:
-            st.multiselect(
-                "Games",
-                game_filter_options,
-                key=games_filter_key,
-                placeholder="All games",
-            )
-        with filter_cols[3]:
-            st.multiselect(
-                "Teams",
-                team_filter_options,
-                key=teams_filter_key,
-                placeholder="All teams",
-            )
+        with st.container(key="homepage_props_filters_top_row"):
+            top_filter_cols = st.columns(2)
+            with top_filter_cols[0]:
+                st.selectbox(
+                    "Line Type",
+                    PROPS_LINE_TYPE_FILTER_OPTIONS,
+                    key="props_line_type_filter",
+                    on_change=set_homepage_props_line_type,
+                )
+            with top_filter_cols[1]:
+                st.selectbox(
+                    "Sort By Trend",
+                    props_trend_sort_options,
+                    key=trend_filter_key,
+                )
+        with st.container(key="homepage_props_filters_bottom_row"):
+            bottom_filter_cols = st.columns(3)
+            with bottom_filter_cols[0]:
+                st.multiselect(
+                    "Props",
+                    available_props,
+                    key=props_filter_key,
+                    placeholder="All props",
+                )
+            with bottom_filter_cols[1]:
+                st.multiselect(
+                    "Games",
+                    game_filter_options,
+                    key=games_filter_key,
+                    placeholder="All games",
+                )
+            with bottom_filter_cols[2]:
+                st.multiselect(
+                    "Teams",
+                    team_filter_options,
+                    key=teams_filter_key,
+                    placeholder="All teams",
+                )
 
     selected_props_filter = [
         prop for prop in st.session_state.get(props_filter_key, []) if prop in available_props
@@ -8187,40 +8248,44 @@ def render_homepage_props_tab():
     ]
 
     with st.container(key="homepage_props_filters"):
-        filter_cols = st.columns([1.1, 2.2, 2.1, 1.7])
-        with filter_cols[0]:
-            st.selectbox(
-                "Line Type",
-                PROPS_LINE_TYPE_FILTER_OPTIONS,
-                key="props_line_type_filter",
-                on_change=set_homepage_props_line_type,
-            )
-            st.selectbox(
-                "Sort By Trend",
-                props_trend_sort_options,
-                key=trend_filter_key,
-            )
-        with filter_cols[1]:
-            st.multiselect(
-                "Props",
-                available_props,
-                key=props_filter_key,
-                placeholder="All props",
-            )
-        with filter_cols[2]:
-            st.multiselect(
-                "Games",
-                game_filter_options,
-                key=games_filter_key,
-                placeholder="All games",
-            )
-        with filter_cols[3]:
-            st.multiselect(
-                "Teams",
-                team_filter_options,
-                key=teams_filter_key,
-                placeholder="All teams",
-            )
+        with st.container(key="homepage_props_filters_top_row"):
+            top_filter_cols = st.columns(2)
+            with top_filter_cols[0]:
+                st.selectbox(
+                    "Line Type",
+                    PROPS_LINE_TYPE_FILTER_OPTIONS,
+                    key="props_line_type_filter",
+                    on_change=set_homepage_props_line_type,
+                )
+            with top_filter_cols[1]:
+                st.selectbox(
+                    "Sort By Trend",
+                    props_trend_sort_options,
+                    key=trend_filter_key,
+                )
+        with st.container(key="homepage_props_filters_bottom_row"):
+            bottom_filter_cols = st.columns(3)
+            with bottom_filter_cols[0]:
+                st.multiselect(
+                    "Props",
+                    available_props,
+                    key=props_filter_key,
+                    placeholder="All props",
+                )
+            with bottom_filter_cols[1]:
+                st.multiselect(
+                    "Games",
+                    game_filter_options,
+                    key=games_filter_key,
+                    placeholder="All games",
+                )
+            with bottom_filter_cols[2]:
+                st.multiselect(
+                    "Teams",
+                    team_filter_options,
+                    key=teams_filter_key,
+                    placeholder="All teams",
+                )
 
     selected_props_filter = [
         prop for prop in st.session_state.get(props_filter_key, []) if prop in available_props
