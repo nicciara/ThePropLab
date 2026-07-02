@@ -6656,6 +6656,26 @@ def _cached_sort_value(record, selected_trend_sort):
         if avg_value is None:
             return None
         return avg_value - line_value
+    if selected_trend_sort == "Best Overall":
+        trend_values = [
+            _cached_stat_number(record, label)
+            for label in ("L5", "L10", "L15", "H2H", "SZN")
+        ]
+        available_trends = [value for value in trend_values if value is not None]
+        if not available_trends:
+            trend_score = 0.0
+        else:
+            trend_score = sum(available_trends) / len(available_trends)
+
+        avg_value = _cached_stat_number(record, "AVG")
+        try:
+            line_value = float(_cached_record_value(record, "prop", "line", default=None))
+        except (TypeError, ValueError):
+            line_value = None
+        avg_edge = 0.0 if avg_value is None or line_value is None else avg_value - line_value
+        avg_edge_bonus = max(min(avg_edge, 5.0), -5.0) * 2.0
+        completeness_bonus = len(available_trends) * 0.5
+        return trend_score + avg_edge_bonus + completeness_bonus
     return None
 
 
@@ -6829,13 +6849,16 @@ def _render_cached_homepage_props_tab(cache_payload):
     st.session_state["props_line_type_filter"] = selected_line_type
     game_filter_options, game_filter_lookup = _cached_game_filter_options(records)
     team_filter_options, team_filter_lookup = _cached_team_filter_options(records)
-    props_trend_sort_options = ("Default", "L5", "L10", "L15", "H2H", "SZN", "AVG")
+    props_trend_sort_options = ("Best Overall", "Default", "L5", "L10", "L15", "H2H", "SZN", "AVG")
     props_filter_key = "homepage_props_filter_props"
     games_filter_key = "homepage_props_filter_games"
     teams_filter_key = "homepage_props_filter_teams"
     trend_filter_key = "homepage_props_trend_filter"
     if st.session_state.get(trend_filter_key) not in props_trend_sort_options:
-        st.session_state[trend_filter_key] = "Default"
+        st.session_state[trend_filter_key] = "Best Overall"
+    elif st.session_state.get(trend_filter_key) == "Default" and not st.session_state.get("homepage_props_cached_default_sort_migrated"):
+        st.session_state[trend_filter_key] = "Best Overall"
+        st.session_state["homepage_props_cached_default_sort_migrated"] = True
     st.session_state[props_filter_key] = [
         prop for prop in st.session_state.get(props_filter_key, []) if prop in available_props
     ]
@@ -6890,7 +6913,7 @@ def _render_cached_homepage_props_tab(cache_payload):
     selected_team_filter_labels = [
         team for team in st.session_state.get(teams_filter_key, []) if team in team_filter_lookup
     ]
-    selected_trend_sort = st.session_state.get(trend_filter_key, "Default")
+    selected_trend_sort = st.session_state.get(trend_filter_key, "Best Overall")
     active_props = set(selected_props_filter or available_props)
     selected_game_filter_ids = {
         game_filter_lookup[label]
