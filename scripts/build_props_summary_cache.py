@@ -688,17 +688,22 @@ def build_props_summary_cache(cache_date):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Build a daily homepage Props summary cache JSON file.")
-    parser.add_argument("--date", required=True, help="Slate date in YYYY-MM-DD format.")
+    parser.add_argument(
+        "--date",
+        default=None,
+        help="Slate date in YYYY-MM-DD format. Defaults to today in America/New_York.",
+    )
     parser.add_argument("--cache-dir", default=str(REPO_ROOT / "data" / "cache"), help="Output cache directory.")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    date_value = args.date or datetime.now(ZoneInfo(CACHE_TIMEZONE)).date().isoformat()
     try:
-        cache_date = date.fromisoformat(args.date)
+        cache_date = date.fromisoformat(date_value)
     except ValueError as exc:
-        raise SystemExit(f"Invalid --date value {args.date!r}; expected YYYY-MM-DD.") from exc
+        raise SystemExit(f"Invalid --date value {date_value!r}; expected YYYY-MM-DD.") from exc
 
     payload, summary = build_props_summary_cache(cache_date)
     output_path = props_summary_cache_path(cache_date.isoformat(), args.cache_dir)

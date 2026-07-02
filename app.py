@@ -6541,17 +6541,22 @@ def _truthy_query_or_env(value):
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _props_cache_enabled():
-    return (
-        _truthy_query_or_env(_query_param_value("props_cache", ""))
-        or _truthy_query_or_env(os.environ.get("USE_PROPS_SUMMARY_CACHE", ""))
-    )
+def _props_cache_mode():
+    query_value = str(_query_param_value("props_cache", "") or "").strip().lower()
+    if query_value in {"0", "false", "no", "off"}:
+        return "force_live"
+    if query_value in {"1", "true", "yes", "on"}:
+        return "force_cache"
+    if _truthy_query_or_env(os.environ.get("USE_PROPS_SUMMARY_CACHE", "")):
+        return "force_cache"
+    return "auto"
 
 
 def _with_props_cache_query_param(params):
     updated = dict(params)
-    if _truthy_query_or_env(_query_param_value("props_cache", "")):
-        updated["props_cache"] = "1"
+    query_value = str(_query_param_value("props_cache", "") or "").strip()
+    if query_value in {"0", "1"}:
+        updated["props_cache"] = query_value
     return updated
 
 
@@ -6989,8 +6994,8 @@ def render_homepage_props_tab():
         st.session_state["games"] = load_schedule(st.session_state["selected_date"])
     games = st.session_state.get("games", pd.DataFrame())
 
-    props_cache_requested = _props_cache_enabled()
-    if props_cache_requested:
+    props_cache_mode = _props_cache_mode()
+    if props_cache_mode != "force_live":
         selected_date_key = st.session_state.get("selected_date", eastern_today()).isoformat()
         cache_payload, cache_unavailable_reason = load_props_summary_cache(selected_date_key)
         if cache_payload:
@@ -7001,8 +7006,9 @@ def render_homepage_props_tab():
                 st.caption("Using cached Props summaries.")
             _render_cached_homepage_props_tab(cache_payload)
             return
-        logger.info("Props summary cache unavailable for %s: %s", selected_date_key, cache_unavailable_reason)
-        st.caption("Props cache unavailable; using live summaries.")
+        if props_cache_mode == "force_cache":
+            logger.info("Props summary cache unavailable for %s: %s", selected_date_key, cache_unavailable_reason)
+            st.caption("Props cache unavailable; using live summaries.")
 
     try:
         st.session_state["prizepicks_projections"] = load_prizepicks_mlb_projections()
