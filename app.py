@@ -4,6 +4,7 @@ import json
 import io
 import html
 import math
+import os
 import threading
 import altair as alt
 import streamlit as st
@@ -16,6 +17,7 @@ from urllib.parse import quote_plus
 
 import strike_zone
 import performance_profile
+from props_cache import load_props_summary_cache
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -6425,12 +6427,15 @@ def set_homepage_date(new_date):
     st.session_state["selected_date"] = new_date
     st.session_state["calendar_date"] = new_date
     st.session_state["games"] = load_schedule(new_date)
-    _set_query_params({
+    params = {
         "date": new_date.isoformat(),
         "home_tab": st.session_state.get("home_tab", "lineups"),
         "prop": st.session_state.get("homepage_selected_prop", "Hits") if st.session_state.get("home_tab") == "props" else "",
         "line_type": st.session_state.get("props_line_type_filter", "All") if st.session_state.get("home_tab") == "props" else "",
-    })
+    }
+    if st.session_state.get("home_tab") == "props":
+        params = _with_props_cache_query_param(params)
+    _set_query_params(params)
 
 
 def shift_homepage_date(days):
@@ -6449,24 +6454,27 @@ def set_homepage_tab():
     selected_label = st.session_state.get("homepage_tab_switch", "Lineups")
     selected_tab = "props" if selected_label == "Props" else "lineups"
     st.session_state["home_tab"] = selected_tab
-    _set_query_params({
+    params = {
         "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
         "home_tab": selected_tab,
         "prop": st.session_state.get("homepage_selected_prop", "Hits") if selected_tab == "props" else "",
         "line_type": st.session_state.get("props_line_type_filter", "All") if selected_tab == "props" else "",
-    })
+    }
+    if selected_tab == "props":
+        params = _with_props_cache_query_param(params)
+    _set_query_params(params)
 
 
 def set_homepage_props_prop(prop):
     if prop not in HOMEPAGE_PROP_OPTIONS:
         return
     st.session_state["homepage_selected_prop"] = prop
-    _set_query_params({
+    _set_query_params(_with_props_cache_query_param({
         "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
         "home_tab": "props",
         "prop": prop,
         "line_type": st.session_state.get("props_line_type_filter", "All"),
-    })
+    }))
 
 
 def set_homepage_props_line_type():
@@ -6475,12 +6483,12 @@ def set_homepage_props_line_type():
         default="All",
     )
     st.session_state["props_line_type_filter"] = selected_line_type
-    _set_query_params({
+    _set_query_params(_with_props_cache_query_param({
         "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
         "home_tab": "props",
         "prop": st.session_state.get("homepage_selected_prop", "Hits"),
         "line_type": selected_line_type,
-    })
+    }))
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -6529,11 +6537,472 @@ def homepage_slate_batter_map(games):
     return batter_map
 
 
+def _truthy_query_or_env(value):
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _props_cache_enabled():
+    return (
+        _truthy_query_or_env(_query_param_value("props_cache", ""))
+        or _truthy_query_or_env(os.environ.get("USE_PROPS_SUMMARY_CACHE", ""))
+    )
+
+
+def _with_props_cache_query_param(params):
+    updated = dict(params)
+    if _truthy_query_or_env(_query_param_value("props_cache", "")):
+        updated["props_cache"] = "1"
+    return updated
+
+
+def _cached_record_value(record, *keys, default=""):
+    value = record
+    for key in keys:
+        if not isinstance(value, dict):
+            return default
+        value = value.get(key)
+    return default if value is None or value == "" else value
+
+
+def _cached_homepage_filter_key(values):
+    parts = []
+    for value in values or []:
+        value_key = normalize_name(value).replace(" ", "-")
+        if value_key:
+            parts.append(value_key)
+    parts.sort()
+    return "all" if not parts else "--".join(parts)
+
+
+def _cached_available_prop_options(records):
+    seen = {
+        str(_cached_record_value(record, "prop", "label", default="")).strip()
+        for record in records
+    }
+    options = [prop for prop in HOMEPAGE_PROP_OPTIONS if prop in seen]
+    extras = sorted(prop for prop in seen if prop and prop not in HOMEPAGE_PROP_OPTIONS)
+    return options + extras
+
+
+def _cached_game_filter_options(records):
+    game_entries = {}
+    base_counts = {}
+    for record in records:
+        game_pk = normalize_game_pk(_cached_record_value(record, "game", "game_pk", default=""))
+        matchup = str(_cached_record_value(record, "game", "matchup", default="")).strip()
+        if not game_pk or not matchup or game_pk in game_entries:
+            continue
+        game_time = str(_cached_record_value(record, "game", "game_time", default="")).strip()
+        game_entries[game_pk] = (matchup, game_time)
+        base_counts[matchup] = base_counts.get(matchup, 0) + 1
+
+    options = []
+    lookup = {}
+    for game_pk, (matchup, game_time) in game_entries.items():
+        label = matchup
+        if base_counts.get(matchup, 0) > 1:
+            label = f"{matchup} {game_time or game_pk}"
+        if label in lookup:
+            label = f"{label} {game_pk}"
+        lookup[label] = game_pk
+        options.append(label)
+    return options, lookup
+
+
+def _cached_team_filter_options(records):
+    option_by_label = {}
+    for record in records:
+        label = str(_cached_record_value(record, "game", "team_abbr", default="")).strip()
+        team_id = str(_cached_record_value(record, "game", "team_id", default="")).strip()
+        team_name = str(_cached_record_value(record, "game", "team", default="")).strip()
+        if not label:
+            continue
+        option_by_label[label] = {
+            "id": team_id,
+            "name": team_name,
+            "label": label,
+        }
+    options = sorted(option_by_label)
+    return options, {label: option_by_label[label] for label in options}
+
+
+def _cached_stat_display(record, label):
+    value = _cached_record_value(record, "stats", label, "display", default="")
+    return str(value or "—")
+
+
+def _cached_stat_number(record, label):
+    value = _cached_record_value(record, "stats", label, "value", default=None)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _cached_sort_value(record, selected_trend_sort):
+    if selected_trend_sort in {"L5", "L10", "L15", "H2H", "SZN"}:
+        return _cached_stat_number(record, selected_trend_sort)
+    if selected_trend_sort == "AVG":
+        avg_value = _cached_stat_number(record, "AVG")
+        try:
+            line_value = float(_cached_record_value(record, "prop", "line", default=None))
+        except (TypeError, ValueError):
+            return None
+        if avg_value is None:
+            return None
+        return avg_value - line_value
+    return None
+
+
+def _cached_sort_key(indexed_record, selected_trend_sort):
+    index, record = indexed_record
+    sort_value = _cached_sort_value(record, selected_trend_sort)
+    if sort_value is None:
+        return (1, 0.0, index)
+    return (0, -sort_value, index)
+
+
+def _cached_prop_card_tile(label, value):
+    value_text = str(value or "—")
+    tile_bg = "var(--dash-surface-2)"
+    tile_color = "var(--dash-text)"
+    try:
+        pct_value = float(value_text.replace("%", ""))
+        if value_text.endswith("%"):
+            if pct_value >= 60:
+                tile_bg = "#dcfce7"
+                tile_color = "#166534"
+            elif pct_value >= 45:
+                tile_bg = "#fef3c7"
+                tile_color = "#92400e"
+            else:
+                tile_bg = "#fee2e2"
+                tile_color = "#991b1b"
+    except (TypeError, ValueError):
+        pass
+    return (
+        "<div style='min-width:88px; padding:10px 12px; border:1px solid var(--dash-border); border-radius:10px; "
+        f"background:{tile_bg}; color:{tile_color}; text-align:center;'>"
+        f"<div style='font-size:11px; font-weight:900; letter-spacing:.04em;'>{html.escape(str(label))}</div>"
+        f"<div style='font-size:17px; font-weight:950; margin-top:4px;'>{html.escape(value_text)}</div>"
+        "</div>"
+    )
+
+
+def _cached_player_initials(name):
+    parts = [part for part in str(name or "").replace(".", "").split() if part]
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return f"{parts[0][0]}{parts[-1][0]}".upper()
+
+
+def _cached_line_badge(record):
+    line_value = _cached_record_value(record, "prop", "line", default="")
+    try:
+        line_text = f"{float(line_value):.1f}"
+    except (TypeError, ValueError):
+        line_text = str(line_value or "—")
+
+    source_badges = {
+        normalize_name(value)
+        for value in (_cached_record_value(record, "prop", "source_badges", default=[]) or [])
+    }
+    line_types = {
+        normalize_name(value)
+        for value in (_cached_record_value(record, "prop", "line_types", default=[]) or [])
+    }
+    show_prizepicks = not source_badges or "prizepicks" in source_badges
+    book_badge_html = (
+        badge_image_html(SPORTSBOOK_BADGE_ASSETS.get("prizepicks"), "PrizePicks", "book-badge", "book-badge-img")
+        if show_prizepicks
+        else ""
+    )
+    modifier_html = []
+    if "goblin" in source_badges or "goblin" in line_types:
+        modifier_html.append(badge_image_html(MODIFIER_BADGE_ASSETS.get("goblin"), "Goblin", "boost-badge", "modifier-badge-img"))
+    if "demon" in source_badges or "demon" in line_types:
+        modifier_html.append(badge_image_html(MODIFIER_BADGE_ASSETS.get("demon"), "Demon", "boost-badge", "modifier-badge-img"))
+    return (
+        '<div class="line-badge">'
+        f'<span class="line-value">{html.escape(line_text)}</span>'
+        f'{book_badge_html}'
+        f'{"".join(modifier_html)}'
+        '</div>'
+    )
+
+
+def _cached_props_card_html(record):
+    player_name = str(_cached_record_value(record, "player", "name", default=""))
+    player_text = html.escape(player_name)
+    image_url = str(_cached_record_value(record, "player", "headshot_url", default=""))
+    prop_label = str(_cached_record_value(record, "prop", "label", default=""))
+    line_value = _cached_record_value(record, "prop", "line", default="")
+    try:
+        line_text = f"{float(line_value):.1f}"
+    except (TypeError, ValueError):
+        line_text = str(line_value or "—")
+    matchup = str(_cached_record_value(record, "game", "matchup", default="")).strip()
+    if not matchup:
+        team = _cached_record_value(record, "game", "team", default="—")
+        opponent = _cached_record_value(record, "game", "opponent", default="—")
+        matchup = f"{team} vs {opponent}"
+    game_time = str(_cached_record_value(record, "game", "game_time", default="")).strip()
+    if game_time:
+        matchup = f"{matchup} - {game_time}"
+    hand = str(_cached_record_value(record, "player", "hand", default="")).strip()
+    hand_text = f" • {hand}" if hand else ""
+    initials_html = (
+        f"<span style='font-size:20px; font-weight:950; color:var(--dash-accent);'>"
+        f"{html.escape(_cached_player_initials(player_name))}</span>"
+    )
+    avatar_html = (
+        f"<img src='{html.escape(image_url, quote=True)}' alt='{html.escape(player_name, quote=True)}' "
+        "style='position:absolute; inset:0; display:block; width:100%; height:100%; object-fit:cover;' "
+        "loading='lazy' decoding='async' onerror=\"this.style.display='none';\" />"
+        f"{initials_html}"
+        if image_url
+        else initials_html
+    )
+    stat_tiles = "".join(
+        _cached_prop_card_tile(label, _cached_stat_display(record, label))
+        for label in ("L5", "L10", "L15", "H2H", "AVG", "SZN")
+    )
+    href = str(_cached_record_value(record, "routing", "href", default=""))
+    open_link = (
+        f"<a href='{html.escape(href, quote=True)}' target='_self' "
+        "style='display:inline-flex; align-items:center; justify-content:center; padding:8px 12px; "
+        "border-radius:999px; background:var(--dash-accent); color:white; font-size:12px; font-weight:900; "
+        "text-decoration:none; white-space:nowrap;'>Open Player</a>"
+        if href
+        else "<span style='font-size:12px; color:var(--dash-muted); font-weight:700;'>Player detail unavailable</span>"
+    )
+    status = str(_cached_record_value(record, "prop", "status", default="PrizePicks") or "PrizePicks")
+    return (
+        "<div style='border:1px solid var(--dash-border); border-radius:14px; background:var(--dash-card-bg); "
+        "box-shadow:0 2px 9px rgba(15,23,42,.10); padding:18px; margin:14px 0; color:var(--dash-text);'>"
+        "<div style='display:grid; grid-template-columns:auto minmax(220px,1fr) auto; align-items:center; gap:16px;'>"
+        "<div style='position:relative; width:68px; height:68px; flex:0 0 auto;'>"
+        "<div style='width:68px; height:68px; border-radius:999px; overflow:hidden; border:1px solid var(--dash-border); "
+        "background:var(--dash-surface-2); display:flex; align-items:center; justify-content:center;'>"
+        f"{avatar_html}"
+        "</div>"
+        "<div style='position:absolute; right:-3px; top:-4px; width:22px; height:22px; border-radius:999px; "
+        "background:var(--dash-card-bg); border:1px solid var(--dash-border); display:flex; align-items:center; "
+        "justify-content:center; color:#f59e0b; font-size:13px; font-weight:900;'>☆</div>"
+        "</div>"
+        "<div style='min-width:0;'>"
+        f"<div style='font-size:21px; font-weight:950; line-height:1.1;'>{player_text}</div>"
+        f"<div style='font-size:16px; font-weight:950; margin-top:6px;'>O/U {html.escape(line_text)} {html.escape(prop_label)}</div>"
+        f"<div style='font-size:12px; color:var(--dash-muted); font-weight:800; margin-top:5px;'>{html.escape(matchup)}{html.escape(hand_text)}</div>"
+        "<div style='display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px;'>"
+        f"{_cached_line_badge(record)}"
+        f"<div style='font-size:12px; color:var(--dash-muted); font-weight:800;'>{html.escape(status)}</div>"
+        f"{open_link}"
+        "</div>"
+        "</div>"
+        "<div style='width:86px; height:86px; border-radius:999px; border:2px solid var(--dash-border); "
+        "background:var(--dash-surface-2); display:flex; flex-direction:column; align-items:center; justify-content:center; "
+        "font-weight:950; line-height:1.35; color:var(--dash-text);'>"
+        "<div style='font-size:15px;'>O —</div>"
+        "<div style='font-size:15px;'>U —</div>"
+        "</div>"
+        "</div>"
+        f"<div style='display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;'>{stat_tiles}</div>"
+        "</div>"
+    )
+
+
+def _render_cached_homepage_props_tab(cache_payload):
+    records = cache_payload.get("records", [])
+    available_props = _cached_available_prop_options(records)
+    selected_line_type = props_line_type_filter_label_from_query(
+        st.session_state.get("props_line_type_filter", "All"),
+        default="All",
+    )
+    st.session_state["props_line_type_filter"] = selected_line_type
+    game_filter_options, game_filter_lookup = _cached_game_filter_options(records)
+    team_filter_options, team_filter_lookup = _cached_team_filter_options(records)
+    props_trend_sort_options = ("Default", "L5", "L10", "L15", "H2H", "SZN", "AVG")
+    props_filter_key = "homepage_props_filter_props"
+    games_filter_key = "homepage_props_filter_games"
+    teams_filter_key = "homepage_props_filter_teams"
+    trend_filter_key = "homepage_props_trend_filter"
+    if st.session_state.get(trend_filter_key) not in props_trend_sort_options:
+        st.session_state[trend_filter_key] = "Default"
+    st.session_state[props_filter_key] = [
+        prop for prop in st.session_state.get(props_filter_key, []) if prop in available_props
+    ]
+    st.session_state[games_filter_key] = [
+        game for game in st.session_state.get(games_filter_key, []) if game in game_filter_options
+    ]
+    st.session_state[teams_filter_key] = [
+        team for team in st.session_state.get(teams_filter_key, []) if team in team_filter_options
+    ]
+
+    filter_cols = st.columns([1.1, 2.2, 2.1, 1.7])
+    with filter_cols[0]:
+        st.selectbox(
+            "Line Type",
+            PROPS_LINE_TYPE_FILTER_OPTIONS,
+            key="props_line_type_filter",
+            on_change=set_homepage_props_line_type,
+        )
+        st.selectbox(
+            "Sort By Trend",
+            props_trend_sort_options,
+            key=trend_filter_key,
+        )
+    with filter_cols[1]:
+        st.multiselect(
+            "Props",
+            available_props,
+            key=props_filter_key,
+            placeholder="All props",
+        )
+    with filter_cols[2]:
+        st.multiselect(
+            "Games",
+            game_filter_options,
+            key=games_filter_key,
+            placeholder="All games",
+        )
+    with filter_cols[3]:
+        st.multiselect(
+            "Teams",
+            team_filter_options,
+            key=teams_filter_key,
+            placeholder="All teams",
+        )
+
+    selected_props_filter = [
+        prop for prop in st.session_state.get(props_filter_key, []) if prop in available_props
+    ]
+    selected_game_filter_labels = [
+        game for game in st.session_state.get(games_filter_key, []) if game in game_filter_lookup
+    ]
+    selected_team_filter_labels = [
+        team for team in st.session_state.get(teams_filter_key, []) if team in team_filter_lookup
+    ]
+    selected_trend_sort = st.session_state.get(trend_filter_key, "Default")
+    active_props = set(selected_props_filter or available_props)
+    selected_game_filter_ids = {
+        game_filter_lookup[label]
+        for label in selected_game_filter_labels
+        if game_filter_lookup.get(label)
+    }
+    selected_team_filter_ids = {
+        str(team_filter_lookup[label].get("id") or "").strip()
+        for label in selected_team_filter_labels
+        if team_filter_lookup.get(label, {}).get("id")
+    }
+    selected_team_filter_labels_set = set(selected_team_filter_labels)
+
+    def _cached_record_matches_filters(record):
+        prop_label = str(_cached_record_value(record, "prop", "label", default="")).strip()
+        if prop_label not in active_props:
+            return False
+
+        line_types = set(_cached_record_value(record, "prop", "line_types", default=[]) or [])
+        if selected_line_type != "All" and selected_line_type not in line_types:
+            return False
+
+        if selected_game_filter_ids:
+            game_pk = normalize_game_pk(_cached_record_value(record, "game", "game_pk", default=""))
+            if not game_pk or game_pk not in selected_game_filter_ids:
+                return False
+
+        if selected_team_filter_ids or selected_team_filter_labels_set:
+            team_id = str(_cached_record_value(record, "game", "team_id", default="")).strip()
+            team_abbr = str(_cached_record_value(record, "game", "team_abbr", default="")).strip()
+            if team_id and team_id in selected_team_filter_ids:
+                return True
+            if team_abbr and team_abbr in selected_team_filter_labels_set:
+                return True
+            return False
+
+        return True
+
+    filtered_records = [
+        record for record in records
+        if isinstance(record, dict) and _cached_record_matches_filters(record)
+    ]
+    if selected_trend_sort != "Default":
+        indexed_records = list(enumerate(filtered_records))
+        indexed_records.sort(key=lambda indexed_record: _cached_sort_key(indexed_record, selected_trend_sort))
+        filtered_records = [record for _, record in indexed_records]
+
+    if not filtered_records:
+        if selected_line_type == "All":
+            st.info("No lines found for the selected filters.")
+        else:
+            st.info(f"No {selected_line_type} lines found for the selected filters.")
+        return
+
+    props_card_batch_size = 12
+    selected_date_key = st.session_state.get("selected_date", eastern_today()).isoformat()
+    active_prop_filter_key = (
+        f"selected-{_cached_homepage_filter_key(selected_props_filter)}"
+        if selected_props_filter
+        else "all"
+    )
+    selected_line_type_key = normalize_name(selected_line_type).replace(" ", "-")
+    selected_games_key = _cached_homepage_filter_key(selected_game_filter_ids)
+    selected_teams_key = _cached_homepage_filter_key(selected_team_filter_labels)
+    selected_trend_sort_key = normalize_name(selected_trend_sort).replace(" ", "-")
+    props_loaded_card_limit_key = (
+        f"cached_props_loaded_card_limit_{selected_date_key}_{active_prop_filter_key}_"
+        f"{selected_line_type_key}_{selected_games_key}_{selected_teams_key}_{selected_trend_sort_key}"
+    )
+    try:
+        loaded_card_limit = int(st.session_state.get(props_loaded_card_limit_key, props_card_batch_size) or props_card_batch_size)
+    except (TypeError, ValueError):
+        loaded_card_limit = props_card_batch_size
+    loaded_card_limit = max(props_card_batch_size, loaded_card_limit)
+    visible_records = filtered_records[:loaded_card_limit]
+    remaining_record_count = max(len(filtered_records) - loaded_card_limit, 0)
+
+    for record in visible_records:
+        st.markdown(_cached_props_card_html(record), unsafe_allow_html=True)
+
+    if remaining_record_count > 0:
+        def _load_more_cached_props_rows():
+            st.session_state[props_loaded_card_limit_key] = min(
+                len(filtered_records),
+                loaded_card_limit + props_card_batch_size,
+            )
+
+        st.button(
+            f"Load more props ({remaining_record_count} remaining)",
+            key=(
+                f"load_more_cached_props_{selected_date_key}_{active_prop_filter_key}_"
+                f"{selected_line_type_key}_{selected_games_key}_{selected_teams_key}_{selected_trend_sort_key}"
+            ),
+            on_click=_load_more_cached_props_rows,
+        )
+
+
 def render_homepage_props_tab():
     st.markdown("## Props")
     if "games" not in st.session_state:
         st.session_state["games"] = load_schedule(st.session_state["selected_date"])
     games = st.session_state.get("games", pd.DataFrame())
+
+    props_cache_requested = _props_cache_enabled()
+    if props_cache_requested:
+        selected_date_key = st.session_state.get("selected_date", eastern_today()).isoformat()
+        cache_payload, cache_unavailable_reason = load_props_summary_cache(selected_date_key)
+        if cache_payload:
+            generated_at = cache_payload.get("generated_at", "")
+            if generated_at:
+                st.caption(f"Using cached Props summaries generated at {generated_at}.")
+            else:
+                st.caption("Using cached Props summaries.")
+            _render_cached_homepage_props_tab(cache_payload)
+            return
+        logger.info("Props summary cache unavailable for %s: %s", selected_date_key, cache_unavailable_reason)
+        st.caption("Props cache unavailable; using live summaries.")
 
     try:
         st.session_state["prizepicks_projections"] = load_prizepicks_mlb_projections()
@@ -7480,12 +7949,12 @@ def render_homepage():
     )
 
     if st.session_state.get("home_tab") == "props":
-        _ensure_query_params({
+        _ensure_query_params(_with_props_cache_query_param({
             "date": st.session_state.get("selected_date", eastern_today()).isoformat(),
             "home_tab": "props",
             "prop": st.session_state.get("homepage_selected_prop", "Hits"),
             "line_type": st.session_state.get("props_line_type_filter", "All"),
-        })
+        }))
         render_homepage_props_tab()
         st.stop()
 
