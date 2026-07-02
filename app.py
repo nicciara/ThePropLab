@@ -1448,6 +1448,35 @@ def _int_like(value, default=0):
         return default
 
 
+def _game_log_bool_value(value):
+    if isinstance(value, bool):
+        return value
+    text = str(value or "").strip().lower()
+    if text in {"true", "1", "yes", "y", "win", "w"}:
+        return True
+    if text in {"false", "0", "no", "n", "loss", "l"}:
+        return False
+    return None
+
+
+def _game_log_game_type_code(split, game):
+    for source in (split, game):
+        if isinstance(source, dict):
+            value = source.get("gameType") or source.get("game_type") or source.get("type")
+            if value not in {None, ""}:
+                return str(value).strip().upper()
+    return "R"
+
+
+def _game_log_season_type_label(game_type):
+    game_type = str(game_type or "").strip().upper()
+    if game_type in {"S", "SPRING", "SPRING TRAINING", "PRESEASON"}:
+        return "Preseason / Spring Training"
+    if game_type in {"R", "REGULAR", "REGULAR SEASON"}:
+        return "Regular Season"
+    return "Regular Season"
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def load_batter_first_inning_hrrrbi_by_game(batter_id, season_year):
     if not batter_id or not season_year:
@@ -1549,6 +1578,12 @@ def load_batter_prop_game_log(batter_id, season_year=2026, include_first_inning=
         is_home = raw_is_home if isinstance(raw_is_home, bool) else str(raw_is_home).lower() == "true"
         prefix = "" if is_home else "@"
         game = split.get("game", {}) or {}
+        game_type = _game_log_game_type_code(split, game)
+        is_win = _game_log_bool_value(split.get("isWin"))
+        if is_win is None:
+            is_win = _game_log_bool_value(split.get("is_win"))
+        if is_win is None:
+            is_win = _game_log_bool_value(split.get("teamWin"))
         hits = _int_stat(stat, "hits")
         runs = _int_stat(stat, "runs")
         rbi = _int_stat(stat, "rbi")
@@ -1574,7 +1609,13 @@ def load_batter_prop_game_log(batter_id, season_year=2026, include_first_inning=
             {
                 "game_pk": game.get("gamePk") or game.get("id") or "",
                 "season": int(season_year),
+                "game_type": game_type,
+                "season_type": _game_log_season_type_label(game_type),
                 "game_date": game_date,
+                "is_home": is_home,
+                "home_away": "Home" if is_home else "Away",
+                "is_win": is_win,
+                "team_result": "Win" if is_win is True else "Loss" if is_win is False else "",
                 "opponent": f"{prefix}{opponent_label}" if opponent_label else "",
                 "opponent_team_id": opponent.get("id", ""),
                 "opponent_name": opponent_name,
@@ -1723,6 +1764,12 @@ def load_pitcher_prop_game_log(pitcher_id, season_year=2026):
         is_home = raw_is_home if isinstance(raw_is_home, bool) else str(raw_is_home).lower() == "true"
         prefix = "" if is_home else "@"
         game = split.get("game", {}) or {}
+        game_type = _game_log_game_type_code(split, game)
+        is_win = _game_log_bool_value(split.get("isWin"))
+        if is_win is None:
+            is_win = _game_log_bool_value(split.get("is_win"))
+        if is_win is None:
+            is_win = _game_log_bool_value(split.get("teamWin"))
         innings_pitched = stat.get("inningsPitched", "0")
         strikeouts = _int_stat(stat, "strikeOuts")
         earned_runs = _int_stat(stat, "earnedRuns")
@@ -1740,7 +1787,13 @@ def load_pitcher_prop_game_log(pitcher_id, season_year=2026):
             {
                 "game_pk": game.get("gamePk") or game.get("id") or "",
                 "season": int(season_year),
+                "game_type": game_type,
+                "season_type": _game_log_season_type_label(game_type),
                 "game_date": game_date,
+                "is_home": is_home,
+                "home_away": "Home" if is_home else "Away",
+                "is_win": is_win,
+                "team_result": "Win" if is_win is True else "Loss" if is_win is False else "",
                 "opponent": f"{prefix}{opponent_label}" if opponent_label else "",
                 "opponent_team_id": opponent.get("id", ""),
                 "opponent_name": opponent_name,
@@ -2375,6 +2428,91 @@ def filter_game_logs_vs_opponent(game_log_df, opponent_context):
     return game_log_df[mask].copy()
 
 
+def _game_log_opponent_filter_options(game_log_df):
+    if game_log_df.empty:
+        return []
+
+    labels = set()
+    for _, row in game_log_df.iterrows():
+        label = str(row.get("opponent_abbrev") or "").strip()
+        if not label:
+            label = str(row.get("opponent_name") or "").strip()
+        if not label:
+            label = strip_game_log_opponent_prefix(row.get("opponent", ""))
+        if label:
+            labels.add(str(label).strip())
+    return sorted(labels)
+
+
+def _coerce_selectbox_state(key, options):
+    if st.session_state.get(key) not in options:
+        st.session_state[key] = options[0]
+
+
+def render_game_log_filter_controls(game_log_df, key_prefix):
+    season_options = ("All", "Preseason / Spring Training", "Regular Season")
+    home_away_options = ("All", "Home", "Away")
+    opponent_options = ("All opponents", *_game_log_opponent_filter_options(game_log_df))
+    result_options = ("All", "Wins", "Losses")
+
+    season_key = f"{key_prefix}_season_filter"
+    home_away_key = f"{key_prefix}_home_away_filter"
+    opponent_key = f"{key_prefix}_opponent_filter"
+    result_key = f"{key_prefix}_result_filter"
+    _coerce_selectbox_state(season_key, season_options)
+    _coerce_selectbox_state(home_away_key, home_away_options)
+    _coerce_selectbox_state(opponent_key, opponent_options)
+    _coerce_selectbox_state(result_key, result_options)
+
+    filter_cols = st.columns([1.35, 1.0, 1.55, 1.0])
+    with filter_cols[0]:
+        season = st.selectbox("Season", season_options, key=season_key)
+    with filter_cols[1]:
+        home_away = st.selectbox("Home/Away", home_away_options, key=home_away_key)
+    with filter_cols[2]:
+        opponent = st.selectbox("Opponent", opponent_options, key=opponent_key)
+    with filter_cols[3]:
+        result = st.selectbox("Win/Loss", result_options, key=result_key)
+
+    return {
+        "season": season,
+        "home_away": home_away,
+        "opponent": opponent,
+        "result": result,
+    }
+
+
+def apply_game_log_filters(game_log_df, filters):
+    if game_log_df.empty or not filters:
+        return game_log_df.copy()
+
+    filtered_df = game_log_df.copy()
+    season = filters.get("season", "All")
+    if season != "All" and "season_type" in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df["season_type"].astype(str) == season]
+
+    home_away = filters.get("home_away", "All")
+    if home_away != "All" and "home_away" in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df["home_away"].astype(str) == home_away]
+
+    opponent = filters.get("opponent", "All opponents")
+    if opponent != "All opponents":
+        opponent_key = normalize_name(opponent)
+        mask = pd.Series(False, index=filtered_df.index)
+        for column in ("opponent_abbrev", "opponent_name", "opponent"):
+            if column in filtered_df.columns:
+                values = filtered_df[column].apply(lambda value: normalize_name(strip_game_log_opponent_prefix(value)))
+                mask = mask | (values == opponent_key)
+        filtered_df = filtered_df[mask]
+
+    result = filters.get("result", "All")
+    if result != "All" and "team_result" in filtered_df.columns:
+        expected = "Win" if result == "Wins" else "Loss"
+        filtered_df = filtered_df[filtered_df["team_result"].astype(str) == expected]
+
+    return filtered_df.copy()
+
+
 def prop_hit_rate_sample_summaries(game_log_df, prop_column, selected_prop_line, opponent_context=None):
     return {
         sample_label: prop_hit_rate_sample_summary(
@@ -2722,9 +2860,10 @@ def toggle_game_log_h2h_selection(h2h_key, range_key):
     })
 
 
-def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop, selected_prop_line, current_opponent_context):
+def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop, selected_prop_line, current_opponent_context, game_log_filters=None):
     include_first_inning = prop_column == "first_inning_hrrrbi"
     game_log_df = load_batter_prop_game_log(batter_id, include_first_inning=include_first_inning)
+    game_log_df = apply_game_log_filters(game_log_df, game_log_filters)
     range_key = f"batter_game_log_range_{batter_id}"
     h2h_key = f"batter_game_log_h2h_{batter_id}"
     tooltip_ready_key = f"batter_game_log_tooltip_ready_{batter_id}"
@@ -2756,6 +2895,7 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
         )
     elif h2h_enabled:
         all_game_log_df = load_batter_prop_all_game_logs(batter_id, include_first_inning=include_first_inning) if has_opponent_context else pd.DataFrame()
+        all_game_log_df = apply_game_log_filters(all_game_log_df, game_log_filters)
         h2h_tile_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
     else:
         h2h_tile_df = filter_game_logs_vs_opponent(game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
@@ -2793,6 +2933,7 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
             )
         else:
             all_game_log_df = load_batter_prop_all_game_logs(batter_id, include_first_inning=include_first_inning) if has_opponent_context else pd.DataFrame()
+            all_game_log_df = apply_game_log_filters(all_game_log_df, game_log_filters)
             display_log_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
     else:
         display_log_df = game_log_sample_dataframe(game_log_df, game_log_range)
@@ -2801,7 +2942,7 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
         if h2h_enabled:
             st.info("No previous games vs today's opponent.")
         else:
-            st.info("Game log data is unavailable for this batter right now.")
+            st.info("No games found for the selected filters.")
         return
 
     tooltip_enrichment_allowed = bool(st.session_state.get(tooltip_ready_key, False))
@@ -2941,7 +3082,7 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
     has_exact_prizepicks_line = isinstance(selected_projection_line, dict)
 
     st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
-    line_cols = st.columns([0.34, 1.65, 0.34, 4.2])
+    line_cols = st.columns([0.34, 1.35, 0.34, 1.15, 5.2])
     with line_cols[0]:
         st.button(
             "-",
@@ -2967,21 +3108,25 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
             args=(line_key, 1.0),
         )
 
-    if projection_lines:
-        with st.expander("Alt lines", expanded=False):
-            for idx, projection_line in enumerate(projection_lines):
-                projection_line_value = _projection_line_value(projection_line)
-                projection_odds_type = _projection_value(projection_line, "odds_type", "oddsType", default="")
-                st.markdown(
-                    f"<div class='alt-line-row'>{render_line_badge(projection_line_value, projection_odds_type)}</div>",
-                    unsafe_allow_html=True,
-                )
-                st.button(
-                    "Use",
-                    key=f"batter_{prop_slug}_alt_line_{batter_id}_{idx}",
-                    on_click=set_game_log_line_value,
-                    args=(line_key, projection_line_value),
-                )
+    with line_cols[3]:
+        if projection_lines:
+            with st.expander("Alt lines", expanded=False):
+                for idx, projection_line in enumerate(projection_lines):
+                    projection_line_value = _projection_line_value(projection_line)
+                    projection_odds_type = _projection_value(projection_line, "odds_type", "oddsType", default="")
+                    st.markdown(
+                        f"<div class='alt-line-row'>{render_line_badge(projection_line_value, projection_odds_type)}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.button(
+                        "Use",
+                        key=f"batter_{prop_slug}_alt_line_{batter_id}_{idx}",
+                        on_click=set_game_log_line_value,
+                        args=(line_key, projection_line_value),
+                    )
+
+    with line_cols[4]:
+        game_log_filters = render_game_log_filter_controls(game_log_df, f"batter_game_log_filters_{batter_id}")
 
     selected_prop_line = float(st.session_state[line_key])
     render_batter_game_log_sample_section(
@@ -2990,6 +3135,7 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
         selected_prop,
         selected_prop_line,
         current_opponent_context,
+        game_log_filters=game_log_filters,
     )
 
 
@@ -3113,8 +3259,9 @@ def render_pitcher_game_log_chart(display_log_df, prop_column, selected_prop, se
     st.altair_chart(chart, use_container_width=True)
 
 
-def render_pitcher_game_log_sample_section(pitcher_id, prop_column, selected_prop, selected_prop_line, current_opponent_context):
+def render_pitcher_game_log_sample_section(pitcher_id, prop_column, selected_prop, selected_prop_line, current_opponent_context, game_log_filters=None):
     game_log_df = load_pitcher_prop_game_log(pitcher_id)
+    game_log_df = apply_game_log_filters(game_log_df, game_log_filters)
     range_key = f"pitcher_game_log_range_{pitcher_id}"
     h2h_key = f"pitcher_game_log_h2h_{pitcher_id}"
     h2h_enabled = bool(st.session_state.get(h2h_key, False))
@@ -3144,6 +3291,7 @@ def render_pitcher_game_log_sample_section(pitcher_id, prop_column, selected_pro
         )
     elif h2h_enabled:
         all_game_log_df = load_pitcher_prop_all_game_logs(pitcher_id) if has_opponent_context else pd.DataFrame()
+        all_game_log_df = apply_game_log_filters(all_game_log_df, game_log_filters)
         h2h_tile_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
     else:
         h2h_tile_df = filter_game_logs_vs_opponent(game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
@@ -3184,6 +3332,7 @@ def render_pitcher_game_log_sample_section(pitcher_id, prop_column, selected_pro
             )
         else:
             all_game_log_df = load_pitcher_prop_all_game_logs(pitcher_id) if has_opponent_context else pd.DataFrame()
+            all_game_log_df = apply_game_log_filters(all_game_log_df, game_log_filters)
             display_log_df = filter_game_logs_vs_opponent(all_game_log_df, current_opponent_context) if has_opponent_context else pd.DataFrame()
     else:
         display_log_df = game_log_sample_dataframe(game_log_df, game_log_range)
@@ -3192,7 +3341,7 @@ def render_pitcher_game_log_sample_section(pitcher_id, prop_column, selected_pro
         if h2h_enabled:
             st.info("No previous games vs today's opponent.")
         else:
-            st.info("Game log data is unavailable for this pitcher right now.")
+            st.info("No games found for the selected filters.")
         return
 
     render_pitcher_game_log_chart(
@@ -3246,7 +3395,7 @@ def render_pitcher_prop_game_log_section(pitcher_id, current_opponent_context, p
     exact_projection_lines = projection_lines_matching_value(projection_lines, selected_line_value)
 
     st.markdown("<div class='prop-control-spacer'></div>", unsafe_allow_html=True)
-    line_cols = st.columns([0.34, 1.65, 0.34, 4.2])
+    line_cols = st.columns([0.34, 1.35, 0.34, 1.15, 5.2])
     with line_cols[0]:
         st.button(
             "-",
@@ -3267,21 +3416,25 @@ def render_pitcher_prop_game_log_section(pitcher_id, current_opponent_context, p
             args=(line_key, 1.0),
         )
 
-    if projection_lines:
-        with st.expander("Alt lines", expanded=False):
-            for idx, projection_line in enumerate(projection_lines):
-                projection_line_value = _projection_line_value(projection_line)
-                projection_exact_lines = projection_lines_matching_value(projection_lines, projection_line_value)
-                st.markdown(
-                    f"<div class='alt-line-row'>{render_line_badge_for_projection_matches(projection_line_value, projection_exact_lines)}</div>",
-                    unsafe_allow_html=True,
-                )
-                st.button(
-                    "Use",
-                    key=f"pitcher_{prop_slug}_alt_line_{pitcher_id}_{idx}",
-                    on_click=set_pitcher_game_log_line_value,
-                    args=(line_key, projection_line_value),
-                )
+    with line_cols[3]:
+        if projection_lines:
+            with st.expander("Alt lines", expanded=False):
+                for idx, projection_line in enumerate(projection_lines):
+                    projection_line_value = _projection_line_value(projection_line)
+                    projection_exact_lines = projection_lines_matching_value(projection_lines, projection_line_value)
+                    st.markdown(
+                        f"<div class='alt-line-row'>{render_line_badge_for_projection_matches(projection_line_value, projection_exact_lines)}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.button(
+                        "Use",
+                        key=f"pitcher_{prop_slug}_alt_line_{pitcher_id}_{idx}",
+                        on_click=set_pitcher_game_log_line_value,
+                        args=(line_key, projection_line_value),
+                    )
+
+    with line_cols[4]:
+        game_log_filters = render_game_log_filter_controls(game_log_df, f"pitcher_game_log_filters_{pitcher_id}")
 
     selected_prop_line = float(st.session_state[line_key])
     render_pitcher_game_log_sample_section(
@@ -3290,6 +3443,7 @@ def render_pitcher_prop_game_log_section(pitcher_id, current_opponent_context, p
         selected_prop,
         selected_prop_line,
         current_opponent_context,
+        game_log_filters=game_log_filters,
     )
 
 
