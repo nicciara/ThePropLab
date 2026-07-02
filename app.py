@@ -2015,6 +2015,23 @@ def load_batter_prop_all_game_logs(batter_id, include_first_inning=False, includ
     return all_logs.reset_index(drop=True)
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_batter_detail_graph_game_log(batter_id, season_year=2026, include_partial_props=False):
+    return load_batter_prop_game_log(
+        batter_id,
+        season_year=season_year,
+        include_partial_props=include_partial_props,
+    ).copy()
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_batter_detail_graph_all_game_logs(batter_id, include_partial_props=False):
+    return load_batter_prop_all_game_logs(
+        batter_id,
+        include_partial_props=include_partial_props,
+    ).copy()
+
+
 def innings_pitched_to_outs(innings_pitched):
     value = str(innings_pitched or "0").strip()
     if not value:
@@ -2191,6 +2208,23 @@ def load_pitcher_prop_all_game_logs(pitcher_id, include_partial_props=False):
         all_logs = pd.concat([logs_without_game_pk, logs_with_game_pk], ignore_index=True)
         all_logs = all_logs.sort_values("game_date").reset_index(drop=True)
     return all_logs.reset_index(drop=True)
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_pitcher_detail_graph_game_log(pitcher_id, season_year=2026, include_partial_props=False):
+    return load_pitcher_prop_game_log(
+        pitcher_id,
+        season_year=season_year,
+        include_partial_props=include_partial_props,
+    ).copy()
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_pitcher_detail_graph_all_game_logs(pitcher_id, include_partial_props=False):
+    return load_pitcher_prop_all_game_logs(
+        pitcher_id,
+        include_partial_props=include_partial_props,
+    ).copy()
 
 
 def normalize_game_pk(value):
@@ -3179,9 +3213,23 @@ def toggle_game_log_h2h_selection(h2h_key, range_key):
     })
 
 
-def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop, selected_prop_line, current_opponent_context, game_log_filters=None):
+def render_batter_game_log_sample_section(
+    batter_id,
+    prop_column,
+    selected_prop,
+    selected_prop_line,
+    current_opponent_context,
+    game_log_filters=None,
+    game_log_df=None,
+):
     include_partial_props = prop_column in BATTER_PARTIAL_PROP_COLUMNS
-    game_log_df = load_batter_prop_game_log(batter_id, include_partial_props=include_partial_props)
+    if game_log_df is None:
+        game_log_df = load_batter_detail_graph_game_log(
+            batter_id,
+            include_partial_props=include_partial_props,
+        )
+    else:
+        game_log_df = game_log_df.copy()
     game_log_df = apply_game_log_filters(game_log_df, game_log_filters)
     range_key = f"batter_game_log_range_{batter_id}"
     h2h_key = f"batter_game_log_h2h_{batter_id}"
@@ -3214,7 +3262,7 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
         )
     elif h2h_enabled:
         all_game_log_df = (
-            load_batter_prop_all_game_logs(batter_id, include_partial_props=include_partial_props)
+            load_batter_detail_graph_all_game_logs(batter_id, include_partial_props=include_partial_props)
             if has_opponent_context
             else pd.DataFrame()
         )
@@ -3256,7 +3304,7 @@ def render_batter_game_log_sample_section(batter_id, prop_column, selected_prop,
             )
         else:
             all_game_log_df = (
-                load_batter_prop_all_game_logs(batter_id, include_partial_props=include_partial_props)
+                load_batter_detail_graph_all_game_logs(batter_id, include_partial_props=include_partial_props)
                 if has_opponent_context
                 else pd.DataFrame()
             )
@@ -3375,7 +3423,10 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
     prop_column = game_log_prop_column(selected_prop)
     prop_slug = prop_column.replace("_", "-")
     include_partial_props = prop_column in BATTER_PARTIAL_PROP_COLUMNS
-    game_log_df = load_batter_prop_game_log(batter_id, include_partial_props=include_partial_props)
+    game_log_df = load_batter_detail_graph_game_log(
+        batter_id,
+        include_partial_props=include_partial_props,
+    )
     if prop_column not in game_log_df.columns:
         st.info("Data unavailable for this prop.")
         return
@@ -3462,6 +3513,7 @@ def render_batter_prop_game_log_section(batter_id, batter_name, current_opponent
         selected_prop_line,
         current_opponent_context,
         game_log_filters=game_log_filters,
+        game_log_df=game_log_df,
     )
 
 
@@ -3585,9 +3637,23 @@ def render_pitcher_game_log_chart(display_log_df, prop_column, selected_prop, se
     st.altair_chart(chart, use_container_width=True)
 
 
-def render_pitcher_game_log_sample_section(pitcher_id, prop_column, selected_prop, selected_prop_line, current_opponent_context, game_log_filters=None):
+def render_pitcher_game_log_sample_section(
+    pitcher_id,
+    prop_column,
+    selected_prop,
+    selected_prop_line,
+    current_opponent_context,
+    game_log_filters=None,
+    game_log_df=None,
+):
     include_partial_props = prop_column in PITCHER_PARTIAL_PROP_COLUMNS
-    game_log_df = load_pitcher_prop_game_log(pitcher_id, include_partial_props=include_partial_props)
+    if game_log_df is None:
+        game_log_df = load_pitcher_detail_graph_game_log(
+            pitcher_id,
+            include_partial_props=include_partial_props,
+        )
+    else:
+        game_log_df = game_log_df.copy()
     game_log_df = apply_game_log_filters(game_log_df, game_log_filters)
     range_key = f"pitcher_game_log_range_{pitcher_id}"
     h2h_key = f"pitcher_game_log_h2h_{pitcher_id}"
@@ -3618,7 +3684,7 @@ def render_pitcher_game_log_sample_section(pitcher_id, prop_column, selected_pro
         )
     elif h2h_enabled:
         all_game_log_df = (
-            load_pitcher_prop_all_game_logs(pitcher_id, include_partial_props=include_partial_props)
+            load_pitcher_detail_graph_all_game_logs(pitcher_id, include_partial_props=include_partial_props)
             if has_opponent_context
             else pd.DataFrame()
         )
@@ -3663,7 +3729,7 @@ def render_pitcher_game_log_sample_section(pitcher_id, prop_column, selected_pro
             )
         else:
             all_game_log_df = (
-                load_pitcher_prop_all_game_logs(pitcher_id, include_partial_props=include_partial_props)
+                load_pitcher_detail_graph_all_game_logs(pitcher_id, include_partial_props=include_partial_props)
                 if has_opponent_context
                 else pd.DataFrame()
             )
@@ -3713,7 +3779,10 @@ def render_pitcher_prop_game_log_section(pitcher_id, current_opponent_context, p
     prop_column = PITCHER_GAME_LOG_PROP_COLUMNS.get(selected_prop)
     prop_slug = prop_column.replace("_", "-")
     include_partial_props = prop_column in PITCHER_PARTIAL_PROP_COLUMNS
-    game_log_df = load_pitcher_prop_game_log(pitcher_id, include_partial_props=include_partial_props)
+    game_log_df = load_pitcher_detail_graph_game_log(
+        pitcher_id,
+        include_partial_props=include_partial_props,
+    )
     if prop_column not in game_log_df.columns:
         st.info("Data unavailable for this prop.")
         return
@@ -3779,6 +3848,7 @@ def render_pitcher_prop_game_log_section(pitcher_id, current_opponent_context, p
         selected_prop_line,
         current_opponent_context,
         game_log_filters=game_log_filters,
+        game_log_df=game_log_df,
     )
 
 
