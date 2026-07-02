@@ -6559,7 +6559,12 @@ def _props_cache_mode():
 
 
 def _props_autoload_enabled():
-    return _truthy_query_or_env(_query_param_value("props_autoload", ""))
+    query_value = str(_query_param_value("props_autoload", "") or "").strip().lower()
+    if query_value in {"0", "false", "no", "off"}:
+        return False
+    if query_value in {"1", "true", "yes", "on"}:
+        return True
+    return True
 
 
 def _with_props_cache_query_param(params):
